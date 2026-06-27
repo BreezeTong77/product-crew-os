@@ -4,10 +4,17 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Docs](https://img.shields.io/badge/docs-Chinese-red)](README.md)
 [![Regression](https://img.shields.io/badge/regression-local%20check-lightgrey)](product-crew-os-skill/tests)
+[![Codex](https://img.shields.io/badge/Codex-native-black)](product-crew-os-skill/SKILL.md)
+[![Claude](https://img.shields.io/badge/Claude-adaptable-purple)](#多平台使用)
+[![Cursor](https://img.shields.io/badge/Cursor-adaptable-blue)](#多平台使用)
 
 一间给产品经理用的 AI 产品办公室。
 
-Product Crew OS 不是多 Agent 群聊，也不是通用 Agent 框架。它让你主要和一个主控产品教练对话，由主控教练判断当前产品阶段、调用合适 skill、在关键节点召唤可配置的同事角色评审，并把结果沉淀成可继续编辑的产品产物。
+Product Crew OS 让你主要和一个主控产品教练对话。主控教练会判断你当前处在哪个产品阶段，调用合适的 skill，在关键节点召唤可配置的同事角色参与评审，并把讨论结果沉淀成可继续编辑的产品产物。
+
+它的目标不是制造一个热闹的多 Agent 群聊，而是给产品经理提供一套温暖、主动、可持续的全流程产品工作系统：从想法判断、需求验证、方案设计、PRD、评审、任务拆解，到验收、上线和复盘，都有人带你往前走。
+
+你也可以自由定制这支 AI 产品团队：主控教练叫什么、说话风格如何；技术、业务、设计、测试、客户成功等角色是什么性格、严不严格、像不像你真实公司的同事，都可以按你的工作习惯调整。
 
 ```text
 Workflow + Skill + Review + Artifact Workspace
@@ -114,6 +121,8 @@ flowchart LR
 
 ## 快速安装
 
+### Codex
+
 把 `product-crew-os-skill/` 复制到 Codex skills 目录：
 
 ```text
@@ -127,6 +136,24 @@ $product-crew-os
 ```
 
 如果你的运行环境支持隐式 skill 调用，产品工作流相关请求也可以自动触发。
+
+## 多平台使用
+
+Product Crew OS 当前以 Codex skill 包为主，但它的核心是 Markdown / YAML / JSON 规则包，可以迁移到其他 AI coding 或 agent 工作环境。
+
+| 平台 | 使用方式 | 状态 |
+| --- | --- | --- |
+| Codex | 复制 `product-crew-os-skill/` 到 `~/.codex/skills/product-crew-os/` | 原生支持 |
+| Claude Code / Claude | 将 `SKILL.md`、`config/`、`references/`、`templates/` 放入项目规则或自定义技能目录 | 可迁移 |
+| Cursor | 将 `SKILL.md` 的主规则整理进 `.cursor/rules`，并保留 references/templates 作为项目上下文 | 可迁移 |
+| Windsurf | 将规则包作为 workspace rules / project context 使用 | 可迁移 |
+| OpenCode / Kiro / Gemini CLI | 复制 skill 文件夹到对应工具的 skills 或 rules 目录 | 可迁移 |
+
+多平台迁移时请保留三类边界：
+
+- 主控教练是唯一可见入口，不要改成多 Agent 群聊。
+- 子 Agent 只在阶段门或评审需要时短暂进场。
+- 用户偏好和具体项目记忆不要写入公共规则包。
 
 ## 本地质检
 
