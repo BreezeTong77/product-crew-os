@@ -2,6 +2,22 @@
 
 Product Crew OS 的重要变更都会记录在这里。
 
+## v0.1.1 - 2026-06-27
+
+### 优化
+
+- 重写 README 首屏，让 GitHub 新访客先看到产品价值、适用人群和开始方式。
+- 增加 badges、Start Here、可复制 prompt、Mermaid 工作流图和能力地图。
+- 将复杂规则说明下沉到 docs 和 references，减少首屏阅读负担。
+- 新增 `examples/first-run-demo.md` 和 `examples/prd-review-demo.md`。
+- 明确本地质检命令和预期输出，方便用户 clone 后验证可用性。
+
+### 不变
+
+- 不改变核心产品机制。
+- 不改变记忆容器隔离规则。
+- 不改变真实子 Agent 调用与模拟视角边界。
+
 ## v0.1.0-alpha - 2026-06-26
 
 ### 新增
