@@ -1,0 +1,14 @@
+scenario_id: "memory_resume_after_context_loss"
+user_input: "我们接着上次那个项目做，你先恢复一下上下文。"
+expected:
+  stage_id_any_of: ["project_intake", "request_triage", "memory_resume"]
+  required_agents: ["Coach"]
+  must_include:
+    - "current stage from project memory if available"
+    - "current artifact and version"
+    - "accepted decisions"
+    - "open risks"
+    - "next action"
+  must_not:
+    - "mix product rule memory with project memory"
+    - "invent missing project context"

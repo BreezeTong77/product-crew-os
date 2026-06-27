@@ -1,0 +1,14 @@
+scenario_id: "human_centered_status_bar"
+user_input: "我已经有一个产品方向了，你觉得下一步应该做什么？"
+expected:
+  stage_id_any_of: ["project_intake", "request_triage", "opportunity_discovery"]
+  required_agents: ["Coach"]
+  must_include:
+    - "compact project status bar"
+    - "current stage"
+    - "completed or missing artifact"
+    - "next action"
+    - "recommended stakeholder"
+  must_not:
+    - "summon full panel"
+    - "leave user without next step"

@@ -1,0 +1,51 @@
+schema_version: "0.1"
+config_kind: "stage_transitions"
+purpose: "Canonical stage aliases and allowed forward/rollback transitions."
+
+macro_to_fine:
+  opportunity_discovery: ["project_intake", "request_triage", "stakeholder_map", "business_context", "existing_workflow_mapping", "evidence_inventory"]
+  user_research: ["research_plan", "interview_guide", "interview_synthesis", "persona_jtbd_journey"]
+  problem_framing: ["problem_definition", "user_segmentation", "opportunity_tree", "assumption_mapping"]
+  requirement_analysis: ["value_sizing", "prioritization", "mvp_scope", "one_page_proposal"]
+  solution_design: ["solution_exploration", "data_feasibility_precheck", "technical_feasibility_precheck", "compliance_precheck", "core_flow_diagram", "low_fi_prototype", "metrics_design", "instrumentation_plan"]
+  prd_drafting: ["prd_outline", "prd_v0_draft", "pm_self_review"]
+  cross_functional_review: ["internal_product_review", "design_review", "data_review", "technical_pre_review", "formal_requirements_review"]
+  delivery_planning: ["task_breakdown", "acceptance_criteria", "development_tracking"]
+  launch_readiness: ["integration_qa", "launch_readiness", "training_enablement", "grey_release_pilot"]
+  post_launch_review: ["launch_monitoring", "post_launch_review", "iteration_planning"]
+
+aliases:
+  opportunity_discovery: ["project_intake", "request_triage"]
+  prd_drafting: ["prd_outline", "prd_v0_draft"]
+  review_prd: ["pm_self_review", "internal_product_review"]
+  tech_review: ["technical_pre_review"]
+  data_review: ["data_review", "data_feasibility_precheck"]
+  release: ["launch_readiness", "grey_release_pilot"]
+
+rollback_paths:
+  formal_requirements_review:
+    - to: "pm_self_review"
+      reason: "PRD contradiction or missing core section"
+    - to: "mvp_scope"
+      reason: "scope too large or priority unclear"
+  technical_pre_review:
+    - to: "data_feasibility_precheck"
+      reason: "data source or interface missing"
+    - to: "core_flow_diagram"
+      reason: "state or system path unclear"
+  data_review:
+    - to: "data_feasibility_precheck"
+      reason: "field/source/SLA missing"
+  launch_readiness:
+    - to: "acceptance_criteria"
+      reason: "release pass/fail unclear"
+    - to: "training_enablement"
+      reason: "frontline adoption material missing"
+  post_launch_review:
+    - to: "problem_definition"
+      reason: "results disprove original problem"
+
+stage_jump_policy:
+  max_auto_jump: 1
+  require_user_confirmation_for_larger_jump: true
+  require_reason_for_rollback: true

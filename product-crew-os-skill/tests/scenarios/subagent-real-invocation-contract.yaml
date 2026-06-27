@@ -1,0 +1,14 @@
+scenario_id: "subagent_real_invocation_contract"
+user_input: "你确定调取了子agent吗？没有拉起啊。"
+expected:
+  stage_id_any_of: ["request_triage", "pm_self_review", "internal_product_review"]
+  must_do:
+    - "acknowledge whether a real invocation occurred"
+    - "explain role binding through role_key, persona, context packet, and invocation ledger"
+    - "if runtime supports sub-agent and review is needed, call real sub-agent immediately"
+    - "record runtime agent id when real invocation is performed"
+    - "label simulated perspective if no real invocation occurred"
+  must_not:
+    - "claim a role was summoned without a tool call or invocation proof"
+    - "expose runtime nickname as the user's configured role name"
+    - "treat role display name as stable machine identity"

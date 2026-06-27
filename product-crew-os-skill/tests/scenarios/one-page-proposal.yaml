@@ -1,0 +1,15 @@
+scenario_id: "one_page_proposal"
+user_input: "帮我把这个方向整理成一页方案。"
+expected:
+  stage_id_any_of: ["one_page_proposal", "solution_shaping", "mvp_scope"]
+  required_agents: ["Coach", "Biz"]
+  required_artifact: "one-page proposal"
+  must_include:
+    - "problem"
+    - "target user"
+    - "core value"
+    - "scope and non-scope"
+    - "success metric"
+    - "risks and open questions"
+  must_not:
+    - "turn the proposal into a full PRD too early"

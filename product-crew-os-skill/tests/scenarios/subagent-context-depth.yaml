@@ -1,0 +1,25 @@
+scenario_id: "subagent_context_depth"
+user_input: "我写完 PRD 了，帮我叫技术和数据做一轮内审。"
+expected:
+  stage_id_any_of: ["pm_self_review", "internal_product_review", "technical_pre_review", "data_review"]
+  required_before_agent_speaks:
+    - "agent context packet exists"
+    - "stable role_key exists"
+    - "persona source exists"
+    - "artifact summary exists"
+    - "review question exists"
+    - "known decisions included"
+    - "open risks included"
+    - "evidence boundary included"
+    - "real invocation performed or simulated perspective explicitly labeled"
+    - "invocation ledger record exists when real invocation is claimed"
+  agent_reply_must:
+    - "reference a concrete artifact detail"
+    - "state one concrete worry"
+    - "state one concrete fix"
+    - "state pass/conditional/block"
+  must_not:
+    - "generic role-only review"
+    - "jargon checklist without artifact detail"
+    - "invent missing evidence"
+    - "claim agent was summoned without invocation proof"

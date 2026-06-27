@@ -1,0 +1,226 @@
+schema_version: "0.1"
+config_kind: "evolution_policy"
+purpose: "Reliability, memory compression, checkpointing, hallucination control, and regression policy for Product Crew OS."
+
+principles:
+  flow_first: true
+  structured_state: true
+  source_bound_claims: true
+  default_config_is_read_only: true
+  user_project_overlay_only: true
+  human_approval_for_high_impact_actions: true
+  no_full_panel_by_default: true
+
+run_controls:
+  max_agents_per_turn: 3
+  max_review_turns_per_agent: 1
+  max_stage_jump_without_user_confirmation: 1
+  max_guardrail_retries: 2
+  require_stage_detection_before_action: true
+  require_artifact_or_next_action_before_reply: true
+  implicit_invocation_write_mode: "read_only"
+  memory_write_requires_explicit_user_signal: true
+
+state_delta_policy:
+  enabled: true
+  require_turn_id: true
+  write_mode: "delta_then_snapshot"
+  delta_fields:
+    - "turn_id"
+    - "state_before_hash"
+    - "state_after_hash"
+    - "stage_before"
+    - "stage_after"
+    - "artifact_delta"
+    - "memory_delta"
+    - "agents_invoked"
+    - "guardrail_events"
+    - "sources_added"
+
+checkpoint_policy:
+  enabled: true
+  checkpoint_dir: "memory/projects/{project_id}/checkpoints"
+  write_before:
+    - "project_state_update"
+    - "memory_write"
+    - "external_tool_write"
+  write_after:
+    - "stage_changed"
+    - "artifact_created"
+    - "artifact_revised"
+    - "review_completed"
+    - "decision_recorded"
+    - "mcp_action_completed"
+    - "guardrail_failed"
+  retention:
+    max_checkpoints_per_project: 20
+    keep_named_milestones: true
+  rollback_when:
+    - "schema_validation_failed"
+    - "tool_write_failed"
+    - "memory_conflict_detected"
+    - "user_rejects_change"
+
+memory_evolution:
+  enabled: true
+  scopes:
+    default_personas: "config/crew-personas.yaml"
+    default_boundaries: "config/stakeholder-boundaries.yaml"
+    user_overlay: "memory/users/{user_id}/crew-overlay.yaml"
+    project_state: "memory/projects/{project_id}/project-state.json"
+    project_decision_log: "memory/projects/{project_id}/decision-log.md"
+    project_open_questions: "memory/projects/{project_id}/open-questions.md"
+    project_agent_memory: "memory/projects/{project_id}/agent-memory/{role_key}.md"
+    source_ledger: "memory/projects/{project_id}/source-ledger.md"
+  promotion_flow:
+    - "candidate"
+    - "confirmed"
+    - "project_memory"
+    - "global_memory"
+  write_requires:
+    - "source_ref"
+    - "confidence"
+    - "scope"
+    - "created_at"
+    - "owner"
+  must_keep_during_compression:
+    - "decisions"
+    - "open_risks"
+    - "open_questions"
+    - "stage_gate"
+    - "blocked_roles"
+    - "artifact_versions"
+    - "source_refs"
+    - "latest_user_corrections"
+  conflict_resolution:
+    - "latest explicit user decision beats older summaries"
+    - "artifact facts beat remembered impressions"
+    - "confirmed source beats inference"
+    - "unknown stays unknown"
+
+hallucination_guardrails:
+  require_uncertainty_labels: true
+  forbid_fake_approval: true
+  forbid_fake_data_source: true
+  forbid_fake_mcp_execution: true
+  forbid_fake_user_research_quotes: true
+  allowed_claim_labels:
+    - "confirmed"
+    - "from_user"
+    - "from_artifact"
+    - "from_source"
+    - "inferred"
+    - "assumption"
+    - "unknown"
+  source_required_for:
+    - "external framework claim"
+    - "legal or compliance claim"
+    - "current market claim"
+    - "technical API capability"
+    - "benchmark or metric"
+  when_unknown_say: "我这里不能确认，先按假设处理，过关前需要补证据。"
+
+agent_dedupe_policy:
+  ledger_key: "{project_id}:{stage_id}:{artifact_id}:{artifact_version}:{role_key}"
+  do_not_reinvoke_unless:
+    - "artifact_version_changed"
+    - "new_evidence_added"
+    - "user_explicitly_requests_same_role"
+    - "previous_review_was_blocked_and_fix_is_ready"
+
+tool_and_mcp_safety:
+  approval_required_for:
+    - "writing to external systems"
+    - "sending messages or tickets"
+    - "publishing artifacts"
+    - "deleting or overwriting user files"
+    - "marking a stage approved"
+    - "changing default config"
+  dry_run_first_for:
+    - "Jira issue creation"
+    - "Figma prototype generation"
+    - "Draw.io diagram generation"
+    - "Canva design export"
+    - "email or chat message"
+  tool_call_log: "memory/projects/{project_id}/tool-call-log.md"
+
+observability:
+  event_log: "memory/projects/{project_id}/event-log.jsonl"
+  log_events:
+    - "stage_detected"
+    - "skill_selected"
+    - "agent_summoned"
+    - "agent_blocked_by_boundary"
+    - "guardrail_passed"
+    - "guardrail_failed"
+    - "artifact_created"
+    - "artifact_revised"
+    - "checkpoint_written"
+    - "memory_compressed"
+    - "user_correction"
+    - "mcp_action_requested"
+    - "mcp_action_completed"
+  quality_metrics:
+    - "stage_detection_accuracy"
+    - "agent_routing_precision"
+    - "artifact_completion_rate"
+    - "user_correction_rate"
+    - "guardrail_failure_rate"
+    - "memory_recall_hit_rate"
+    - "unresolved_risk_age"
+
+evolution_cadence:
+  after_each_stage:
+    action: "lightweight_retrospective"
+    output: "memory/projects/{project_id}/evolution-notes.md"
+  weekly_if_active:
+    action: "routing_memory_risk_review"
+    output: "memory/projects/{project_id}/weekly-evolution-review.md"
+  monthly_if_enabled:
+    action: "skill_discovery_and_recommendation_review"
+    output: "memory/users/{user_id}/monthly-skill-recommendations.md"
+    requires_user_opt_in: true
+    sources:
+      - "GitHub"
+      - "Codex skill community"
+      - "user-specified repositories"
+      - "internal team skill repositories"
+    approval_required_before_install: true
+  after_three_guardrail_failures:
+    action: "freeze_automation_and_run_incident_review"
+    output: "memory/projects/{project_id}/incident-review.md"
+  after_skill_update:
+    action: "run_regression_scenarios"
+    output: "tests/results/latest-regression.md"
+
+regression_suite:
+  enabled: true
+  scenarios_dir: "tests/scenarios"
+  results_dir: "tests/results"
+  required_scenarios:
+    - "new_project_onboarding"
+    - "human_centered_status_bar"
+    - "team_style_overlay_consent"
+    - "user_skill_and_tool_preference"
+    - "demand_authenticity_gate"
+    - "pain_point_review"
+    - "one_page_proposal"
+    - "prd_self_review"
+    - "data_feasibility_precheck"
+    - "technical_pre_review"
+    - "launch_readiness"
+    - "memory_resume_after_context_loss"
+    - "wrong_agent_not_summoned"
+    - "hallucination_guardrail"
+    - "subagent_context_depth"
+    - "subagent_memory_runtime"
+    - "subagent_real_invocation_contract"
+  each_scenario_checks:
+    - "stage_detected"
+    - "allowed_agents_only"
+    - "required_artifact_named"
+    - "natural_language_agent_reply"
+    - "next_action_present"
+    - "status_bar_present_when_substantial"
+    - "team_style_consent_before_storage"
+    - "memory_delta_written"

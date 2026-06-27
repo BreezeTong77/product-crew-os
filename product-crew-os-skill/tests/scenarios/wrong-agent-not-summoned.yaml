@@ -1,0 +1,11 @@
+scenario_id: "wrong_agent_not_summoned"
+user_input: "帮我把一个访谈提纲写出来。"
+expected:
+  stage_id_any_of: ["research_plan", "interview_guide"]
+  required_artifact: "interview guide"
+  required_agents: ["Coach", "Research"]
+  forbidden_agents_by_default: ["Tech", "Data", "QA", "Legal"]
+  must_not:
+    - "call Legal without compliance trigger"
+    - "call Tech without technical trigger"
+    - "call QA before acceptance criteria or release risk"

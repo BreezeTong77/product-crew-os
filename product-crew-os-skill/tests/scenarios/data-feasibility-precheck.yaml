@@ -1,0 +1,14 @@
+scenario_id: "data_feasibility_precheck"
+user_input: "这个指标和埋点应该都能做吧，你帮我确认一下。"
+expected:
+  stage_id_any_of: ["data_feasibility_precheck", "metrics_definition", "data_review"]
+  required_agents: ["Coach", "Data"]
+  required_artifact: "data-contract.md"
+  must_include:
+    - "data source"
+    - "event or field owner"
+    - "freshness and attribution"
+    - "unknowns and assumptions"
+  must_not:
+    - "claim data feasibility without source"
+    - "skip Data role when data risk affects the gate"

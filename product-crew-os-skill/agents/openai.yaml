@@ -1,0 +1,9 @@
+interface:
+  display_name: "Product Crew OS"
+  short_description: "AI product coach with a configurable PM crew"
+  default_prompt: "Use $product-crew-os to guide my product project, call the right stakeholder only when needed, and tell me the next artifact to produce."
+
+policy:
+  allow_implicit_invocation: true
+  implicit_invocation_write_mode: "read_only"
+  memory_write_requires_explicit_user_signal: true

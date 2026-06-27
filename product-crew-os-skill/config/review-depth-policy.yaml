@@ -1,0 +1,65 @@
+schema_version: "0.1"
+config_kind: "review_depth_policy"
+purpose: "Control how much context and depth each sub-agent receives before speaking."
+
+default_depth: "standard"
+
+depth_levels:
+  quick:
+    use_when:
+      - "user asks for a quick take"
+      - "artifact is small"
+      - "stage gate is low risk"
+    context_budget:
+      max_source_snippets: 2
+      max_prior_decisions: 2
+      max_open_risks: 2
+      max_artifact_summary_words: 120
+    visible_reply:
+      max_words: 120
+      style: "one concern and one fix"
+
+  standard:
+    use_when:
+      - "default review"
+      - "artifact affects another stakeholder"
+      - "stage gate is medium risk"
+    context_budget:
+      max_source_snippets: 4
+      max_prior_decisions: 4
+      max_open_risks: 4
+      max_artifact_summary_words: 240
+    visible_reply:
+      max_words: 220
+      style: "conclusion, evidence, worry, fix, gate decision"
+
+  deep:
+    use_when:
+      - "PRD internal review"
+      - "data feasibility precheck"
+      - "technical pre-review"
+      - "formal requirements review"
+      - "launch readiness"
+      - "user explicitly asks for deeper review"
+    context_budget:
+      max_source_snippets: 8
+      max_prior_decisions: 8
+      max_open_risks: 8
+      max_artifact_summary_words: 500
+    visible_reply:
+      max_words: 420
+      style: "specific critique with artifact references and stage gate decision"
+
+minimum_context_before_agent_speaks:
+  required:
+    - "stage_id"
+    - "artifact_id_or_name"
+    - "artifact_summary"
+    - "review_question"
+    - "role_scope"
+    - "known_decisions"
+    - "open_risks"
+    - "source_labels"
+  if_missing:
+    action: "coach asks or creates a context packet first"
+    do_not: "let sub-agent speak from vibe or generic role knowledge"

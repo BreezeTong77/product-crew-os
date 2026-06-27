@@ -1,0 +1,13 @@
+scenario_id: "prd_self_review"
+user_input: "我写完 PRD 了，你先帮我做内审。"
+expected:
+  stage_id_any_of: ["pm_self_review", "internal_product_review"]
+  required_artifact: "PM self-review checklist and fix list"
+  allowed_agents_only: ["Coach", "Biz", "Design", "Tech", "Data", "QA", "Legal"]
+  must_not:
+    - "summon full panel by default"
+    - "mark formal review approved"
+  agent_rules:
+    - "call only domain roles with obvious issue triggers"
+    - "sub-agent visible speech must be natural language"
+    - "review shadow must record pass/conditional/block"

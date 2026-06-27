@@ -1,0 +1,96 @@
+schema_version: "0.1"
+overlay_kind: "team_style"
+owner:
+  user_id: ""
+  project_id: ""
+scope:
+  level: "user" # user | project | role
+  applies_to_projects: []
+source_policy:
+  consent_status: "unknown" # unknown | granted | denied | turn_only
+  source_labels: []
+  source_summary: ""
+  redaction_required: true
+  store_raw_source: false
+  allowed_uses:
+    - "tone"
+    - "review_style"
+    - "concern_patterns"
+    - "company_vocabulary"
+  prohibited_uses:
+    - "public_product_rules"
+    - "generic_examples"
+    - "training_without_permission"
+    - "impersonation"
+global_style:
+  language: "zh-CN"
+  strictness: "balanced" # gentle | balanced | strict
+  warmth: "medium" # low | medium | high
+  directness: "medium" # low | medium | high
+role_overrides:
+  Biz:
+    display_name: ""
+    tone_notes: []
+    common_concerns: []
+    phrases_to_prefer: []
+    phrases_to_avoid: []
+  Research:
+    display_name: ""
+    tone_notes: []
+    common_concerns: []
+    phrases_to_prefer: []
+    phrases_to_avoid: []
+  CS:
+    display_name: ""
+    tone_notes: []
+    common_concerns: []
+    phrases_to_prefer: []
+    phrases_to_avoid: []
+  Customer:
+    display_name: ""
+    tone_notes: []
+    common_concerns: []
+    phrases_to_prefer: []
+    phrases_to_avoid: []
+  Design:
+    display_name: ""
+    tone_notes: []
+    common_concerns: []
+    phrases_to_prefer: []
+    phrases_to_avoid: []
+  Tech:
+    display_name: ""
+    tone_notes: []
+    common_concerns: []
+    phrases_to_prefer: []
+    phrases_to_avoid: []
+  Data:
+    display_name: ""
+    tone_notes: []
+    common_concerns: []
+    phrases_to_prefer: []
+    phrases_to_avoid: []
+  QA:
+    display_name: ""
+    tone_notes: []
+    common_concerns: []
+    phrases_to_prefer: []
+    phrases_to_avoid: []
+  Legal:
+    display_name: ""
+    tone_notes: []
+    common_concerns: []
+    phrases_to_prefer: []
+    phrases_to_avoid: []
+  Ops:
+    display_name: ""
+    tone_notes: []
+    common_concerns: []
+    phrases_to_prefer: []
+    phrases_to_avoid: []
+review_policy:
+  user_can_disable: true
+  user_can_reset_to_default: true
+  review_after_days: 30
+  expires_at: ""
+notes: ""

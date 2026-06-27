@@ -1,0 +1,642 @@
+schema_version: "0.1"
+config_kind: "stakeholder_boundaries"
+purpose: "Portable machine-readable stage participation rules. Persona names may change; role keys should stay stable."
+
+rules:
+  coach_always_visible: true
+  default_review_mode: "single_turn_review"
+  required_roles_must_be_called_before_gate: true
+  triggered_roles_require_trigger_match: true
+  out_of_bounds_roles_require_explicit_user_request: true
+  out_of_bounds_does_not_override_agent_authority: true
+  max_agents_per_stage_default: 3
+  max_review_turns_per_agent: 1
+  full_panel_requires:
+    - "formal_requirements_review"
+    - "launch_readiness"
+    - "user explicitly asks for full panel"
+  full_panel_requires_explicit_confirmation: true
+
+special_tokens:
+  FullPanel: "sentinel, not a role"
+
+stage_aliases:
+  opportunity_discovery: ["project_intake", "request_triage"]
+  prd_drafting: ["prd_outline", "prd_v0_draft"]
+  review_prd: ["pm_self_review", "internal_product_review"]
+  tech_review: ["technical_pre_review"]
+  data_review: ["data_review", "data_feasibility_precheck"]
+  release: ["launch_readiness", "grey_release_pilot"]
+
+dedupe_policy:
+  ledger_key: "{project_id}:{stage_id}:{artifact_id}:{artifact_version}:{role_key}"
+  reinvoke_conditions:
+    - "artifact_version_changed"
+    - "new_evidence_added"
+    - "user_explicitly_requests_same_role"
+    - "previous_review_blocked_and_fix_is_ready"
+
+role_keys:
+  Coach: "主控产品教练"
+  Biz: "业务负责人"
+  Research: "用户研究员"
+  CS: "客户成功 / CS"
+  Customer: "客户（老板）"
+  Design: "产品设计"
+  Tech: "技术负责人"
+  Data: "数据负责人"
+  QA: "测试负责人"
+  Legal: "法务合规"
+  Ops: "运营/培训"
+
+global_triggers:
+  Biz:
+    - "business target"
+    - "resource conflict"
+    - "pricing"
+    - "revenue"
+    - "retention"
+    - "revenue"
+    - "leadership approval"
+  Research:
+    - "unknown user motivation"
+    - "interview evidence"
+    - "persona"
+    - "journey"
+    - "JTBD"
+    - "usability uncertainty"
+  CS:
+    - "adoption"
+    - "field workflow"
+    - "customer success"
+    - "renewal"
+    - "support burden"
+    - "sales or service promise"
+    - "training pain"
+  Customer:
+    - "external customer request"
+    - "buyer objection"
+    - "boss demand"
+    - "contract acceptance"
+    - "purchase decision"
+    - "renewal pressure"
+    - "customer deadline"
+  Design:
+    - "screens"
+    - "workflow"
+    - "information architecture"
+    - "user effort"
+    - "copy"
+    - "prototype"
+    - "handoff"
+  Tech:
+    - "API"
+    - "integration"
+    - "algorithm"
+    - "permissions"
+    - "performance"
+    - "system boundary"
+    - "delivery estimate"
+  Data:
+    - "source data"
+    - "metric definition"
+    - "attribution"
+    - "ranking"
+    - "recommendation"
+    - "experiment"
+    - "dashboard"
+  QA:
+    - "acceptance criteria"
+    - "edge cases"
+    - "regression"
+    - "release risk"
+    - "rollback"
+  Legal:
+    - "privacy"
+    - "sensitive data"
+    - "external messaging"
+    - "finance"
+    - "contract"
+    - "audit"
+    - "compliance"
+  Ops:
+    - "SOP"
+    - "rollout"
+    - "enablement"
+    - "training"
+    - "customer communication"
+    - "internal adoption"
+
+stages:
+  project_intake:
+    index: 0
+    required_output: "project card"
+    required_roles: ["Coach"]
+    triggered_roles:
+      Biz: "business target exists"
+      Customer: "external customer or boss demand exists"
+    out_of_bounds_by_default: ["Tech", "Design", "QA", "Legal"]
+    exit_gate: "project has owner, target user, and rough objective"
+
+  request_triage:
+    index: 1
+    required_output: "task classification and next workflow step"
+    required_roles: ["Coach"]
+    triggered_roles:
+      Biz: "priority conflict"
+      Research: "evidence unclear"
+    out_of_bounds_by_default: ["QA", "Legal"]
+    exit_gate: "user knows current stage and next artifact"
+
+  stakeholder_map:
+    index: 2
+    required_output: "stakeholder map and authority map"
+    required_roles: ["Coach"]
+    triggered_roles:
+      Biz: "business owner needed"
+      Tech: "system owner needed"
+      Data: "data owner needed"
+      Design: "experience owner needed"
+      CS: "customer-facing owner needed"
+      Customer: "external decision maker needed"
+    out_of_bounds_by_default: ["QA"]
+    exit_gate: "decision makers and reviewers are named"
+
+  business_context:
+    index: 3
+    required_output: "business context brief"
+    required_roles: ["Coach", "Biz"]
+    triggered_roles:
+      Data: "metric baseline needed"
+    out_of_bounds_by_default: ["Design", "QA", "Legal"]
+    exit_gate: "business problem and success pressure are clear"
+
+  existing_workflow_mapping:
+    index: 4
+    required_output: "current-state workflow or swimlane"
+    required_roles: ["Coach"]
+    triggered_roles:
+      CS: "frontline workflow matters"
+      Ops: "operating handoff matters"
+      Design: "user surface exists"
+    out_of_bounds_by_default: ["Legal"]
+    exit_gate: "actors, handoffs, and pain points are visible"
+
+  evidence_inventory:
+    index: 5
+    required_output: "evidence inventory and confidence rating"
+    required_roles: ["Coach"]
+    triggered_roles:
+      Data: "logs or business data exist"
+      Research: "interviews or research notes exist"
+      CS: "field notes exist"
+      Customer: "direct customer quote or demand exists"
+      Tech: "system evidence needed"
+    out_of_bounds_by_default: ["QA"]
+    exit_gate: "claims are separated from evidence gaps"
+
+  problem_definition:
+    index: 6
+    required_output: "problem statement"
+    required_roles: ["Coach"]
+    triggered_roles:
+      Research: "user motivation unclear"
+      CS: "field pain needs reality check"
+      Customer: "external demand needs source context"
+      Biz: "business impact must be sized"
+    out_of_bounds_by_default: ["Tech", "QA", "Legal"]
+    exit_gate: "problem is separated from solution"
+
+  user_segmentation:
+    index: 7
+    required_output: "target user or segment definition"
+    required_roles: ["Coach", "Research"]
+    triggered_roles:
+      CS: "field segments matter"
+      Data: "behavioral segments needed"
+    out_of_bounds_by_default: ["Tech", "QA"]
+    exit_gate: "primary user and secondary stakeholders are explicit"
+
+  research_plan:
+    index: 8
+    required_output: "research plan"
+    required_roles: ["Coach", "Research"]
+    triggered_roles:
+      CS: "customer recruiting needed"
+      Biz: "leadership asks for proof"
+    out_of_bounds_by_default: ["Tech", "QA"]
+    exit_gate: "questions, sample, method, and decision use are clear"
+
+  interview_guide:
+    index: 9
+    required_output: "interview guide"
+    required_roles: ["Coach", "Research"]
+    triggered_roles:
+      CS: "wording realism needed"
+    out_of_bounds_by_default: ["Tech", "Data", "QA", "Legal"]
+    exit_gate: "guide avoids leading questions and covers decisions"
+
+  interview_synthesis:
+    index: 10
+    required_output: "research synthesis"
+    required_roles: ["Coach", "Research"]
+    triggered_roles:
+      CS: "enterprise or field context matters"
+      Biz: "impact sizing needed"
+    out_of_bounds_by_default: ["Tech", "QA"]
+    exit_gate: "insights are tied to evidence, not guesses"
+
+  persona_jtbd_journey:
+    index: 11
+    required_output: "persona, JTBD, or journey map"
+    required_roles: ["Coach", "Research"]
+    triggered_roles:
+      CS: "customer language needed"
+      Design: "journey needs surface/flow interpretation"
+    out_of_bounds_by_default: ["Tech", "QA"]
+    exit_gate: "motivations and pain moments are clear"
+
+  opportunity_tree:
+    index: 12
+    required_output: "opportunity-solution tree"
+    required_roles: ["Coach"]
+    triggered_roles:
+      Research: "opportunities come from user evidence"
+      Biz: "desired outcome needs business framing"
+      CS: "field opportunities matter"
+    out_of_bounds_by_default: ["Tech", "QA", "Legal"]
+    exit_gate: "opportunities are linked to desired outcome"
+
+  assumption_mapping:
+    index: 13
+    required_output: "assumption map and validation plan"
+    required_roles: ["Coach"]
+    triggered_roles:
+      Research: "user assumption"
+      Data: "data or metric assumption"
+      Tech: "technical assumption"
+      Legal: "regulated assumption"
+    out_of_bounds_by_default: []
+    exit_gate: "riskiest assumptions are ranked"
+
+  value_sizing:
+    index: 14
+    required_output: "value sizing or ROI note"
+    required_roles: ["Coach", "Biz"]
+    triggered_roles:
+      Data: "baseline needed"
+      CS: "adoption likelihood uncertain"
+      Customer: "purchase, renewal, or acceptance signal needed"
+    out_of_bounds_by_default: ["Design", "QA"]
+    exit_gate: "value, cost, and uncertainty are explicit"
+
+  prioritization:
+    index: 15
+    required_output: "prioritization stack"
+    required_roles: ["Coach", "Biz"]
+    triggered_roles:
+      Tech: "effort estimate needed"
+      Data: "impact confidence needed"
+      CS: "customer urgency needed"
+      Customer: "customer deadline or boss pressure"
+      Legal: "risk priority needed"
+    out_of_bounds_by_default: []
+    exit_gate: "above-line and below-line scope are clear"
+
+  solution_exploration:
+    index: 16
+    required_output: "solution options brief"
+    required_roles: ["Coach"]
+    triggered_roles:
+      Design: "UX path matters"
+      Tech: "feasibility matters"
+      Data: "data product or model matters"
+      Customer: "external acceptance constraints matter"
+      QA: "acceptance risk already visible"
+    out_of_bounds_by_default: []
+    exit_gate: "at least two options and tradeoffs are visible"
+
+  mvp_scope:
+    index: 17
+    required_output: "MVP scope and not-do list"
+    required_roles: ["Coach", "Biz"]
+    triggered_roles:
+      Tech: "effort or dependency matters"
+      Design: "experience is in MVP"
+      Data: "metric or data feature in MVP"
+      Customer: "customer acceptance threshold affects scope"
+      Legal: "regulated MVP"
+    out_of_bounds_by_default: []
+    exit_gate: "MVP can prove one core hypothesis"
+
+  one_page_proposal:
+    index: 18
+    required_output: "proposal one-pager"
+    required_roles: ["Coach", "Biz"]
+    triggered_roles:
+      Data: "metrics needed"
+      CS: "field language needed"
+      Customer: "external customer proposal or buyer story needed"
+      Tech: "feasibility challenged"
+    out_of_bounds_by_default: ["QA", "Legal"]
+    exit_gate: "business owner can approve direction"
+
+  data_feasibility_precheck:
+    index: 19
+    required_output: "data contract draft"
+    required_roles: ["Coach", "Data"]
+    triggered_roles:
+      Tech: "API or integration needed"
+      Biz: "data owner priority needed"
+      Legal: "personal or sensitive data"
+    out_of_bounds_by_default: ["Design", "QA"]
+    exit_gate: "source, fields, freshness, ownership, and SLA are known"
+
+  technical_feasibility_precheck:
+    index: 20
+    required_output: "feasibility note and dependency list"
+    required_roles: ["Coach", "Tech"]
+    triggered_roles:
+      Data: "data-dependent feature"
+      Design: "surface complexity"
+      QA: "testability uncertain"
+    out_of_bounds_by_default: []
+    exit_gate: "no unknown blocker prevents PRD writing"
+
+  compliance_precheck:
+    index: 21
+    required_output: "compliance risk note"
+    required_roles: ["Coach", "Legal"]
+    triggered_roles:
+      Data: "personal data involved"
+      Biz: "policy exception needed"
+    out_of_bounds_by_default: ["Design", "QA"]
+    exit_gate: "compliance constraints are known"
+
+  core_flow_diagram:
+    index: 22
+    required_output: "user/system swimlane or state flow"
+    required_roles: ["Coach", "Design"]
+    triggered_roles:
+      Tech: "system states involved"
+      Data: "tracking events involved"
+      CS: "real-world handoff involved"
+      Legal: "regulated path"
+    out_of_bounds_by_default: []
+    exit_gate: "happy path and key exceptions are represented"
+
+  low_fi_prototype:
+    index: 23
+    required_output: "low-fi prototype or clickable demo brief"
+    required_roles: ["Coach", "Design"]
+    triggered_roles:
+      CS: "user acceptance uncertain"
+      Customer: "customer validation needed"
+      Tech: "component feasibility uncertain"
+    out_of_bounds_by_default: ["QA", "Legal"]
+    exit_gate: "core screens and user decisions are testable"
+
+  metrics_design:
+    index: 24
+    required_output: "metrics tree and guardrails"
+    required_roles: ["Coach", "Data"]
+    triggered_roles:
+      Biz: "target definition needed"
+      Tech: "instrumentation effort matters"
+      CS: "behavior interpretation matters"
+    out_of_bounds_by_default: ["Design", "QA"]
+    exit_gate: "success metric, input metric, guardrail, and review window are set"
+
+  instrumentation_plan:
+    index: 25
+    required_output: "event spec or tracking plan"
+    required_roles: ["Coach", "Data"]
+    triggered_roles:
+      Tech: "implementation needed"
+      QA: "event validation near delivery"
+      Legal: "privacy risk"
+    out_of_bounds_by_default: ["Design"]
+    exit_gate: "events, properties, timing, and owner are specified"
+
+  prd_outline:
+    index: 26
+    required_output: "PRD outline"
+    required_roles: ["Coach"]
+    triggered_roles:
+      Biz: "business section core"
+      Design: "UX section core"
+      Tech: "system section core"
+      Data: "data section core"
+    out_of_bounds_by_default: ["QA", "Legal"]
+    exit_gate: "PRD structure matches decision needs"
+
+  prd_v0_draft:
+    index: 27
+    required_output: "PRD v0"
+    required_roles: ["Coach"]
+    triggered_roles: {}
+    out_of_bounds_by_default: ["Biz", "Research", "CS", "Design", "Tech", "Data", "QA", "Legal", "Ops"]
+    exit_gate: "draft exists with assumptions visible"
+
+  pm_self_review:
+    index: 28
+    required_output: "PM self-review checklist and fix list"
+    required_roles: ["Coach"]
+    triggered_roles:
+      Biz: "business issue obvious"
+      Design: "UX issue obvious"
+      Tech: "technical issue obvious"
+      Data: "metric or data issue obvious"
+      QA: "acceptance issue obvious"
+    out_of_bounds_by_default: ["FullPanel"]
+    exit_gate: "PRD has no obvious contradiction before review"
+
+  internal_product_review:
+    index: 29
+    required_output: "review notes and revision plan"
+    required_roles: ["Coach"]
+    triggered_roles:
+      Biz: "priority or business value issue"
+      Design: "UX issue"
+      Data: "metric or source issue"
+      Tech: "feasibility issue"
+      Legal: "compliance trigger"
+    out_of_bounds_by_default: ["FullPanel"]
+    exit_gate: "blockers are classified as must-fix, should-fix, or later"
+
+  design_review:
+    index: 30
+    required_output: "design review report"
+    required_roles: ["Coach", "Design"]
+    triggered_roles:
+      CS: "usability or adoption issue"
+      Tech: "front-end constraint"
+      Biz: "priority conflict"
+      Legal: "regulated UX"
+    out_of_bounds_by_default: []
+    exit_gate: "user path, states, and copy are clear"
+
+  data_review:
+    index: 31
+    required_output: "data review report"
+    required_roles: ["Coach", "Data"]
+    triggered_roles:
+      Tech: "integration needed"
+      Biz: "target definition needed"
+      Design: "dashboard UX involved"
+      Legal: "sensitive data"
+    out_of_bounds_by_default: []
+    exit_gate: "data contract is accepted or blockers are named"
+
+  technical_pre_review:
+    index: 32
+    required_output: "tech pre-review notes"
+    required_roles: ["Coach", "Tech"]
+    triggered_roles:
+      Data: "source or API dependency"
+      Design: "UI complexity"
+      QA: "testability issue"
+      Biz: "scope negotiation needed"
+    out_of_bounds_by_default: []
+    exit_gate: "system boundary, dependencies, and effort risks are clear"
+
+  formal_requirements_review:
+    index: 33
+    required_output: "approved PRD and decision log"
+    required_roles: ["Coach", "Biz", "Tech"]
+    triggered_roles:
+      Design: "domain owner"
+      Data: "domain owner"
+      Legal: "compliance trigger"
+      CS: "customer voice needed"
+      Customer: "external customer approval or contractual acceptance needed"
+      QA: "acceptance already in scope"
+    out_of_bounds_by_default: []
+    exit_gate: "approve, conditional approve, or reject is recorded"
+
+  task_breakdown:
+    index: 34
+    required_output: "epic, story, and task breakdown"
+    required_roles: ["Coach", "Tech"]
+    triggered_roles:
+      Design: "UI tasks"
+      Data: "data tasks"
+      QA: "test tasks"
+    out_of_bounds_by_default: ["CS", "Legal"]
+    exit_gate: "tasks have owner, dependency, and estimate"
+
+  acceptance_criteria:
+    index: 35
+    required_output: "Given/When/Then acceptance criteria"
+    required_roles: ["Coach", "QA"]
+    triggered_roles:
+      Tech: "technical pass/fail needed"
+      Design: "UX pass/fail needed"
+      Data: "data pass/fail needed"
+      Biz: "business rule pass/fail needed"
+    out_of_bounds_by_default: []
+    exit_gate: "each story has testable pass/fail"
+
+  development_tracking:
+    index: 36
+    required_output: "change log and decision note"
+    required_roles: ["Coach"]
+    triggered_roles:
+      Tech: "implementation change"
+      Biz: "scope or value change"
+      Design: "UX impacted"
+      Data: "data impacted"
+      CS: "customer promise impacted"
+      Legal: "risk impacted"
+    out_of_bounds_by_default: []
+    exit_gate: "change is accepted, deferred, or rejected"
+
+  integration_qa:
+    index: 37
+    required_output: "bug list, QA report, release risk"
+    required_roles: ["Coach", "QA"]
+    triggered_roles:
+      Tech: "bug or integration issue"
+      Data: "event validation"
+      Design: "UX defect"
+      Biz: "go/no-go decision"
+    out_of_bounds_by_default: []
+    exit_gate: "critical issues resolved or signed off"
+
+  launch_readiness:
+    index: 38
+    required_output: "launch checklist"
+    required_roles: ["Coach", "QA", "Tech", "Ops"]
+    triggered_roles:
+      CS: "customer/frontline adoption needed"
+      Data: "monitoring needed"
+      Legal: "compliance trigger"
+      Design: "launch UX issue"
+    out_of_bounds_by_default: []
+    exit_gate: "rollout owner, fallback, monitoring, and support are ready"
+
+  training_enablement:
+    index: 39
+    required_output: "SOP, FAQ, or training deck"
+    required_roles: ["Coach", "Ops"]
+    triggered_roles:
+      CS: "frontline training"
+      Biz: "management push needed"
+      Design: "help content UX"
+      Tech: "tool training"
+    out_of_bounds_by_default: []
+    exit_gate: "users know how to adopt the change"
+
+  grey_release_pilot:
+    index: 40
+    required_output: "pilot plan"
+    required_roles: ["Coach", "Biz"]
+    triggered_roles:
+      Data: "pilot metric"
+      CS: "field adoption"
+      Customer: "customer pilot participation needed"
+      Ops: "rollout execution"
+      QA: "rollback or release risk"
+      Legal: "regulated pilot"
+    out_of_bounds_by_default: []
+    exit_gate: "pilot scope, duration, metric, and rollback are set"
+
+  launch_monitoring:
+    index: 41
+    required_output: "monitoring dashboard or daily notes"
+    required_roles: ["Coach", "Data"]
+    triggered_roles:
+      Tech: "incident"
+      CS: "adoption signal"
+      Ops: "operational signal"
+      Design: "UX issue"
+    out_of_bounds_by_default: []
+    exit_gate: "metrics and incidents are reviewed on schedule"
+
+  post_launch_review:
+    index: 42
+    required_output: "postmortem or learnings"
+    required_roles: ["Coach"]
+    triggered_roles:
+      Biz: "business outcome"
+      Data: "metric outcome"
+      CS: "customer learning"
+      Tech: "delivery learning"
+      Design: "UX learning"
+      QA: "quality learning"
+    out_of_bounds_by_default: []
+    exit_gate: "lessons, next iteration, and owner are recorded"
+
+  iteration_planning:
+    index: 43
+    required_output: "iteration backlog or roadmap update"
+    required_roles: ["Coach", "Biz"]
+    triggered_roles:
+      Data: "metric evidence"
+      CS: "customer feedback"
+      Research: "new discovery needed"
+      Tech: "effort and debt"
+      Design: "experience iteration"
+      QA: "delivery near"
+    out_of_bounds_by_default: []
+    exit_gate: "next cycle scope and validation plan are set"

@@ -1,0 +1,80 @@
+schema_version: "0.1"
+config_kind: "agent_authority"
+purpose: "Hard authority boundaries for sub-agents. User customization cannot override these red lines."
+
+global_red_lines:
+  - "Sub-agents may advise, question, block, or request alignment, but cannot simulate real organizational approval."
+  - "The coach may not mark a stage approved without a named human approver or explicit user instruction."
+  - "No agent may invent data sources, customer quotes, legal approvals, engineering estimates, or business commitments."
+  - "External tool writes require preview and user confirmation."
+
+roles:
+  Biz:
+    may:
+      - "challenge business value"
+      - "state approval conditions"
+      - "identify resource tradeoffs"
+    may_not:
+      - "simulate actual leadership approval"
+      - "commit real headcount or budget"
+  Tech:
+    may:
+      - "review feasibility"
+      - "name technical blockers"
+      - "request interface, state, and exception details"
+    may_not:
+      - "commit real engineering dates"
+      - "approve final architecture without real engineering review"
+  Data:
+    may:
+      - "review data source, metric, attribution, and instrumentation"
+      - "block data-dependent stages if source/owner/SLA is missing"
+    may_not:
+      - "invent field availability"
+      - "claim a data owner has approved"
+  Design:
+    may:
+      - "review flow, IA, prototype, user effort, and copy"
+    may_not:
+      - "approve product value or engineering feasibility alone"
+  Research:
+    may:
+      - "separate evidence from inference"
+      - "block research claims without evidence"
+    may_not:
+      - "invent interview quotes or sample findings"
+  CS:
+    may:
+      - "challenge adoption and frontline/customer value"
+    may_not:
+      - "promise customer acceptance"
+  QA:
+    may:
+      - "block release readiness on acceptance and edge cases"
+    may_not:
+      - "approve launch if business/data/tech blockers remain"
+  Legal:
+    may:
+      - "flag compliance risk and red lines"
+      - "request real legal review"
+    may_not:
+      - "provide actual legal approval"
+  Ops:
+    may:
+      - "review rollout, SOP, training, and adoption burden"
+    may_not:
+      - "guarantee frontline execution"
+
+hard_gates:
+  data_feasibility_precheck:
+    cannot_pass_without: ["Data"]
+  technical_feasibility_precheck:
+    cannot_pass_without: ["Tech"]
+  compliance_precheck:
+    cannot_pass_without: ["Legal"]
+  formal_requirements_review:
+    cannot_pass_without: ["Biz", "Tech"]
+    domain_required_when_present: ["Design", "Data", "QA", "Legal"]
+  launch_readiness:
+    cannot_pass_without: ["QA", "Tech", "Ops"]
+    domain_required_when_present: ["Data", "CS", "Legal"]

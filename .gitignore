@@ -1,0 +1,44 @@
+# Local project memory
+memory/
+work/
+.checkpoints/
+tests/results/
+**/tests/results/
+
+# User/project-specific overlays
+*.local.yaml
+*.overlay.yaml
+user-preferences/
+project-workspaces/
+artifact-workspaces/
+
+# Secrets and environment
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.token
+secrets/
+
+# Logs and local runtime
+*.log
+logs/
+tmp/
+temp/
+.DS_Store
+
+# Generated exports
+*.docx
+*.pdf
+*.pptx
+*.xlsx
+
+# Dependency caches
+node_modules/
+__pycache__/
+.pytest_cache/
+
+# Codex/local app internals
+.codex/
+.agents/

@@ -1,0 +1,122 @@
+{
+  "schema_version": "0.2",
+  "project_id": "",
+  "project": "",
+  "state_version": 0,
+  "created_at": "",
+  "updated_at": "",
+  "last_turn_id": "",
+  "last_user_signal": "",
+  "macro_stage": "opportunity_discovery",
+  "stage_id": "project_intake",
+  "stage_status": "in_progress",
+  "stage_history": [],
+  "project_status_bar": {
+    "stage": "project_intake",
+    "completed": [],
+    "blockers": [],
+    "next_action": "",
+    "recommended_stakeholder": ""
+  },
+  "current_problem": "",
+  "target_user": "",
+  "current_artifact": {
+    "artifact_id": "",
+    "name": "",
+    "type": "",
+    "version": 0,
+    "status": "draft",
+    "path": "",
+    "source_refs": []
+  },
+  "artifact_versions": [],
+  "artifact_index": [],
+  "gate_status": {
+    "stage_id": "project_intake",
+    "status": "not_ready",
+    "required_roles": [],
+    "approvers": [],
+    "blockers": [],
+    "conditions": []
+  },
+  "open_questions": [],
+  "open_risks": [],
+  "decisions": [],
+  "decision_log_refs": [],
+  "risk_register": [],
+  "open_question_log": [],
+  "source_files": [],
+  "source_ledger": [],
+  "summoned_agents": [],
+  "agent_context_packets": [],
+  "agent_invocation_ledger": [
+    {
+      "invocation_id": "",
+      "runtime_agent_id": "",
+      "runtime_nickname": "",
+      "role_key": "",
+      "role_title": "",
+      "display_name": "",
+      "stage_id": "",
+      "artifact_id": "",
+      "context_packet_ref": "",
+      "trigger_reason": "",
+      "real_invocation_performed": false,
+      "simulation_label_used": false,
+      "result": "",
+      "timestamp": ""
+    }
+  ],
+  "memory_delta_queue": [
+    {
+      "delta_id": "",
+      "target_scope": "turn | project | user_preference | product_rule",
+      "target_path": "",
+      "role_key": "",
+      "source_ref": "",
+      "confidence": "",
+      "summary": "",
+      "requires_user_consent": false,
+      "status": "candidate"
+    }
+  ],
+  "compression_history": [],
+  "checkpoints": [],
+  "last_checkpoint_id": "",
+  "guardrail_events": [],
+  "error_log": [],
+  "test_status": {
+    "last_regression_run": "",
+    "last_result": "",
+    "failed_scenarios": []
+  },
+  "next_action": "",
+  "evolution": {
+    "last_lightweight_review": "",
+    "last_weekly_review": "",
+    "routing_errors": [],
+    "user_corrections": [],
+    "memory_compressions": []
+  },
+  "config": {
+    "crew_personas": "config/crew-personas.yaml",
+    "stakeholder_boundaries": "config/stakeholder-boundaries.yaml",
+    "stage_transitions": "config/stage-transitions.yaml",
+    "agent_authority": "config/agent-authority.yaml",
+    "evolution_policy": "config/evolution-policy.yaml",
+    "review_depth_policy": "config/review-depth-policy.yaml",
+    "user_overlay": "memory/users/{user_id}/crew-overlay.yaml",
+    "project_overlay": "memory/projects/{project_id}/project-overlay.yaml",
+    "user_team_style_overlay": "memory/users/{user_id}/team-style-overlay.yaml",
+    "project_team_style_overlay": "memory/projects/{project_id}/team-style-overlay.yaml"
+  },
+  "memory": {
+    "global_user_preferences": "memory/global-user-preferences.md",
+    "project_memory": "memory/projects/{project_id}/project-state.json",
+    "agent_memory_dir": "memory/projects/{project_id}/agent-memory",
+    "team_style_overlay": "memory/projects/{project_id}/team-style-overlay.yaml",
+    "source_ledger": "memory/projects/{project_id}/source-ledger.md",
+    "event_log": "memory/projects/{project_id}/event-log.jsonl",
+    "checkpoint_dir": "memory/projects/{project_id}/checkpoints"
+  }
+}

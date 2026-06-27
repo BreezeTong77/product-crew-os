@@ -1,0 +1,14 @@
+scenario_id: "pain_point_review"
+user_input: "这个问题到底痛不痛？要不要继续做？"
+expected:
+  stage_id_any_of: ["pain_point_review", "problem_framing", "opportunity_discovery"]
+  required_agents: ["Coach", "Research"]
+  required_artifact: "problem-statement.md"
+  must_include:
+    - "specific user scenario"
+    - "current workaround or alternative"
+    - "frequency and cost of the pain"
+    - "evidence label"
+  must_not:
+    - "treat verbal interest as validated demand"
+    - "skip authenticity check"

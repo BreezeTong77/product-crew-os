@@ -1,0 +1,15 @@
+scenario_id: "user_skill_and_tool_preference"
+user_input: "我自己有一套 PRD skill，平时用飞书和 Jira。你别默认让我用你提供的 MCP。"
+expected:
+  stage_id_any_of: ["request_triage", "project_intake", "prd_outline", "prd_v0_draft"]
+  required_agents: ["Coach"]
+  must_include:
+    - "ask about user's skill input and output"
+    - "treat user's skill as user or project overlay"
+    - "respect user's usual software"
+    - "present MCP as optional suggestion"
+    - "do not write external systems without confirmation"
+  must_not:
+    - "force default skill"
+    - "force MCP"
+    - "auto-install GitHub skill"

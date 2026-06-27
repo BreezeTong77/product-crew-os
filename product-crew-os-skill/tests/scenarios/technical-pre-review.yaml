@@ -1,0 +1,17 @@
+scenario_id: "technical_pre_review"
+user_input: "PRD 差不多了，先让研发看下能不能做。"
+expected:
+  stage_id_any_of: ["technical_pre_review", "internal_product_review", "prd_review"]
+  required_agents: ["Coach", "Tech"]
+  required_artifact: "tech-feasibility-note.md"
+  required_before_agent_speaks:
+    - "agent context packet exists"
+    - "stable role_key Tech exists"
+    - "current artifact summary exists"
+  must_include:
+    - "scope risk"
+    - "dependency risk"
+    - "testability concern"
+    - "alternative or condition if blocked"
+  must_not:
+    - "let Tech decide product priority"

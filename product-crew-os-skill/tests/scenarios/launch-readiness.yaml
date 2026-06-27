@@ -1,0 +1,14 @@
+scenario_id: "launch_readiness"
+user_input: "准备上线了，帮我看还差什么。"
+expected:
+  stage_id_any_of: ["launch_readiness", "integration_qa", "grey_release"]
+  required_agents: ["Coach", "QA", "Tech", "Data", "CS", "Ops"]
+  required_artifact: "launch-checklist.md"
+  must_include:
+    - "owner"
+    - "rollback plan"
+    - "monitoring"
+    - "support and training"
+    - "P0/P1 status"
+  must_not:
+    - "mark launch ready without rollback and monitoring"

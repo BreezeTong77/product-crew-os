@@ -1,0 +1,23 @@
+scenario_id: "new_project_onboarding"
+user_input: "我有一个新项目，想让你帮我推进。"
+expected:
+  stage_id_any_of: ["project_intake", "request_triage"]
+  required_artifact: "project card"
+  allowed_agents_only: ["Coach", "Biz"]
+  must_introduce:
+    - "Product Crew OS as AI product office or AI product coach"
+    - "visible main coach"
+    - "user display name and visible coach name are configurable"
+    - "default crew roles"
+    - "default crew personalities"
+    - "simple workflow"
+    - "what the user can send first"
+    - "roles can be customized now or later"
+    - "human workplace-style customization examples"
+    - "team style can be refined from teammate replies, emails, meeting transcripts, or review comments with consent"
+  must_include_next_action: true
+  must_offer_customization_without_blocking: true
+  must_not:
+    - "summon full panel"
+    - "write durable memory without confirmation"
+    - "ask a long setup form before helping"

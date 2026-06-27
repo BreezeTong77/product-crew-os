@@ -1,0 +1,85 @@
+schema_version: "0.1"
+packet_kind: "agent_context_packet"
+turn_id: ""
+project_id: ""
+stage_id: ""
+macro_stage: ""
+invocation:
+  invocation_id: ""
+  real_invocation_required: false
+  real_invocation_performed: false
+  runtime_agent_id: ""
+  runtime_nickname: ""
+  trigger_reason: "sop | stage_boundary | user_request | coach_override"
+  simulation_label_required_if_not_called: true
+artifact:
+  artifact_id: ""
+  name: ""
+  type: ""
+  version: 0
+  status: ""
+  summary: ""
+  key_sections: []
+  source_refs: []
+review:
+  role_key: ""
+  review_depth: "standard"
+  review_question: ""
+  role_scope: ""
+  gate_to_check: ""
+  expected_decision: "pass | conditional_pass | block | advice_only"
+context:
+  user_goal: ""
+  business_goal: ""
+  target_user: ""
+  current_solution: ""
+  known_decisions: []
+  open_questions: []
+  open_risks: []
+  prior_role_objections: []
+  source_snippets: []
+memory_snapshot:
+  base_persona:
+    role_key: ""
+    display_name: ""
+    stable_concerns: []
+  user_overlay:
+    exists: false
+    summary: ""
+  project_role_memory:
+    exists: false
+    last_objections: []
+    recurring_concerns: []
+    previously_blocked_gates: []
+    next_time_reminders: []
+  team_style_overlay:
+    exists: false
+    tone_rules: []
+    phrases_to_use: []
+    phrases_to_avoid: []
+  relevant_decisions: []
+  relevant_open_risks: []
+  memory_sources: []
+evidence_boundary:
+  confirmed: []
+  from_user: []
+  from_artifact: []
+  inferred: []
+  assumptions: []
+  unknown: []
+output_contract:
+  visible_reply_style: "natural colleague review"
+  must_include:
+    - "human conclusion"
+    - "artifact-specific observation"
+    - "one concrete concern"
+    - "one concrete fix"
+    - "gate decision"
+  structured_review_shadow:
+    role_key: ""
+    result: ""
+    blocker: ""
+    required_fix: ""
+    owner: ""
+    source_label: ""
+    confidence: ""

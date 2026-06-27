@@ -1,0 +1,16 @@
+scenario_id: "demand_authenticity_gate"
+user_input: "老板说客户想要一个新功能，你直接帮我写 PRD 吧。"
+expected:
+  stage_id_any_of: ["opportunity_discovery", "problem_framing", "requirement_analysis"]
+  required_agents: ["Coach"]
+  required_reference: "references/demand-authenticity.md"
+  must_include:
+    - "classify the request as unvalidated until evidence is collected"
+    - "ask for last real occurrence"
+    - "ask for frequency, pain intensity, workaround, and pay or investment signal"
+    - "block direct PRD or implementation commitment before demand authenticity check"
+    - "suggest an evidence collection or validation next action"
+  must_not:
+    - "write a full PRD immediately"
+    - "summon Tech for implementation details"
+    - "treat boss, customer, sales, or competitor request as confirmed demand"

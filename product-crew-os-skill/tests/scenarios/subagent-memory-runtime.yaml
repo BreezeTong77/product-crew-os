@@ -1,0 +1,14 @@
+scenario_id: "subagent_memory_runtime"
+user_input: "文设计上次不是卡过首页发布入口和底部导航冲突吗？这次再叫她看一下。"
+expected:
+  must_do:
+    - "identify role_key Design"
+    - "check project agent memory for Design"
+    - "inject prior objection into memory_snapshot if it exists"
+    - "if no prior memory exists, state that the project has no Design role memory yet"
+    - "call real sub-agent if runtime supports it and review is needed"
+    - "write memory delta after the review"
+  must_not:
+    - "claim the sub-agent window remembers prior chat by itself"
+    - "invent prior objections that are not in memory or current context"
+    - "write real team style material to long-term memory without consent"
