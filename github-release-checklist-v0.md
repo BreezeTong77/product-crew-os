@@ -1,8 +1,8 @@
 # GitHub 发布检查清单 v0
 
-日期：2026-06-26
+日期：2026-06-28
 
-发布目标：`v0.1.0-alpha`
+发布目标：`v0.1.1`
 
 ## 1. 备份
 
@@ -19,7 +19,7 @@
 发布暂存路径：
 
 ```text
-outputs/product-crew-os-github-release-v0.1.0-alpha
+<local-release-staging-path>
 ```
 
 ## 2. 发布包结构
@@ -29,7 +29,7 @@ outputs/product-crew-os-github-release-v0.1.0-alpha
 - [x] `CHANGELOG.md`
 - [x] `.gitignore`
 - [x] `github-release-checklist-v0.md`
-- [x] `releases/v0.1.0-alpha.md`
+- [x] `releases/v0.1.1.md`
 - [x] `docs/product-rules.md`
 - [x] `docs/portability-manifest.md`
 - [x] `product-crew-os-skill/`
@@ -72,6 +72,10 @@ outputs/product-crew-os-github-release-v0.1.0-alpha
 - [x] 能力地图。
 - [x] 三种使用模式和自然语言触发语。
 - [x] 第三方 PM 能力包适配规则。
+- [x] 内置第三方 PM skill pack。
+- [x] 第三方作者、来源和许可证声明。
+- [x] Semantic Stage Router。
+- [x] Stage -> SOP -> Skill -> Stakeholder -> Artifact -> Stage Gate 闭环。
 - [x] MCP 可选适配规则。
 - [x] MCP 显性授权规则。
 - [x] Deep Artifact Pack 最小模板。
@@ -95,12 +99,16 @@ outputs/product-crew-os-github-release-v0.1.0-alpha
 执行：
 
 ```text
+ruby product-crew-os-skill/tests/validate-package.rb
+ruby product-crew-os-skill/tests/run-regression.rb --mock-delegate --check-only
 rg -n "<private-user-name>|<private-coach-name>|<customer-name>|<secret-patterns>" .
 ```
 
 预期结果：
 
 ```text
+validate-package: PASS
+run-regression: PASS
 没有匹配到私有或用户特定材料。
 ```
 
@@ -115,11 +123,10 @@ find . -maxdepth 3 -type f | sort
 在发布暂存目录中执行：
 
 ```text
-git init
 git add .
-git commit -m "chore: release product crew os v0.1.0-alpha"
+git commit -m "chore: release product crew os v0.1.1"
 git branch -M main
-git tag v0.1.0-alpha
+git tag v0.1.1
 ```
 
 然后创建 GitHub 仓库并推送：
@@ -127,12 +134,12 @@ git tag v0.1.0-alpha
 ```text
 git remote add origin <your-repo-url>
 git push -u origin main
-git push origin v0.1.0-alpha
+git push origin v0.1.1
 ```
 
 ## 8. 发布后
 
-- [ ] 使用 `releases/v0.1.0-alpha.md` 创建 GitHub Release。
+- [ ] 使用 `releases/v0.1.1.md` 创建 GitHub Release。
 - [ ] 后续工作放在 `next` 或 `dev` 分支。
 - [ ] 每次有意义的改动都更新 `CHANGELOG.md`。
 - [ ] 当配置 schema 变化时补充迁移说明。

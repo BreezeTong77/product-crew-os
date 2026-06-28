@@ -17,6 +17,7 @@ Evolution is not more agent chat. It is the maintenance loop around the product 
 
 | Failure | Example | Response |
 | --- | --- | --- |
+| Wrong stage routed | treats a prototype request as a generic UI task | log routing feedback, correct stage, check semantic stage router |
 | Hallucinated fact | invents data source or stakeholder approval | mark incident, correct answer, update source ledger |
 | Context loss | forgets prior decision or open risk | restore checkpoint, reload project state and decision log |
 | Wrong agent summoned | calls Legal during ordinary PRD draft | log routing error, check boundary matrix |
@@ -36,8 +37,25 @@ Run after each stage:
 4. Did we create or revise an artifact?
 5. Did any memory need to be written, updated, or forgotten?
 6. Is the next action still clear?
+7. Did the user correct the current stage, SOP, skill, sub-agent, or artifact route?
 
 Output: `memory/projects/{project_id}/evolution-notes.md`
+
+If stage routing was corrected, also write a routing feedback item:
+
+```json
+{
+  "event_type": "stage_routing_feedback",
+  "user_utterance": "<original user request>",
+  "wrong_stage": "<stage originally chosen>",
+  "correct_stage": "<stage after correction>",
+  "expected_sop": "<SOP card>",
+  "missed_skill": "<primary/fallback skill if any>",
+  "missed_roles": ["<role_key>"],
+  "missed_artifact": "<artifact>",
+  "lesson": "<short reusable lesson>"
+}
+```
 
 ## Weekly Evolution Review
 
@@ -91,3 +109,22 @@ Ask before:
 - sending external communication
 - writing to Jira/Figma/Canva/Draw.io or similar external tools
 - deleting or overwriting artifacts
+
+## Semantic Routing Evolution
+
+Stage routing should improve over time, but it must respect memory boundaries.
+
+Allowed evolution sources:
+
+- User corrections about stage, SOP, skill, role, or artifact.
+- Repeated routing mistakes found in regression scenarios.
+- Project decision logs and artifact metadata.
+- User-approved company SOP, templates, meeting transcripts, or team comments.
+
+Storage rules:
+
+- Generic routing lessons may become Product Rule Memory after review.
+- User-specific phrasing and workflow preferences belong in User Preference Memory.
+- Project-specific examples, documents, customers, teammates, and decisions belong only in Project Workspace Memory.
+
+Future implementation may use embedding, vector search, or RAG to retrieve similar stage-routing cases, but retrieval must never override stage gates or memory-container isolation.

@@ -2,15 +2,53 @@
 
 Product Crew OS 的重要变更都会记录在这里。
 
-## v0.1.1 - 2026-06-27
+## Unreleased
+
+暂无。
+
+## v0.1.1 - 2026-06-28
+
+### 发布定位
+
+`v0.1.1` 是 Product Crew OS 的 GitHub 发布包：补齐 GitHub 首屏表达、44 个 SOP 卡片、内置 PM skill pack、语义阶段路由和发布前质检闭环。
 
 ### 优化
 
 - 重写 README 首屏，让 GitHub 新访客先看到产品价值、适用人群和开始方式。
+- 将产品描述收束为“AI 产品办公室”和 `Workflow-first AI Product Harness`，突出主控产品教练、可配置虚拟团队和 Artifact Workspace。
 - 增加 badges、Start Here、可复制 prompt、Mermaid 工作流图和能力地图。
-- 将复杂规则说明下沉到 docs 和 references，减少首屏阅读负担。
 - 新增 `examples/first-run-demo.md` 和 `examples/prd-review-demo.md`。
 - 明确本地质检命令和预期输出，方便用户 clone 后验证可用性。
+
+### 新增
+
+- 内置第三方 PM skill pack，位于 `product-crew-os-skill/third_party/skills/`，降低新用户部署成本。
+- 新增 `product-crew-os-skill/references/bundled-skill-index.md`，让 Skill Router 可以优先解析随包内置能力。
+- 新增 `product-crew-os-skill/THIRD_PARTY_NOTICES.md`，集中记录第三方 skill 的作者、来源和许可证声明。
+- 新增 `product-crew-os-skill/references/semantic-stage-router.md`，记录语义阶段路由、RAG / 检索增强和 routing feedback 的未来迭代方案。
+
+### 调整
+
+- 将 Skill Router 说明从“推荐外部 skill”调整为“内置第三方 skill 优先，用户自有 skill 可覆盖”。
+- README 和 LICENSE 增加第三方许可证边界，避免根目录 MIT License 覆盖第三方内容。
+- 本地质检脚本增加对内置 skill pack、Notices 和 bundled index 的检查。
+- README 明确用户复制完整 `product-crew-os-skill/` 后即可使用全流程内置能力，外部系统写入能力再按用户授权启用。
+- 本地质检脚本会检查 bundled index 中声明的每个内置 skill 目录和 `SKILL.md` 是否真实存在。
+- 完善 44 张 SOP 卡片全量 8 字段结构：输入、默认 SOP、能力调用、输出 Artifact、子 Agent 调用、Review Loop、Stage Gate、下一阶段。
+- 完善 SOP 卡片 14-25，将价值测算、优先级、方案探索、MVP、可行性、流程、原型、指标和埋点阶段升级为 8 字段结构，并补齐对应 skill、子 Agent、Review Loop、Stage Gate 和下一阶段。
+- 补齐 `solution_exploration` 和 `compliance_precheck` 的 stage-router 映射。
+- 完善 SOP 卡片 26-33，将 PRD 大纲、PRD 初稿、产品自审、内部评审、设计评审、数据评审、技术预评审和正式需求评审升级为 8 字段结构，并补齐对应 skill、子 Agent、Review Loop、Stage Gate 和下一阶段。
+- 扩展 Skill Dependency Registry 覆盖范围到 0-33，并标注 `develop-design-rationale` 等未验证建议能力的 fallback 策略。
+- 完善 SOP 卡片 34-36，将任务拆解、验收标准和开发变更跟踪升级为 8 字段结构，并补齐对应 skill、子 Agent、Review Loop、Stage Gate 和下一阶段。
+- 为 `development_tracking` 补齐 stage-router 映射，避免研发变更阶段缺少能力路由入口。
+- 完善 SOP 卡片 37-40，将联调测试、上线准备、培训赋能和灰度试点升级为 8 字段结构，并补齐对应 skill、子 Agent、Review Loop、Stage Gate 和下一阶段。
+- 为 `integration_qa` 和 `training_enablement` 补齐 stage-router 映射，完善上线准备主流程的能力路由。
+- 完善 SOP 卡片 41-43，将上线监控、上线复盘和迭代规划升级为 8 字段结构，并补齐对应 skill、子 Agent、Review Loop、Stage Gate 和下一阶段。
+- 为 `launch_monitoring` 和 `iteration_planning` 补齐 stage-router 映射，完成 44 张 SOP 卡片的 8 字段升级。
+- 完成 44 张 SOP 卡片全量质检，确认 SOP 字段、canonical router、skill dependency registry、bundled skill index 和回归测试均通过。
+- 同步 `stage-boundary-matrix.md` 与 `config/stakeholder-boundaries.yaml`，补齐方案探索、技术预检、合规预检、低保真原型、埋点、设计评审、研发变更、培训赋能、灰度和上线监控阶段的触发角色边界。
+- 新增 SOP 全量质检报告 `outputs/product-crew-os-sop-full-quality-audit-v0.md`，记录通过项、已修正项、共享 artifact 设计和 Stage Gate 启发式警告。
+- `SKILL.md`、能力地图、阶段 taxonomy 和 evolution loop 增加 Semantic Stage Router 入口，明确阶段误判应记录为 `stage_routing_feedback`，后续可接入轻量检索、embedding 或 RAG。
 
 ### 不变
 

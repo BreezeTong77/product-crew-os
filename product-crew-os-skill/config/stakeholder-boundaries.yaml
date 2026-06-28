@@ -311,6 +311,7 @@ stages:
       Design: "UX path matters"
       Tech: "feasibility matters"
       Data: "data product or model matters"
+      CS: "adoption or rollout concern matters"
       Customer: "external acceptance constraints matter"
       QA: "acceptance risk already visible"
     out_of_bounds_by_default: []
@@ -360,6 +361,7 @@ stages:
       Data: "data-dependent feature"
       Design: "surface complexity"
       QA: "testability uncertain"
+      Legal: "security or compliance affects implementation"
     out_of_bounds_by_default: []
     exit_gate: "no unknown blocker prevents PRD writing"
 
@@ -370,6 +372,7 @@ stages:
     triggered_roles:
       Data: "personal data involved"
       Biz: "policy exception needed"
+      Customer: "external acceptance wording involved"
     out_of_bounds_by_default: ["Design", "QA"]
     exit_gate: "compliance constraints are known"
 
@@ -393,6 +396,7 @@ stages:
       CS: "user acceptance uncertain"
       Customer: "customer validation needed"
       Tech: "component feasibility uncertain"
+      Data: "measurement points embedded"
     out_of_bounds_by_default: ["QA", "Legal"]
     exit_gate: "core screens and user decisions are testable"
 
@@ -415,7 +419,8 @@ stages:
       Tech: "implementation needed"
       QA: "event validation near delivery"
       Legal: "privacy risk"
-    out_of_bounds_by_default: ["Design"]
+      Design: "UI state affects trigger"
+    out_of_bounds_by_default: []
     exit_gate: "events, properties, timing, and owner are specified"
 
   prd_outline:
@@ -471,6 +476,7 @@ stages:
     triggered_roles:
       CS: "usability or adoption issue"
       Tech: "front-end constraint"
+      Data: "key behavior must be measured"
       Biz: "priority conflict"
       Legal: "regulated UX"
     out_of_bounds_by_default: []
@@ -497,6 +503,7 @@ stages:
       Design: "UI complexity"
       QA: "testability issue"
       Biz: "scope negotiation needed"
+      Legal: "security or compliance implementation constraints"
     out_of_bounds_by_default: []
     exit_gate: "system boundary, dependencies, and effort risks are clear"
 
@@ -546,6 +553,7 @@ stages:
       Biz: "scope or value change"
       Design: "UX impacted"
       Data: "data impacted"
+      QA: "acceptance or release risk changes"
       CS: "customer promise impacted"
       Legal: "risk impacted"
     out_of_bounds_by_default: []
@@ -584,6 +592,7 @@ stages:
       Biz: "management push needed"
       Design: "help content UX"
       Tech: "tool training"
+      Data: "adoption metrics need dashboard training"
     out_of_bounds_by_default: []
     exit_gate: "users know how to adopt the change"
 
@@ -592,6 +601,7 @@ stages:
     required_output: "pilot plan"
     required_roles: ["Coach", "Biz"]
     triggered_roles:
+      Tech: "rollback or fallback implementation needed"
       Data: "pilot metric"
       CS: "field adoption"
       Customer: "customer pilot participation needed"
@@ -610,6 +620,8 @@ stages:
       CS: "adoption signal"
       Ops: "operational signal"
       Design: "UX issue"
+      QA: "escaped defect"
+      Biz: "go/no-go or success interpretation needed"
     out_of_bounds_by_default: []
     exit_gate: "metrics and incidents are reviewed on schedule"
 

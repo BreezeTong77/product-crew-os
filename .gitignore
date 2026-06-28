@@ -42,3 +42,7 @@ __pycache__/
 # Codex/local app internals
 .codex/
 .agents/
+
+# Third-party repository/runtime metadata not shipped in Product Crew OS releases
+product-crew-os-skill/third_party/skills/**/.github/
+product-crew-os-skill/third_party/skills/**/.taskmaster/

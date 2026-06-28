@@ -31,6 +31,29 @@ Use this file to map user language, macro workflow stages, and canonical fine-gr
 - "准备上线" -> launch_readiness
 - "上线后看效果" -> launch_monitoring
 
+## Semantic Routing Rule
+
+Alias rules are the minimum baseline. When user language is ambiguous, image-based, shorthand, or corrected by the user, use `semantic-stage-router.md`.
+
+The coach should internally produce a route decision before doing substantial work:
+
+```json
+{
+  "stage_id": "<canonical stage>",
+  "confidence": 0.0,
+  "intent": "<user intent>",
+  "matched_signals": [],
+  "sop": "<SOP card>",
+  "primary_skill": "<primary skill>",
+  "fallback_skill": "<fallback skill>",
+  "artifact": "<expected artifact>",
+  "required_roles": [],
+  "next_action": "<next action>"
+}
+```
+
+If confidence is low, ask one clarifying question before executing. If the user corrects the route, record a `stage_routing_feedback` item through `evolution-loop.md`.
+
 ## Transition Rule
 
 The coach may move forward one fine stage at a time without extra confirmation. Larger jumps require a reason and user confirmation.

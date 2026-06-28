@@ -34,10 +34,13 @@ errors << "Unregistered scenarios: #{extra.join(", ")}" unless extra.empty?
 
 required_files = [
   "SKILL.md",
+  "THIRD_PARTY_NOTICES.md",
   "config/crew-personas.yaml",
   "config/evolution-policy.yaml",
   "config/stakeholder-boundaries.yaml",
+  "references/bundled-skill-index.md",
   "references/workflow-sop-library.md",
+  "references/skill-dependency-registry.md",
   "references/subagent-invocation-contract.md",
   "references/subagent-memory-runtime-contract.md",
   "templates/agent-context-packet.yaml",
@@ -50,6 +53,21 @@ required_files.each do |relative_path|
   path = File.join(skill_root, relative_path)
   errors << "Missing required file: #{relative_path}" unless File.exist?(path)
 end
+
+bundled_skill_dir = File.join(skill_root, "third_party", "skills")
+bundled_skill_files = Dir[File.join(bundled_skill_dir, "*", "SKILL.md")]
+errors << "Missing bundled third-party skill directory: third_party/skills" unless Dir.exist?(bundled_skill_dir)
+errors << "Expected at least 30 bundled third-party skills, found #{bundled_skill_files.length}" if bundled_skill_files.length < 30
+
+bundled_index_path = File.join(skill_root, "references", "bundled-skill-index.md")
+bundled_index = File.exist?(bundled_index_path) ? File.read(bundled_index_path) : ""
+indexed_skill_dirs = bundled_index.scan(/^\|\s*`[^`]+`\s*\|\s*`(third_party\/skills\/[^`]+)`/).flatten.uniq
+indexed_skill_dirs.each do |relative_dir|
+  dir = File.join(skill_root, relative_dir)
+  errors << "Bundled skill index points to missing directory: #{relative_dir}" unless Dir.exist?(dir)
+  errors << "Bundled skill index points to directory without SKILL.md: #{relative_dir}" unless File.exist?(File.join(dir, "SKILL.md"))
+end
+errors << "Bundled skill index has fewer entries than bundled skills" if indexed_skill_dirs.length < bundled_skill_files.length
 
 state = JSON.parse(File.read(File.join(skill_root, "templates", "project-state.json")))
 %w[agent_invocation_ledger memory_delta_queue config memory].each do |key|

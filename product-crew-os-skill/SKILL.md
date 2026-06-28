@@ -32,6 +32,7 @@ Use `references/target-users-and-core-pain.md` when evaluating positioning, onbo
 Use `references/capability-map.md` when explaining what the product can do, comparing coverage with third-party PM capability packs, or building a capability panel.
 Use `references/usage-modes-and-trigger-examples.md` when onboarding a user, explaining how to start, or suggesting natural-language trigger examples.
 Use `references/workflow-map.md` when the stage is unclear or the user asks what to do next.
+Use `references/semantic-stage-router.md` when the user's intent is ambiguous, route confidence is low, the user corrects a stage judgment, or future routing/RAG/feedback-learning capability is being discussed.
 Use `references/stage-taxonomy.md` to normalize user wording into a canonical stage.
 Use `references/workflow-sop-library.md` after normalizing the stage and before producing a substantial artifact. It defines the input, SOP, output, stakeholder, and gate for each fine-grained PM workflow stage.
 Use `references/stage-boundary-matrix.md` before summoning any sub-agent. The boundary matrix has priority over a generic "ask everyone" review.
@@ -52,6 +53,8 @@ Use `references/subagent-invocation-contract.md` before claiming a sub-agent has
 Use `references/subagent-memory-runtime-contract.md` when a sub-agent needs role memory, project memory, team-style overlay, or when the user asks whether sub-agents remember prior work. Sub-agent chat windows are not the long-term memory container; the coach must read, compress, inject, and write back memory through the Project Workspace.
 Use `references/subagent-natural-language.md` whenever a sub-agent speaks.
 Use `references/skill-stage-router.md` to pick a stage-specific primary skill and fallback.
+Use `references/skill-dependency-registry.md` when explaining primary vs fallback, checking whether a routed skill is built-in, external, plugin-based, user-provided, or unavailable, and deciding how to continue when a skill is missing.
+Use `references/bundled-skill-index.md` after selecting a routed skill. If a matching bundled implementation exists under `third_party/skills/`, read that bundled skill's `SKILL.md` and relevant resources as the default implementation before falling back to templates.
 Use `references/skill-and-tool-ecosystem.md` when the user asks whether available skills are enough, wants to add their own skills, wants GitHub skill recommendations, or wants to connect their usual software/MCP tools.
 Use `references/external-skill-library-adapter.md` when evaluating third-party PM skill packs, external capability libraries, shortcut-trigger workflows, or plugin-style PM capability libraries.
 Use `templates/artifacts/deep-artifact-pack.md` when a minimum artifact is insufficient for formal review, external alignment, or stage-gate passage.
@@ -104,7 +107,8 @@ Do not let agents debate endlessly. Prefer review turns:
 
 Use `references/skill-router.md` to select skills. Treat existing PM skills as capabilities behind 主控产品教练, not as user-facing menus.
 Use `references/skill-stage-router.md` as the stage-level coverage map. It is a default registry, not a fixed limit.
-User-provided skills, templates, scripts, or internal standards may be registered as user/project overlays and may override default skills when they better fit the user's workflow.
+Use `references/bundled-skill-index.md` to resolve stage-router skills to bundled third-party implementations. Bundled skills are part of the Product Crew OS package for out-of-the-box use, but their original licenses and author notices remain in force.
+User-provided skills, templates, scripts, or internal standards may be registered as user/project overlays and may override bundled defaults when they better fit the user's workflow.
 Make skills semi-transparent to users: do not force new users to pick skill names, but briefly name the capability being used when it helps trust or orientation, such as demand authenticity, PRD review, technical pre-check, or launch checklist. Advanced users may inspect a capability panel that lists built-in skills, user skills, stage fit, status, fallback, and replacement relationships.
 Shortcut phrases may be offered as optional entries, but they must route back into the same coach-led workflow. Do not make users memorize commands before they can benefit from the product.
 
@@ -118,7 +122,7 @@ Common routing:
 - delivery readiness -> Release Checklist / Test Scenarios
 - executive alignment -> Exec Summary / Stakeholder Alignment
 
-If a useful skill is missing, continue with the relevant artifact template and state the missing capability plainly. Do not imply Product Crew OS can only operate when the exact skill is installed.
+If a routed skill is present in `third_party/skills/`, use it as the built-in implementation. If a useful skill is still missing, continue with the relevant artifact template and state the missing capability plainly. Do not imply Product Crew OS can only operate when the exact skill is installed.
 
 External software and MCP tools are adapters, not the product itself. Ask the user's preferred software first; recommend MCP only as an optional execution path, and never write to external tools without confirmation. MCP actions must be explicit to the user: before reading, writing, messaging, creating tasks, or modifying documents, state the target system, action, expected impact, and whether it can be undone.
 
