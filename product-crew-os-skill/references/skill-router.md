@@ -4,6 +4,8 @@
 
 This file is a default registry, not a hard limit. Users may bring their own skills, templates, scripts, or internal standards. If a user-provided skill fits the current stage better than the default, prefer the user skill after confirming its input, output, stage, and safety boundary.
 
+Before using this router, first confirm the request belongs to product work or Product Crew OS operation. If it is a non-product task, skip this router and answer normally or use a relevant non-product capability. If it is product-related but ambiguous, use `request_triage` or a clarifying question before choosing a product skill.
+
 | Need | Skill Family | When to Use |
 | --- | --- | --- |
 | Clarify fuzzy request | pm-workbench / clarify-request | user has a vague idea or mixed goals |
@@ -20,9 +22,10 @@ This file is a default registry, not a hard limit. Users may bring their own ski
 
 Routing rule:
 
-1. Pick the upstream skill first.
-2. Pick one primary skill unless the workflow clearly needs a chain.
-3. After the skill output, decide whether stakeholder review is needed.
-4. Convert review results into artifact edits.
-5. If no installed skill fits, use the artifact template and clearly state the missing capability.
-6. If the user has a preferred skill, tool, or software workflow, adapt to it instead of forcing the default stack.
+1. Pass the domain intent gate.
+2. Pick the upstream skill first.
+3. Pick one primary skill unless the workflow clearly needs a chain.
+4. After the skill output, decide whether stakeholder review is needed.
+5. Convert review results into artifact edits.
+6. If no installed skill fits, use the artifact template and clearly state the missing capability.
+7. If the user has a preferred skill, tool, or software workflow, adapt to it instead of forcing the default stack.

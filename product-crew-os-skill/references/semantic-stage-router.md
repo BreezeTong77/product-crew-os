@@ -4,6 +4,33 @@
 
 它不是一个单纯的 RAG 数据库功能，而是一套“语义识别 + 工作流路由 + 记忆检索 + 反馈学习”的产品能力。
 
+## 0. 领域意图门 / Domain Intent Gate
+
+在判断 `stage_id` 之前，主控教练必须先判断这一轮是否应该进入 Product Crew OS。
+
+Product Crew OS 只接管两类请求：
+
+- `product_work`：产品想法、需求、调研、商业判断、方案、PRD、评审、原型、指标、交付、上线、复盘等产品经理工作。
+- `product_crew_os_operation`：安装、配置、评估、修改 Product Crew OS 本身，包括 SOP、skill、角色、记忆、发布包和测试。
+
+如果用户请求属于 `non_product_task`，例如普通翻译、闲聊、通用代码问题、生活问答、纯文件操作、与产品工作无关的信息查询，主控教练不要强行匹配 SOP，也不要进入 Skill Router、子 Agent Review Loop、Project Workspace 或 Stage Gate。
+
+非产品请求的内部路由应类似：
+
+```json
+{
+  "product_crew_os_applies": false,
+  "domain_intent": "non_product_task",
+  "stage_id": null,
+  "sop": null,
+  "skill_router_enabled": false,
+  "response_mode": "normal_assistant",
+  "next_action": "直接回答用户问题，或使用相关非产品能力。"
+}
+```
+
+只有当 `product_crew_os_applies=true` 时，才继续执行 stage 判断、SOP 匹配、skill 选择和干系人评审。
+
 ## 1. 要解决的问题
 
 用户不会按 Product Crew OS 的 stage 名称说话。
@@ -45,6 +72,8 @@ Semantic Stage Router 是 Product Crew OS 的阶段判断引擎。
 
 ```json
 {
+  "product_crew_os_applies": true,
+  "domain_intent": "product_work",
   "stage_id": "low_fi_prototype",
   "confidence": 0.86,
   "intent": "create_ui_prototype_from_reference",
@@ -74,9 +103,10 @@ Semantic Stage Router 是 Product Crew OS 的阶段判断引擎。
 做法：
 
 - 为 44 个 stage 维护名称、别名、典型用户说法、输入特征和排除条件。
-- 每次用户发起产品工作时，先输出内部 `stage_route_decision`。
+- 每次用户输入时，先做 `domain_intent_gate`；只有确认为产品工作或 Product Crew OS 操作时，才输出内部 `stage_route_decision`。
 - 当置信度低于阈值时，先澄清，不直接执行。
 - 当用户纠正阶段判断时，记录为 routing feedback。
+- 未命中 SOP 不等于自动进入 `request_triage`。只有 `product_crew_os_applies=true` 且 stage 仍不清楚时，才进入 `request_triage` 或提出澄清问题。
 
 适合 v0.1.x 到 v0.2.x。
 

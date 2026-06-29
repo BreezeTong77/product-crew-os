@@ -4,7 +4,9 @@ Product Crew OS 的重要变更都会记录在这里。
 
 ## Unreleased
 
-暂无。
+- 增加 Product Crew OS 领域意图门：先判断用户请求是否属于产品工作或 Product Crew OS 自身配置/维护，再进入 stage、SOP、Skill Router、子 Agent Review Loop 和 Stage Gate。
+- 明确非产品请求不会被强行归入 `request_triage`、不会调用产品 skill、不会写入项目记忆，也不会召唤子 Agent。
+- 新增 `non_product_task_exits_workflow` 回归场景，并让本地 regression runner 检查非产品任务不会误入产品工作流。
 
 ## v0.1.1 - 2026-06-28
 

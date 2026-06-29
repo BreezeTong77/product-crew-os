@@ -1,0 +1,17 @@
+scenario_id: "non_product_task_exits_workflow"
+user_input: "帮我把这句话翻译成英文：明天下午三点开会。"
+expected:
+  product_crew_os_applies: false
+  domain_intent: "non_product_task"
+  stage_id_any_of: []
+  skill_router_enabled: false
+  required_agents: []
+  must_include:
+    - "answer the translation directly"
+  must_not:
+    - "force a product workflow stage"
+    - "route to request_triage"
+    - "call a product skill"
+    - "summon sub-agent review"
+    - "write project memory"
+    - "run Stage Gate"

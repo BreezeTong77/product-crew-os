@@ -16,7 +16,8 @@ run_controls:
   max_review_turns_per_agent: 1
   max_stage_jump_without_user_confirmation: 1
   max_guardrail_retries: 2
-  require_stage_detection_before_action: true
+  require_domain_intent_gate_before_stage_detection: true
+  require_stage_detection_before_product_action: true
   require_artifact_or_next_action_before_reply: true
   implicit_invocation_write_mode: "read_only"
   memory_write_requires_explicit_user_signal: true
@@ -211,12 +212,14 @@ regression_suite:
     - "launch_readiness"
     - "memory_resume_after_context_loss"
     - "wrong_agent_not_summoned"
+    - "non_product_task_exits_workflow"
     - "hallucination_guardrail"
     - "subagent_context_depth"
     - "subagent_memory_runtime"
     - "subagent_real_invocation_contract"
   each_scenario_checks:
-    - "stage_detected"
+    - "domain_intent_gate_checked"
+    - "stage_detected_when_product_work"
     - "allowed_agents_only"
     - "required_artifact_named"
     - "natural_language_agent_reply"

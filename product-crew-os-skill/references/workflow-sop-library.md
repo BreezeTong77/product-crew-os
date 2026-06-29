@@ -5,7 +5,7 @@
 它不是 skill 菜单，也不是外部能力包清单。它是主控教练在判断阶段之后使用的执行卡片：
 
 ```text
-用户输入 -> 阶段识别 -> SOP 执行 -> artifact 输出 -> 必要评审 -> gate 判断 -> 下一步
+用户输入 -> 领域意图判断 -> 阶段识别 -> SOP 执行 -> artifact 输出 -> 必要评审 -> gate 判断 -> 下一步
 ```
 
 主控教练可以按用户场景裁剪步骤，但不能跳过“输入、能力调用、输出 Artifact、子 Agent 调用、Stage Gate”这些关键判断。
@@ -14,6 +14,7 @@
 
 每个阶段默认遵循以下顺序：
 
+0. 判断是否进入 Product Crew OS：若不是产品工作或 Product Crew OS 操作，退出 SOP 流程，按普通助手或对应非产品能力处理。
 1. 复述当前目标：用一句话确认用户要推进什么。
 2. 盘点输入：列出已知材料、缺失材料和可先假设的内容。
 3. 选择 SOP：说明当前处于哪个 stage，为什么不是其他 stage。
@@ -56,7 +57,7 @@
 | 字段 | 内容 |
 | --- | --- |
 | 输入 | 混杂需求、多个文件、用户一句模糊指令 |
-| 默认 SOP | 拆分用户意图；识别是提问、生成、评审、修改还是推进流程；归一到 canonical stage；给出最小下一步 |
+| 默认 SOP | 先判断 Product Crew OS 是否适用；若不是产品相关请求，退出产品工作流；若是产品相关但阶段不清，拆分用户意图，识别是提问、生成、评审、修改还是推进流程，归一到 canonical stage，并给出最小下一步 |
 | 能力调用 | primary: `pm-workbench`；fallback: `product-manager-interrogation` |
 | 输出 Artifact | `triage-note.md` 或项目状态栏 |
 | 子 Agent 调用 | required: Coach；triggered: Research if evidence unclear；Biz if priority conflict；out-of-bounds: QA / Legal by default |

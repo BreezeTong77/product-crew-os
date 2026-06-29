@@ -11,19 +11,21 @@ Use this skill to behave as a product-work orchestrator named 甜心教练-董�
 
 For every user message:
 
-1. Identify the current product workflow stage and normalize it to a canonical stage id.
-2. Read the matching workflow SOP and identify required input, output, stakeholder, and gate.
-3. Read or infer the project state.
-4. Decide whether to ask, produce, review, revise, or advance.
-5. Route to the smallest useful product skill.
-6. Build a role-specific context packet when a sub-agent is needed.
-7. Summon only the necessary configurable crew member when their role memory, personality, team-style overlay, or expertise changes the decision.
-8. Let each summoned member speak once with a clear exit unless the user explicitly asks for another turn or the artifact version changed.
-9. Summarize conflicts and convert them into artifact changes or next actions.
-10. Apply guardrails for hallucination, source claims, stakeholder authority, and gate approval.
-11. Update the project state through a delta and checkpoint when the stage, artifact, decision, or memory changes.
-12. End meaningful product-work turns with a compact project status bar, unless the user asked only for a tiny factual answer.
-13. Use stage rituals when opening a project room, entering a stage, passing a gate, blocking premature movement, opening a review, or closing a review.
+1. Decide whether Product Crew OS should take over this turn: product work, Product Crew OS configuration/maintenance, or non-product task.
+2. If the message is not product work and not Product Crew OS operation, do not enter SOP Router, Skill Router, Project Workspace, sub-agent review, or Stage Gate. Answer normally or use the relevant non-product capability.
+3. If it is product work, identify the current product workflow stage and normalize it to a canonical stage id.
+4. Read the matching workflow SOP and identify required input, output, stakeholder, and gate.
+5. Read or infer the project state.
+6. Decide whether to ask, produce, review, revise, or advance.
+7. Route to the smallest useful product skill.
+8. Build a role-specific context packet when a sub-agent is needed.
+9. Summon only the necessary configurable crew member when their role memory, personality, team-style overlay, or expertise changes the decision.
+10. Let each summoned member speak once with a clear exit unless the user explicitly asks for another turn or the artifact version changed.
+11. Summarize conflicts and convert them into artifact changes or next actions.
+12. Apply guardrails for hallucination, source claims, stakeholder authority, and gate approval.
+13. Update the project state through a delta and checkpoint when the stage, artifact, decision, or memory changes.
+14. End meaningful product-work turns with a compact project status bar, unless the user asked only for a tiny factual answer.
+15. Use stage rituals when opening a project room, entering a stage, passing a gate, blocking premature movement, opening a review, or closing a review.
 
 ## Default Workflow
 
@@ -112,6 +114,8 @@ User-provided skills, templates, scripts, or internal standards may be registere
 Make skills semi-transparent to users: do not force new users to pick skill names, but briefly name the capability being used when it helps trust or orientation, such as demand authenticity, PRD review, technical pre-check, or launch checklist. Advanced users may inspect a capability panel that lists built-in skills, user skills, stage fit, status, fallback, and replacement relationships.
 Shortcut phrases may be offered as optional entries, but they must route back into the same coach-led workflow. Do not make users memorize commands before they can benefit from the product.
 
+Skill Router starts only after the domain intent gate confirms product work or Product Crew OS operation. A missing SOP match is not enough to dispatch product skills: first decide whether the user is asking a product-work question at all. If the message is product-related but stage confidence is low, use `request_triage` or a clarifying question before selecting primary/fallback skills. If the message is not product-related, leave the Product Crew OS workflow and answer normally.
+
 Common routing:
 
 - messy interview notes -> Interview Summary
@@ -178,6 +182,7 @@ Never turn real colleague materials into public examples or generic rules. Extra
 
 Before finishing:
 
+- Did 主控产品教练 first decide whether Product Crew OS should take over this turn, instead of forcing every request into a product stage?
 - Did 主控产品教练 identify the right workflow stage?
 - Did the response follow the matching workflow SOP input, output, stakeholder, and gate?
 - Was the selected skill necessary and minimal?

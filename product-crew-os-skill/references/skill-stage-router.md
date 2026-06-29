@@ -2,6 +2,8 @@
 
 Use this file to choose a backstage skill by canonical PM stage. Prefer one primary skill and one fallback.
 
+Only use this router after the domain intent gate confirms `product_work` or `product_crew_os_operation`. If no SOP matched because the user's request is not product-related, do not call product skills. If the request is product-related but the stage is unclear, route through `request_triage` or ask one clarifying question before choosing primary/fallback skills.
+
 This is a coverage map, not a closed list. Product Crew OS should first resolve these skill names through `bundled-skill-index.md`, where bundled third-party implementations are mapped to `third_party/skills/`. Product Crew OS should still be able to run a full PM workflow through stage logic and artifact templates when a particular skill is missing. User-provided skills may override defaults through user/project overlays.
 
 | Stage | Primary Skill | Fallback | Expected Output |

@@ -5,14 +5,14 @@
 核心原则：
 
 ```text
-用户说目标 -> 主控教练判断阶段 -> 选择能力 -> 生成 artifact -> 必要时评审 -> 推进下一步
+用户说目标 -> 主控教练判断是否属于产品工作 -> 判断阶段 -> 选择能力 -> 生成 artifact -> 必要时评审 -> 推进下一步
 ```
 
 ## 1. 能力分组
 
 | 分组 | 典型用户表达 | 内部阶段 | 主要产物 |
 | --- | --- | --- | --- |
-| 智能阶段路由 | 我不知道下一步该做什么 / 你刚才阶段判断错了 | semantic routing, request_triage, stage taxonomy | stage route decision, routing feedback |
+| 领域意图与阶段路由 | 我不知道下一步该做什么 / 你刚才阶段判断错了 / 这个要不要按产品流程走 | domain intent gate, semantic routing, request_triage, stage taxonomy | domain decision, stage route decision, routing feedback |
 | 项目接入 | 我有个想法 / 我想做个产品 | project_intake, request_triage | project card, next-step plan |
 | 商业与战略判断 | 值不值得做 / 商业模式怎么看 | business_context, value_sizing, prioritization | business note, value sizing, priority stack |
 | 需求发现与验证 | 这是真需求吗 / 怎么调研 | evidence_inventory, problem_definition, research_plan | evidence inventory, problem statement, research plan |
@@ -79,6 +79,7 @@ Product Crew OS 的一个关键迭代方向是 Semantic Stage Router。
 
 ```text
 用户随口表达
+-> 领域意图判断
 -> 语义识别
 -> 检索 stage taxonomy / SOP / skill router / 项目记忆
 -> 输出 stage route decision

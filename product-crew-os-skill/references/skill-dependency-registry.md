@@ -14,10 +14,12 @@
 Primary 不是“唯一正确答案”，fallback 也不是“低质量替代”。它们共同保证：
 
 ```text
-stage -> primary skill -> fallback skill -> artifact template -> stage gate
+domain intent gate -> stage -> primary skill -> fallback skill -> artifact template -> stage gate
 ```
 
 即使某个 skill 缺失，Product Crew OS 也必须继续完成可编辑 artifact，而不是停在“缺工具”。
+
+Skill Router 不是通用意图分发器。只有请求属于产品工作或 Product Crew OS 自身配置/维护时，才进入本注册表。非产品请求不需要 primary/fallback skill，也不需要 artifact template 或 stage gate。
 
 ## 2. 可用性分层
 

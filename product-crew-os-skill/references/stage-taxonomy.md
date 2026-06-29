@@ -2,6 +2,8 @@
 
 Use this file to map user language, macro workflow stages, and canonical fine-grained stages.
 
+This taxonomy assumes the domain intent gate already confirmed Product Crew OS should take over the turn. If the user's request is not product work and not Product Crew OS operation, keep `stage_id` empty and do not force a closest stage.
+
 ## Macro Stages
 
 | Macro Stage | Fine Stages |
@@ -53,6 +55,8 @@ The coach should internally produce a route decision before doing substantial wo
 ```
 
 If confidence is low, ask one clarifying question before executing. If the user corrects the route, record a `stage_routing_feedback` item through `evolution-loop.md`.
+
+If domain confidence is low, ask whether the user wants Product Crew OS to treat it as product work before opening SOP, Skill Router, sub-agent review, or Stage Gate.
 
 ## Transition Rule
 

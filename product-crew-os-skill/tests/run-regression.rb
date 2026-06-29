@@ -68,6 +68,16 @@ assert(errors, memory_packet["memory_snapshot"]["project_role_memory"]["last_obj
 assert(errors, memory_delta["source_ref"] != "", "memory delta missing source_ref")
 assert(errors, memory_delta["confidence"] != "", "memory delta missing confidence")
 
+non_product_scenario = scenarios["non_product_task_exits_workflow"]
+assert(errors, !non_product_scenario.nil?, "missing non_product_task_exits_workflow scenario")
+if non_product_scenario
+  expected = non_product_scenario["expected"] || {}
+  assert(errors, expected["product_crew_os_applies"] == false, "non-product scenario should not enter Product Crew OS workflow")
+  assert(errors, expected["skill_router_enabled"] == false, "non-product scenario should not enable Skill Router")
+  assert(errors, (expected["required_agents"] || []).empty?, "non-product scenario should not require sub-agents")
+  assert(errors, (expected["must_not"] || []).include?("route to request_triage"), "non-product scenario should forbid forced request_triage")
+end
+
 result_dir = File.join(skill_root, "tests", "results")
 result_path = File.join(result_dir, "latest-regression.md")
 generated_at = Time.now.utc.iso8601
@@ -76,7 +86,7 @@ command = "ruby product-crew-os-skill/tests/run-regression.rb #{ARGV.join(" ")}"
 if errors.empty?
   unless check_only
     FileUtils.mkdir_p(result_dir)
-    File.write(result_path, "# Regression Result\n\nstatus: PASS\n\ngenerated_at: #{generated_at}\ncommand: #{command}\n\nchecks:\n- package scenarios loaded\n- mock delegate invocation ledger assertion passed\n- simulation fallback label assertion passed\n- memory snapshot and memory delta assertion passed\n")
+    File.write(result_path, "# Regression Result\n\nstatus: PASS\n\ngenerated_at: #{generated_at}\ncommand: #{command}\n\nchecks:\n- package scenarios loaded\n- mock delegate invocation ledger assertion passed\n- simulation fallback label assertion passed\n- memory snapshot and memory delta assertion passed\n- non-product task exits Product Crew OS workflow assertion passed\n")
   end
   puts "run-regression: PASS"
   puts "result: #{check_only ? "not written (--check-only)" : result_path}"
