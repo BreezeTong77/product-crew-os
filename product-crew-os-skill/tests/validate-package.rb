@@ -43,8 +43,21 @@ required_files = [
   "references/skill-dependency-registry.md",
   "references/subagent-invocation-contract.md",
   "references/subagent-memory-runtime-contract.md",
+  "references/project-asset-pack.md",
   "templates/agent-context-packet.yaml",
   "templates/project-state.json",
+  "templates/project-workspace/project-home.md",
+  "templates/project-workspace/artifact-index.yaml",
+  "templates/project-workspace/timeline.md",
+  "templates/project-workspace/decision-log.md",
+  "templates/project-workspace/review-items.yaml",
+  "templates/project-workspace/risk-log.md",
+  "templates/project-workspace/next-actions.md",
+  "templates/project-workspace/source-ledger.md",
+  "templates/project-workspace/event-log.jsonl",
+  "templates/project-workspace/agent-memory/README.md",
+  "templates/project-workspace/checkpoints/README.md",
+  "templates/project-workspace/export-manifest.yaml",
   "templates/artifacts/acceptance-criteria.md",
   "templates/artifacts/test-scenario-library.md"
 ]
@@ -70,8 +83,13 @@ end
 errors << "Bundled skill index has fewer entries than bundled skills" if indexed_skill_dirs.length < bundled_skill_files.length
 
 state = JSON.parse(File.read(File.join(skill_root, "templates", "project-state.json")))
-%w[agent_invocation_ledger memory_delta_queue config memory].each do |key|
+%w[agent_invocation_ledger memory_delta_queue config memory project_asset_pack].each do |key|
   errors << "project-state.json missing #{key}" unless state.key?(key)
+end
+
+asset_pack = state["project_asset_pack"] || {}
+%w[project_home artifact_index timeline decision_log review_items risk_log next_actions source_ledger event_log agent_memory checkpoints export_manifest].each do |key|
+  errors << "project_asset_pack missing #{key}" unless asset_pack.key?(key)
 end
 
 packet = YAML.load_file(File.join(skill_root, "templates", "agent-context-packet.yaml"))

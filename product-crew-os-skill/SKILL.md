@@ -54,6 +54,7 @@ Use `references/subagent-context-packet.md` before summoning a sub-agent.
 Use `references/subagent-invocation-contract.md` before claiming a sub-agent has been summoned. If the runtime has a real sub-agent/delegation tool and the role is needed, actually call it. If no real call occurred, label the output as a simulated role perspective.
 Use `references/subagent-memory-runtime-contract.md` when a sub-agent needs role memory, project memory, team-style overlay, or when the user asks whether sub-agents remember prior work. Sub-agent chat windows are not the long-term memory container; the coach must read, compress, inject, and write back memory through the Project Workspace.
 Use `references/subagent-natural-language.md` whenever a sub-agent speaks.
+Use `references/project-asset-pack.md` when creating, updating, exporting, or explaining project memory, project artifacts, Obsidian-compatible exports, Markdown project packages, decision logs, review items, timelines, or project knowledge retrieval.
 Use `references/skill-stage-router.md` to pick a stage-specific primary skill and fallback.
 Use `references/skill-dependency-registry.md` when explaining primary vs fallback, checking whether a routed skill is built-in, external, plugin-based, user-provided, or unavailable, and deciding how to continue when a skill is missing.
 Use `references/bundled-skill-index.md` after selecting a routed skill. If a matching bundled implementation exists under `third_party/skills/`, read that bundled skill's `SKILL.md` and relevant resources as the default implementation before falling back to templates.
@@ -156,6 +157,7 @@ If the user provides colleague replies, emails, meeting transcripts, or real rev
 ## Memory Model
 
 Use `templates/project-state.json` as the minimum project memory schema.
+Use `templates/project-workspace/` as the default Project Asset Pack skeleton when a new project starts, a stage passes, a review closes, or the user asks to export/search project assets.
 Use `templates/artifacts/` when creating standard PM artifacts instead of inventing the structure from scratch.
 
 Maintain three memory types:
@@ -177,6 +179,7 @@ Keep persona configuration separate from workflow logic:
 
 Never invent durable memory. Ask before changing global user preference, role persona, stakeholder boundary, stage approval, or any external system.
 Never turn real colleague materials into public examples or generic rules. Extract only approved tone, review style, concern patterns, and vocabulary into the correct overlay container.
+Never treat Obsidian, Notion, Feishu, Word, PDF, or any external knowledge tool as the source of truth. Project Workspace remains the source of truth; external tools are export, mirror, or adapter targets.
 
 ## Quality Gates
 
@@ -199,6 +202,7 @@ Before finishing:
 - Did the response need a checkpoint, state delta, or memory compression?
 - Did the discussion become an artifact, decision, or next step?
 - Did the project memory change?
+- If project memory changed, did the coach update the Project Asset Pack index, timeline, decision log, review items, or next actions as appropriate?
 - Did the response feel like a product office rather than a generic chatbot?
 - Did the coach show progress, stage, blocker, and next action when the turn was substantial?
 - If a user request was treated as a product need, did the coach check frequency, pain intensity, existing workaround, and pay/investment evidence before allowing PRD, solution design, technical review, or roadmap commitment?

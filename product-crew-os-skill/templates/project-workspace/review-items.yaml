@@ -1,0 +1,19 @@
+schema_version: "0.1"
+project_id: ""
+updated_at: ""
+review_items:
+  - item_id: ""
+    stage_id: ""
+    artifact_id: ""
+    artifact_version: 0
+    role_key: ""
+    reviewer_display_name: ""
+    issue: ""
+    severity: "low | medium | high | blocker"
+    recommendation: ""
+    status: "open | accepted | rejected | deferred | resolved"
+    decision_ref: ""
+    owner: ""
+    due_at: ""
+    source_ref: ""
+

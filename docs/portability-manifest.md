@@ -42,6 +42,7 @@ product-crew-os-skill/
     stage-boundary-matrix.md
     skill-stage-router.md
     skill-and-tool-ecosystem.md
+    project-asset-pack.md
     subagent-context-packet.md
     subagent-natural-language.md
     gate-policy.md
@@ -55,6 +56,19 @@ product-crew-os-skill/
   templates/
     agent-context-packet.yaml
     project-state.json
+    project-workspace/
+      project-home.md
+      artifact-index.yaml
+      timeline.md
+      decision-log.md
+      review-items.yaml
+      risk-log.md
+      next-actions.md
+      source-ledger.md
+      event-log.jsonl
+      export-manifest.yaml
+      agent-memory/
+      checkpoints/
     overlays/
       team-style-overlay.yaml
     artifacts/
@@ -148,6 +162,7 @@ Product Crew OS 必须把记忆分成三套容器。
 当用户提出功能、客户、老板、销售、路线图或 PRD 需求时，读取 references/demand-authenticity.md，并先判断真需求、弱需求、伪需求或待验证需求。
 当任务涉及新用户启动、阶段切换、评审进退场或真实团队风格时，读取 references/experience/ 下的体验规则。
 当任务涉及复杂评审时，使用 templates/project-state.json 和 templates/artifacts/ 创建 Artifact Workspace。
+当任务涉及项目记忆沉淀、后续查询或导出时，读取 references/project-asset-pack.md，并使用 templates/project-workspace/ 生成或更新 Project Asset Pack。
 当用户提供真实同事回复、邮件、会议转录或评审意见时，必须先确认用途和存储范围，再按需写入 templates/overlays/team-style-overlay.yaml 的用户/项目 overlay。
 
 注意：
@@ -159,6 +174,7 @@ Product Crew OS 必须把记忆分成三套容器。
 6. 主控教练要在关键轮次给出项目状态栏、阶段门判断和下一步动作。
 7. 角色名称、人格、语气、评审严格度和团队风格可以由用户定制，但真实团队材料不能进入公共产品规则。
 8. 没有真伪需求判断，不进入 PRD、技术方案、排期或路线图承诺。
+9. Project Workspace 是唯一事实源；Obsidian、Notion、飞书、Word、PDF 只是导出或镜像目标。
 ```
 
 ## 6. 结论

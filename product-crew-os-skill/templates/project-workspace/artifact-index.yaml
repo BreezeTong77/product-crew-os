@@ -1,0 +1,17 @@
+schema_version: "0.1"
+project_id: ""
+updated_at: ""
+artifacts:
+  - artifact_id: ""
+    name: ""
+    type: ""
+    stage_id: ""
+    version: 0
+    status: "draft"
+    path: ""
+    source_refs: []
+    created_at: ""
+    updated_at: ""
+    supersedes: ""
+    exported_to: []
+

@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 
 require "fileutils"
+require "json"
 require "time"
 require "yaml"
 
@@ -78,6 +79,45 @@ if non_product_scenario
   assert(errors, (expected["must_not"] || []).include?("route to request_triage"), "non-product scenario should forbid forced request_triage")
 end
 
+asset_pack_scenario = scenarios["project_asset_pack_persistence"]
+assert(errors, !asset_pack_scenario.nil?, "missing project_asset_pack_persistence scenario")
+state = JSON.parse(File.read(File.join(skill_root, "templates", "project-state.json")))
+asset_pack = state["project_asset_pack"] || {}
+assert(errors, !asset_pack.empty?, "project-state.json missing project_asset_pack")
+%w[project_home artifact_index timeline decision_log review_items risk_log next_actions source_ledger event_log agent_memory checkpoints export_manifest].each do |key|
+  assert(errors, asset_pack[key].to_s != "", "project_asset_pack missing #{key}")
+end
+if asset_pack_scenario
+  expected = asset_pack_scenario["expected"] || {}
+  assert(errors, expected["required_artifact"] == "Project Asset Pack", "asset pack scenario should require Project Asset Pack")
+  assert(errors, (expected["must_not"] || []).include?("treat Obsidian as required"), "asset pack scenario should keep Obsidian optional")
+  required_files = expected["required_files"] || []
+  available_files = [
+    "project-state.json",
+    *Dir[File.join(skill_root, "templates", "project-workspace", "**", "*")].select { |path| File.file?(path) }.map { |path| File.basename(path) }
+  ]
+  required_files.each do |required_file|
+    assert(errors, available_files.include?(required_file), "asset pack required file missing from templates: #{required_file}")
+  end
+  contract_text = [
+    File.read(File.join(skill_root, "references", "project-asset-pack.md")),
+    File.read(File.join(skill_root, "templates", "project-workspace", "export-manifest.yaml")),
+    File.read(File.join(skill_root, "templates", "project-workspace", "source-ledger.md"))
+  ].join("\n")
+  (expected["must_include"] || []).each do |phrase|
+    assert(errors, contract_text.include?(phrase), "asset pack contract missing phrase: #{phrase}")
+  end
+  (expected["must_not"] || []).each do |phrase|
+    assert(errors, !contract_text.include?(phrase), "asset pack contract includes forbidden phrase: #{phrase}")
+  end
+  review_closed_updates = expected["review_closed_updates"] || []
+  assert(errors, !review_closed_updates.empty?, "asset pack scenario missing review_closed_updates")
+  review_closed_line = contract_text.lines.find { |line| line.include?("| Review Closed |") }.to_s
+  review_closed_updates.each do |artifact|
+    assert(errors, review_closed_line.include?(artifact), "Review Closed contract missing update: #{artifact}")
+  end
+end
+
 result_dir = File.join(skill_root, "tests", "results")
 result_path = File.join(result_dir, "latest-regression.md")
 generated_at = Time.now.utc.iso8601
@@ -86,7 +126,7 @@ command = "ruby product-crew-os-skill/tests/run-regression.rb #{ARGV.join(" ")}"
 if errors.empty?
   unless check_only
     FileUtils.mkdir_p(result_dir)
-    File.write(result_path, "# Regression Result\n\nstatus: PASS\n\ngenerated_at: #{generated_at}\ncommand: #{command}\n\nchecks:\n- package scenarios loaded\n- mock delegate invocation ledger assertion passed\n- simulation fallback label assertion passed\n- memory snapshot and memory delta assertion passed\n- non-product task exits Product Crew OS workflow assertion passed\n")
+    File.write(result_path, "# Regression Result\n\nstatus: PASS\n\ngenerated_at: #{generated_at}\ncommand: #{command}\n\nchecks:\n- package scenarios loaded\n- mock delegate invocation ledger assertion passed\n- simulation fallback label assertion passed\n- memory snapshot and memory delta assertion passed\n- non-product task exits Product Crew OS workflow assertion passed\n- project asset pack persistence assertion passed\n")
   end
   puts "run-regression: PASS"
   puts "result: #{check_only ? "not written (--check-only)" : result_path}"
