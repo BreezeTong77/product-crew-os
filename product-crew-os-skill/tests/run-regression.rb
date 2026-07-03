@@ -11,6 +11,8 @@ scenarios = Dir[File.join(scenario_dir, "*.yaml")].each_with_object({}) do |path
   scenario = YAML.load_file(path)
   memo[scenario["scenario_id"]] = scenario
 end
+prompt_eval_path = File.join(skill_root, "tests", "prompt-eval-cases.yaml")
+prompt_eval_cases = YAML.load_file(prompt_eval_path)["cases"] || []
 
 errors = []
 def assert(errors, condition, message)
@@ -118,6 +120,20 @@ if asset_pack_scenario
   end
 end
 
+assert(errors, prompt_eval_cases.length == 44, "prompt eval should cover 44 SOP cases, found #{prompt_eval_cases.length}")
+%w[project_intake low_fi_prototype formal_requirements_review launch_readiness iteration_planning].each do |stage_id|
+  assert(errors, prompt_eval_cases.any? { |test_case| test_case["stage_id"] == stage_id }, "prompt eval missing stage: #{stage_id}")
+end
+prompt_eval_cases.each do |test_case|
+  case_label = test_case["case_id"] || test_case["stage_id"] || "unknown"
+  expected = test_case["expected"] || {}
+  assert(errors, expected["product_crew_os_applies"] == true, "prompt eval #{case_label} should apply Product Crew OS")
+  assert(errors, expected["primary_skill"].to_s != "", "prompt eval #{case_label} missing primary skill")
+  assert(errors, expected["fallback_skill"].to_s != "", "prompt eval #{case_label} missing fallback skill")
+  assert(errors, Array(expected["required_artifacts"]).any?, "prompt eval #{case_label} missing required artifacts")
+  assert(errors, expected["stage_gate"].to_s != "", "prompt eval #{case_label} missing stage gate")
+end
+
 result_dir = File.join(skill_root, "tests", "results")
 result_path = File.join(result_dir, "latest-regression.md")
 generated_at = Time.now.utc.iso8601
@@ -126,7 +142,7 @@ command = "ruby product-crew-os-skill/tests/run-regression.rb #{ARGV.join(" ")}"
 if errors.empty?
   unless check_only
     FileUtils.mkdir_p(result_dir)
-    File.write(result_path, "# Regression Result\n\nstatus: PASS\n\ngenerated_at: #{generated_at}\ncommand: #{command}\n\nchecks:\n- package scenarios loaded\n- mock delegate invocation ledger assertion passed\n- simulation fallback label assertion passed\n- memory snapshot and memory delta assertion passed\n- non-product task exits Product Crew OS workflow assertion passed\n- project asset pack persistence assertion passed\n")
+    File.write(result_path, "# Regression Result\n\nstatus: PASS\n\ngenerated_at: #{generated_at}\ncommand: #{command}\n\nchecks:\n- package scenarios loaded\n- mock delegate invocation ledger assertion passed\n- simulation fallback label assertion passed\n- memory snapshot and memory delta assertion passed\n- non-product task exits Product Crew OS workflow assertion passed\n- project asset pack persistence assertion passed\n- 44 SOP prompt eval coverage assertion passed\n")
   end
   puts "run-regression: PASS"
   puts "result: #{check_only ? "not written (--check-only)" : result_path}"

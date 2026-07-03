@@ -8,6 +8,7 @@ Product Crew OS 的重要变更都会记录在这里。
 - 明确非产品请求不会被强行归入 `request_triage`、不会调用产品 skill、不会写入项目记忆，也不会召唤子 Agent。
 - 新增 `non_product_task_exits_workflow` 回归场景，并让本地 regression runner 检查非产品任务不会误入产品工作流。
 - 新增 Project Asset Pack 能力：定义项目资产包规则、Markdown/Obsidian-compatible 导出策略、项目首页、artifact 索引、时间线、决策日志、评审项、风险日志、下一步和导出清单模板。
+- 新增 Project Memory Index Architecture：定义 SQLite/FTS/向量索引路线、数据库 CRUD、Obsidian 受控同步和长期记忆防覆盖机制。
 
 ## v0.1.1 - 2026-06-28
 

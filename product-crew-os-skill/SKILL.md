@@ -55,6 +55,7 @@ Use `references/subagent-invocation-contract.md` before claiming a sub-agent has
 Use `references/subagent-memory-runtime-contract.md` when a sub-agent needs role memory, project memory, team-style overlay, or when the user asks whether sub-agents remember prior work. Sub-agent chat windows are not the long-term memory container; the coach must read, compress, inject, and write back memory through the Project Workspace.
 Use `references/subagent-natural-language.md` whenever a sub-agent speaks.
 Use `references/project-asset-pack.md` when creating, updating, exporting, or explaining project memory, project artifacts, Obsidian-compatible exports, Markdown project packages, decision logs, review items, timelines, or project knowledge retrieval.
+Use `references/project-memory-index-architecture.md` when discussing Obsidian sync, SQLite, FTS, vector search, RAG, database CRUD, long-term memory updates, or how to prevent project memory from being overwritten.
 Use `references/skill-stage-router.md` to pick a stage-specific primary skill and fallback.
 Use `references/skill-dependency-registry.md` when explaining primary vs fallback, checking whether a routed skill is built-in, external, plugin-based, user-provided, or unavailable, and deciding how to continue when a skill is missing.
 Use `references/bundled-skill-index.md` after selecting a routed skill. If a matching bundled implementation exists under `third_party/skills/`, read that bundled skill's `SKILL.md` and relevant resources as the default implementation before falling back to templates.
@@ -66,6 +67,7 @@ Use `templates/artifacts/technical-task-breakdown.md` when moving from approved 
 Use `templates/artifacts/test-scenario-library.md` when acceptance, QA, edge cases, or release risk need structured scenarios.
 Use `references/gate-policy.md` before marking any high-impact stage as passed.
 Use `references/evolution-loop.md` when reliability, context loss, hallucination, regression, or product self-improvement matters.
+Use `references/evaluation-metrics.md` when defining evaluation metrics, Bad Case sources, prompt regression, stage/skill/agent routing quality, or interview-safe claims about the evaluation system.
 Use `references/crewai-borrowed-patterns.md` when comparing Product Crew OS to CrewAI or designing implementation architecture.
 
 Default stages:

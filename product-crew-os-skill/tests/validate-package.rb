@@ -44,6 +44,8 @@ required_files = [
   "references/subagent-invocation-contract.md",
   "references/subagent-memory-runtime-contract.md",
   "references/project-asset-pack.md",
+  "references/project-memory-index-architecture.md",
+  "references/evaluation-metrics.md",
   "templates/agent-context-packet.yaml",
   "templates/project-state.json",
   "templates/project-workspace/project-home.md",
@@ -59,7 +61,10 @@ required_files = [
   "templates/project-workspace/checkpoints/README.md",
   "templates/project-workspace/export-manifest.yaml",
   "templates/artifacts/acceptance-criteria.md",
-  "templates/artifacts/test-scenario-library.md"
+  "templates/artifacts/test-scenario-library.md",
+  "tests/evaluation-test-plan.md",
+  "tests/prompt-eval-cases.yaml",
+  "tests/run-external-benchmark.rb"
 ]
 
 required_files.each do |relative_path|
@@ -95,6 +100,25 @@ end
 packet = YAML.load_file(File.join(skill_root, "templates", "agent-context-packet.yaml"))
 %w[invocation artifact review memory_snapshot output_contract].each do |key|
   errors << "agent-context-packet.yaml missing #{key}" unless packet.key?(key)
+end
+
+prompt_eval_path = File.join(skill_root, "tests", "prompt-eval-cases.yaml")
+prompt_eval = YAML.load_file(prompt_eval_path)
+cases = prompt_eval["cases"] || []
+errors << "prompt-eval-cases.yaml should contain exactly 44 cases, found #{cases.length}" unless cases.length == 44
+stage_ids = cases.map { |test_case| test_case["stage_id"] }.compact
+errors << "prompt-eval-cases.yaml has duplicate stage_id entries" unless stage_ids.uniq.length == stage_ids.length
+required_case_keys = %w[case_id stage_id macro_stage user_input source expected]
+required_expected_keys = %w[product_crew_os_applies primary_skill fallback_skill required_roles required_artifacts stage_gate]
+cases.each do |test_case|
+  case_label = test_case["case_id"] || test_case["stage_id"] || "unknown"
+  required_case_keys.each do |key|
+    errors << "prompt eval case #{case_label} missing #{key}: #{test_case.inspect}" unless test_case.key?(key)
+  end
+  expected = test_case["expected"] || {}
+  required_expected_keys.each do |key|
+    errors << "prompt eval case #{case_label} missing expected.#{key}" unless expected.key?(key)
+  end
 end
 
 if errors.empty?

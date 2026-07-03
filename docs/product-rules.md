@@ -399,6 +399,8 @@ Project Asset Pack 是 Project Workspace 的用户可读层和导出层，用于
 
 Obsidian、Notion、飞书、Word 和 PDF 都只是导出或镜像目标。Project Workspace 仍然是唯一事实源，运行时不能把外部知识库全文塞回上下文。
 
+SQLite、FTS、向量数据库或 RAG 都只能作为可重建索引层。数据库可以提升查询、检索和相似项目召回，但不能替代 Markdown/YAML/JSON/JSONL 项目包，也不能绕过事件日志、版本化、checkpoint 和用户确认直接覆盖长期记忆。
+
 ## 10. 评审问题状态机
 
 每个评审问题必须有状态。

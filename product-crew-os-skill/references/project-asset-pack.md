@@ -87,14 +87,33 @@ Machine-checkable contract:
 
 不是每个阶段都写全量文档，但每个阶段都至少更新状态、时间线或索引。
 
-| SOP 范围 | 默认沉淀 |
+用户可见目录按 10 大产品流程组织，便于用户在 Obsidian 或通用 Markdown 阅读器里理解项目推进路径；44 个 SOP 不作为一级目录，而是写入每个 artifact 的 `sop_id`、标签、索引和事件日志，便于系统路由、检索和恢复上下文。
+
+| 用户可见流程目录 | 覆盖 SOP 范围 | 默认沉淀 |
+| --- | --- | --- |
+| 01_机会发现 | 0-5 项目接入与机会发现 | 项目卡、现状流程、证据盘点、机会假设、时间线 |
+| 02_用户研究 | 6-10 用户画像与调研 | 用户分层、访谈计划、问卷、样本、研究纪要、洞察摘要 |
+| 03_问题定义 | 11-13 问题澄清与机会判断 | 问题陈述、JTBD、机会树、假设地图、真伪需求判断 |
+| 04_需求分析 | 14-17 价值、优先级与范围 | 价值测算、优先级、MVP 范围、需求边界、取舍记录 |
+| 05_方案设计 | 18-25 方案、流程、原型、指标 | 一页方案、可行性记录、流程图、低保真原型、指标、埋点 |
+| 06_PRD与评审 | 26-33 PRD 与跨职能评审 | PRD 大纲、PRD、产品自审、设计/数据/技术/正式评审记录 |
+| 07_交付规划 | 34-36 任务拆解与验收准备 | Epic / Story / Task、验收标准、排期、依赖、变更记录 |
+| 08_上线准备 | 37-40 QA、上线、培训与灰度 | QA 场景、上线清单、培训 SOP、灰度计划、回滚预案 |
+| 09_上线监控 | 41 上线监控 | 监控摘要、异常记录、指标观察、风险变化 |
+| 10_复盘迭代 | 42-43 复盘与下一版规划 | 复盘、经验沉淀、下一版 backlog、roadmap update |
+
+横向账本不归属于某一个阶段目录，必须放在 `_项目账本/` 中，因为用户常见查询是跨阶段的，例如“上次为什么这么决策”“技术负责人反对过什么”“下一步谁负责”“哪些风险还没关”。
+
+| 横向账本 | 用途 |
 | --- | --- |
-| 0-5 项目接入与机会发现 | 项目卡、现状流程、证据盘点、时间线 |
-| 6-13 问题定义与用户理解 | 问题陈述、用户分层、调研计划、洞察、机会树、假设地图 |
-| 14-25 价值、范围、方案与可行性 | 价值测算、优先级、MVP 范围、一页方案、可行性记录、流程图、原型、指标、埋点 |
-| 26-33 PRD 与跨职能评审 | PRD 大纲、PRD、产品自审、评审记录、设计/数据/技术评审、正式评审决策 |
-| 34-40 交付、验收与上线准备 | 任务拆解、验收标准、变更记录、QA、上线清单、培训 SOP、灰度试点 |
-| 41-43 上线监控、复盘与迭代 | 监控摘要、复盘、下一版 backlog、roadmap update |
+| `artifact-index.yaml` | 所有 artifact 的 id、stage、sop、版本、状态和路径 |
+| `timeline.md` | 项目推进时间线、阶段变化、关键里程碑 |
+| `decision-log.md` | 已确认决策、理由、影响、验证点 |
+| `review-items.yaml` | 子 Agent / 人类评审意见、状态、采纳与否 |
+| `risk-log.md` | 风险、阻塞、owner、缓解方案 |
+| `next-actions.md` | 下一步动作、负责人、截止时间、依赖 |
+| `source-ledger.md` | 结论来源、会议/访谈/用户确认的引用位置 |
+| `event-log.jsonl` | 写入、导出、阶段门、回滚等机器事件 |
 
 条件沉淀：
 
@@ -116,17 +135,38 @@ Obsidian 是可选阅读器，不是必装依赖。
 Product Crew OS Vault/
   Projects/
     {project-name}/
-      00_Project_Home.md
-      01_Project_Card.md
-      02_Timeline.md
-      03_Decision_Log.md
-      04_Review_Items.md
-      05_Next_Actions.md
-      Artifacts/
-      Reviews/
-      Launch/
-      Retro/
-      Sources/
+      00_项目首页.md
+      01_机会发现/
+      02_用户研究/
+      03_问题定义/
+      04_需求分析/
+      05_方案设计/
+      06_PRD与评审/
+      07_交付规划/
+      08_上线准备/
+      09_上线监控/
+      10_复盘迭代/
+      _项目账本/
+        artifact-index.yaml
+        timeline.md
+        decision-log.md
+        review-items.yaml
+        risk-log.md
+        next-actions.md
+        source-ledger.md
+        event-log.jsonl
+      _团队记忆/
+        biz.md
+        tech.md
+        design.md
+        qa.md
+        data.md
+        cs.md
+        customer.md
+      _导出/
+        word/
+        pdf/
+        release-notes/
 ```
 
 每个导出文件必须保留 frontmatter：

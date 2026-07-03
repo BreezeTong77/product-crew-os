@@ -156,8 +156,12 @@ observability:
   log_events:
     - "stage_detected"
     - "skill_selected"
+    - "domain_exit"
     - "agent_summoned"
     - "agent_blocked_by_boundary"
+    - "memory_snapshot_built"
+    - "memory_delta_written"
+    - "memory_conflict_detected"
     - "guardrail_passed"
     - "guardrail_failed"
     - "artifact_created"
@@ -171,11 +175,29 @@ observability:
     - "mcp_action_completed"
   quality_metrics:
     - "stage_detection_accuracy"
+    - "domain_gate_accuracy"
+    - "domain_exit_accuracy"
+    - "sop_hit_rate"
+    - "skill_hit_rate"
     - "agent_routing_precision"
+    - "agent_invocation_honesty_rate"
+    - "review_pass_rate"
     - "artifact_completion_rate"
+    - "stage_gate_explicit_rate"
     - "user_correction_rate"
     - "guardrail_failure_rate"
     - "memory_recall_hit_rate"
+    - "context_packet_injection_rate"
+    - "role_memory_recall_rate"
+    - "memory_delta_writeback_rate"
+    - "memory_source_traceability_rate"
+    - "memory_scope_isolation_rate"
+    - "memory_overwrite_protection_rate"
+    - "team_style_consent_rate"
+    - "external_benchmark_pass_rate"
+    - "bad_case_fix_rate"
+    - "prompt_regression_pass_rate"
+    - "workflow_completion_rate"
     - "unresolved_risk_age"
 
 evolution_cadence:
@@ -205,6 +227,7 @@ evolution_cadence:
 regression_suite:
   enabled: true
   scenarios_dir: "tests/scenarios"
+  prompt_eval_cases: "tests/prompt-eval-cases.yaml"
   results_dir: "tests/results"
   required_scenarios:
     - "new_project_onboarding"

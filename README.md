@@ -103,22 +103,85 @@ Project Workspace 是唯一事实源。Markdown 项目包、Word、PDF、Obsidia
 
 Obsidian 不是必装依赖。未安装 Obsidian 时，用户仍可获得通用 Markdown 项目包；安装后可把导出目录作为 Vault 打开。
 
+为了让用户真的能读懂项目推进过程，Obsidian / Markdown 项目包按 10 大产品流程组织：机会发现、用户研究、问题定义、需求分析、方案设计、PRD 与评审、交付规划、上线准备、上线监控、复盘迭代。44 个 SOP 不作为用户可见一级目录，而是写入每个 artifact 的 `sop_id`、索引和事件日志；决策、风险、评审项、下一步和来源台账统一放入 `_项目账本/`，方便后续回溯和检索。
+
 ## 它怎么工作
 
 ```mermaid
-flowchart LR
-  U["用户输入"] --> I{"是否属于产品工作\n或 Product Crew OS 操作？"}
-  I -- "不是" --> O["普通助手回答\n或调用非产品能力"]
-  I -- "是" --> C["主控教练\n甜心教练-董董"]
-  C --> S["选择阶段 SOP 和 Skill"]
-  S --> A["生成或修改 Artifact"]
-  A --> R{"需要评审吗？"}
-  R -- "需要" --> G["召唤对应同事角色\nTech / Design / QA / Biz..."]
-  G --> D["Review Items / Decision Log"]
-  R -- "不需要" --> N["下一步动作"]
-  D --> N
-  N --> W["Artifact Workspace\nMarkdown / YAML / JSON"]
+flowchart TB
+  U["用户输入\n想法 / PRD / 截图 / 评审 / 日常问题"] --> DG{"Domain Gate\n是否属于产品工作或产品系统配置？"}
+  DG -- "否" --> EXIT["退出 Product Crew OS\n普通助手回答或调用非产品能力"]
+  DG -- "是" --> COACH["主控产品教练\n甜心教练-董董"]
+
+  COACH --> STATE["读取项目状态\nproject-state / artifact-index / decision-log"]
+  STATE --> SR["Semantic Stage Router\n规则 + LLM 分类 + 轻量检索"]
+  SR --> SOP["44 个 SOP 卡片\n输入 / 动作 / 产物 / 干系人 / Stage Gate"]
+  SOP --> SKILL["Skill Router\nPrimary / Fallback / 用户自有 Skill"]
+  SKILL --> WORK["执行工作包\n内置 49 个 PM skill / 模板 / 可选 MCP"]
+
+  WORK --> ART["Artifact Workspace\nMarkdown / YAML / JSON / Mermaid"]
+  ART --> NEED_REVIEW{"当前阶段是否需要评审？"}
+  NEED_REVIEW -- "否" --> GATE["Stage Gate\n通过 / 条件通过 / 阻塞 / 回退"]
+  NEED_REVIEW -- "是" --> PACKET["Context Packet\n阶段 / artifact / 决策 / 风险 / 记忆快照"]
+
+  PACKET --> CREW["可配置虚拟团队\nBiz / Tech / Design / Research / Data / QA / CS / Legal"]
+  CREW --> REVIEW["Review Loop\n结论 / 卡点 / 可采纳建议 / 可拒绝建议"]
+  REVIEW --> DELTA["主控收束\nreview-items / decision-log / artifact 修改"]
+  DELTA --> GATE
+
+  GATE --> MEMORY["Project Memory Writer\n事件日志 / 版本 / checkpoint / source-ledger"]
+  MEMORY --> ASSET["Project Asset Pack\n项目首页 / 时间线 / 决策 / 风险 / 下一步 / agent-memory"]
+  ASSET --> NEXT["下一步动作\n推荐找谁对齐 / 进入哪个 Stage"]
+  NEXT --> U
+
+  ASSET -. "可选导出 / 镜像" .-> EXT["Obsidian / Notion / 飞书 / Word / PDF"]
+  WORK -. "用户授权后" .-> MCP["外部工具 / MCP\nFigma / Pencil / Jira / Canva 等"]
+  MEMORY --> EVAL["Evaluation Loop\n回归测试 / Prompt Eval / 外部 Benchmark / Bad Case"]
+  EVAL --> SR
 ```
+
+这套流程的重点不是“多 Agent 一起聊天”，而是主控教练负责把工作推进成闭环：
+
+```text
+用户输入
+-> 判断是否进入产品流程
+-> 判断 Stage
+-> 调用 SOP / Skill / 模板
+-> 必要时召唤团队角色
+-> 生成或修改 Artifact
+-> 过 Stage Gate
+-> 写入项目资产包和团队记忆
+-> 进入下一步
+```
+
+如果用户只是让系统“移动任务”“翻译一句话”“改普通日报”，Product Crew OS 不会强行套 44 个产品 SOP；只有当请求确实属于产品工作或产品系统配置时，才会进入 Stage Router 和 Skill Router。
+
+## 团队记忆如何判断成功
+
+团队记忆不是看底层子 Agent 聊天窗口有没有自己记住历史。Product Crew OS 的长期记忆由 Project Workspace 管理，主控教练在每次召唤角色前负责读取、压缩、注入和回写。
+
+一次合格的带记忆评审，应该能被这样检查：
+
+```text
+读取 crew persona / user overlay / project agent-memory
+-> 生成 memory_snapshot
+-> 注入 agent-context-packet
+-> 子 Agent 只能引用 packet 中存在的信息
+-> 评审意见转成 review item / decision / artifact 修改
+-> 生成 memory_delta
+-> 写回 Project Workspace，并带 source_ref / scope / confidence
+```
+
+可观测指标包括：
+
+- `context_packet_injection_rate`：召唤前是否注入完整上下文。
+- `role_memory_recall_rate`：角色是否正确引用历史关注点和上次卡点。
+- `memory_delta_writeback_rate`：评审后是否形成可复用记忆增量。
+- `memory_source_traceability_rate`：每条记忆是否能追溯来源。
+- `memory_scope_isolation_rate`：项目记忆、用户偏好、产品规则是否隔离。
+- `team_style_consent_rate`：真实同事语气、邮件、会议材料是否授权后才保存。
+
+本地回归里已经包含 `subagent-memory-runtime`、`memory-resume-after-context-loss`、`project-asset-pack-persistence` 和 `team-style-overlay-consent` 等场景，用来验证团队记忆链路不会只停留在口头描述。
 
 默认主控教练是 **甜心教练-董董**：魅力型领袖，思虑周全，亲和力拉满。这个名字和性格只是预设，用户可以改。
 
@@ -222,6 +285,7 @@ clone 后在仓库根目录执行：
 ```text
 ruby product-crew-os-skill/tests/validate-package.rb
 ruby product-crew-os-skill/tests/run-regression.rb --mock-delegate --check-only
+ruby product-crew-os-skill/tests/run-external-benchmark.rb
 ```
 
 预期输出：
@@ -229,9 +293,12 @@ ruby product-crew-os-skill/tests/run-regression.rb --mock-delegate --check-only
 ```text
 validate-package: PASS
 run-regression: PASS
+run-external-benchmark: PASS
 ```
 
 `validate-package.rb` 会检查配置、模板和回归场景是否齐全；`run-regression.rb` 会用 mock delegate 验证真实子 Agent 调用 ledger、模拟视角降级、memory_snapshot / memory delta、非产品任务退出机制，以及 Project Asset Pack 的持久化、可选导出和记忆边界。
+
+`run-external-benchmark.rb` 会读取第三方 benchmark，验证正向 PM 场景能进入正确 stage / skill / artifact / gate，也验证 WorkBench 这类办公任务负例不会被强行套入产品 SOP。
 
 如果 `validate-package: PASS`，说明当前 release 包具备完整部署所需的本地文件：入口规则、配置、SOP、模板、回归场景、第三方声明和内置 PM skill pack 都已就绪。
 
@@ -269,7 +336,9 @@ product-crew-os/
 - [Workflow SOP library](product-crew-os-skill/references/workflow-sop-library.md)：完整 PM 流程 SOP。
 - [Bundled skill index](product-crew-os-skill/references/bundled-skill-index.md)：内置第三方 PM skill 映射。
 - [Semantic stage router](product-crew-os-skill/references/semantic-stage-router.md)：语义阶段路由与未来 RAG / 反馈学习能力。
+- [Evaluation metrics](product-crew-os-skill/references/evaluation-metrics.md)：Stage、SOP、Skill、团队记忆、Artifact、外部 benchmark 的评估指标。
 - [Project asset pack](product-crew-os-skill/references/project-asset-pack.md)：项目资产包、导出和 Obsidian-compatible 策略。
+- [Project memory index architecture](product-crew-os-skill/references/project-memory-index-architecture.md)：SQLite、FTS、向量检索、Obsidian 同步和长期记忆防覆盖机制。
 - [Third party notices](product-crew-os-skill/THIRD_PARTY_NOTICES.md)：第三方作者、来源和许可证声明。
 - [Sub-agent invocation contract](product-crew-os-skill/references/subagent-invocation-contract.md)：真实调用与模拟视角边界。
 - [Sub-agent memory runtime](product-crew-os-skill/references/subagent-memory-runtime-contract.md)：角色记忆注入和反哺机制。
@@ -328,3 +397,5 @@ Product Crew OS 使用三类记忆容器：
 - M3：长期反馈学习，让 Product Crew OS 越用越像用户自己的产品办公室。
 
 Project Asset Pack 会作为检索和导出的基础层：先用 Markdown / YAML / JSON 形成项目知识库，再按用户需要导出到 Obsidian、Notion、飞书、Word 或 PDF。运行时上下文仍由 Project Workspace 和 Context Packet 控制，不全量读取外部知识库。
+
+后续数据库能力按“文件事实源 + 可重建索引”的方式推进：先做 SQLite + FTS5 本地索引，再做 embedding / vector index，最后才考虑团队版 Postgres + pgvector。Obsidian 作为可选阅读器和受控导入入口，不直接替代 Project Workspace。

@@ -1,0 +1,268 @@
+schema_version: "0.1"
+suite_id: "product_crew_os_44_sop_prompt_eval"
+purpose: "Minimum prompt-eval coverage for 44 SOP cards. These cases test stage routing, skill routing, sub-agent boundary, artifact output, and stage gate."
+cases:
+  - case_id: "S00_project_intake"
+    stage_id: "project_intake"
+    macro_stage: "opportunity_discovery"
+    user_input: "我有一个新产品方向，想先建个项目，帮我判断下一步怎么走。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "pm-workbench", fallback_skill: "product-manager-interrogation", required_roles: ["Coach"], triggered_roles: ["Biz"], required_artifacts: ["project-card.md", "project-state.json"], stage_gate: "project has owner, target user, rough objective", must_not: ["summon full panel", "write user preference memory"]}
+  - case_id: "S01_request_triage"
+    stage_id: "request_triage"
+    macro_stage: "opportunity_discovery"
+    user_input: "我这里有一堆会议纪要、PRD草稿和客户反馈，不知道先处理哪个。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "pm-workbench", fallback_skill: "product-manager-interrogation", required_roles: ["Coach"], triggered_roles: ["Research", "Biz"], required_artifacts: ["triage-note.md"], stage_gate: "user knows current stage and next artifact", must_not: ["force PRD drafting", "summon QA by default"]}
+  - case_id: "S02_stakeholder_map"
+    stage_id: "stakeholder_map"
+    macro_stage: "opportunity_discovery"
+    user_input: "这个项目要找哪些人对齐？谁能拍板，谁只是给建议？"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "stakeholder-alignment-checker", fallback_skill: "pm-workbench", required_roles: ["Coach"], triggered_roles: ["Biz", "Tech", "Design", "Data", "CS", "Customer"], required_artifacts: ["stakeholder-map.md", "authority-map.md"], stage_gate: "decision makers and reviewers are named", must_not: ["let every role approve everything"]}
+  - case_id: "S03_business_context"
+    stage_id: "business_context"
+    macro_stage: "opportunity_discovery"
+    user_input: "老板说这个方向能提升续费和效率，帮我整理商业背景。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "product-strategy", fallback_skill: "pm-workbench / strategy-doc", required_roles: ["Coach", "Biz"], triggered_roles: ["Data"], required_artifacts: ["business-context-brief.md"], stage_gate: "business problem and success pressure are clear", must_not: ["start prototype", "summon Design by default"]}
+  - case_id: "S04_existing_workflow_mapping"
+    stage_id: "existing_workflow_mapping"
+    macro_stage: "opportunity_discovery"
+    user_input: "现在业务流程是销售建群、CS收需求、产品手动同步研发，我想先梳理现状流程。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "user-story-mapping", fallback_skill: "pm-workbench", required_roles: ["Coach"], triggered_roles: ["CS", "Ops", "Design"], required_artifacts: ["current-workflow-map.md"], stage_gate: "current actors, handoffs, pain points are visible", must_not: ["jump to PRD"]}
+  - case_id: "S05_evidence_inventory"
+    stage_id: "evidence_inventory"
+    macro_stage: "opportunity_discovery"
+    user_input: "我手里有客户原话、截图、数据和销售反馈，帮我分清哪些是事实、假设和缺口。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "pm-workbench", fallback_skill: "research-synthesis", required_roles: ["Coach"], triggered_roles: ["Data", "Research", "CS", "Customer"], required_artifacts: ["evidence-inventory.md"], stage_gate: "claims are separated from evidence gaps", must_not: ["mark weak evidence as confirmed"]}
+  - case_id: "S06_problem_definition"
+    stage_id: "problem_definition"
+    macro_stage: "problem_framing"
+    user_input: "客户说想要导出功能，但我怀疑不是真需求，帮我判断痛点对不对。"
+    source: {type: "user_correction", priority: "P0"}
+    expected: {product_crew_os_applies: true, primary_skill: "problem-statement", fallback_skill: "define-problem-statement", required_roles: ["Coach"], triggered_roles: ["Research", "CS", "Customer", "Biz"], required_artifacts: ["problem-statement.md", "demand-authenticity-note.md"], stage_gate: "problem is separated from solution", must_not: ["write PRD before authenticity gate"]}
+  - case_id: "S07_user_segmentation"
+    stage_id: "user_segmentation"
+    macro_stage: "problem_framing"
+    user_input: "这个产品到底先服务新手PM、独立PM，还是团队负责人？帮我分层。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "jtbd-analysis", fallback_skill: "define-jtbd-canvas", required_roles: ["Coach", "Research"], triggered_roles: ["CS", "Data"], required_artifacts: ["user-segmentation.md"], stage_gate: "primary user and secondary stakeholders are explicit", must_not: ["claim all PMs are equal target users"]}
+  - case_id: "S08_research_plan"
+    stage_id: "research_plan"
+    macro_stage: "user_research"
+    user_input: "我想验证这个痛点是不是真的，帮我设计访谈样本和通过标准。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "product-discovery", fallback_skill: "pm-workbench", required_roles: ["Coach", "Research"], triggered_roles: ["CS", "Biz"], required_artifacts: ["research-plan.md", "validation-plan.md"], stage_gate: "questions, sample, method, and decision use are clear", must_not: ["skip sample definition"]}
+  - case_id: "S09_interview_guide"
+    stage_id: "interview_guide"
+    macro_stage: "user_research"
+    user_input: "帮我写一份用户访谈提纲，但不要诱导用户说想要这个功能。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "product-discovery", fallback_skill: "summarize-interview", required_roles: ["Coach", "Research"], triggered_roles: ["CS"], required_artifacts: ["interview-guide.md"], stage_gate: "guide avoids leading questions and covers decisions", must_not: ["ask leading yes/no feature questions"]}
+  - case_id: "S10_interview_synthesis"
+    stage_id: "interview_synthesis"
+    macro_stage: "user_research"
+    user_input: "我访谈完了，记录很乱，帮我提炼共性、分歧、反例和可决策结论。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "research-synthesis", fallback_skill: "user-research-synthesis", required_roles: ["Coach", "Research"], triggered_roles: ["CS", "Biz"], required_artifacts: ["research-synthesis.md"], stage_gate: "insights are tied to evidence, not guesses", must_not: ["invent user quotes"]}
+  - case_id: "S11_persona_jtbd_journey"
+    stage_id: "persona_jtbd_journey"
+    macro_stage: "user_research"
+    user_input: "用户为什么会用、什么时候会放弃，帮我整理 JTBD 和旅程。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "jtbd-analysis", fallback_skill: "jobs-to-be-done / define-jtbd-canvas", required_roles: ["Coach", "Research"], triggered_roles: ["CS", "Design"], required_artifacts: ["jtbd-or-journey.md"], stage_gate: "motivations and moments of pain are clear", must_not: ["confuse persona with buyer only"]}
+  - case_id: "S12_opportunity_tree"
+    stage_id: "opportunity_tree"
+    macro_stage: "problem_framing"
+    user_input: "目标结果已经确定，帮我拆机会、方案和实验。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "opportunity-solution-tree", fallback_skill: "define-opportunity-tree", required_roles: ["Coach"], triggered_roles: ["Research", "Biz", "CS"], required_artifacts: ["opportunity-tree.md"], stage_gate: "opportunities are linked to desired outcome", must_not: ["list random features without outcome"]}
+  - case_id: "S13_assumption_mapping"
+    stage_id: "assumption_mapping"
+    macro_stage: "problem_framing"
+    user_input: "这个方案有哪些最危险的假设？帮我按重要性和不确定性排一下。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "assumption-mapper", fallback_skill: "problem-clarity", required_roles: ["Coach"], triggered_roles: ["Research", "Data", "Tech"], required_artifacts: ["assumption-map.md"], stage_gate: "riskiest assumptions are ranked", must_not: ["move directly to roadmap"]}
+  - case_id: "S14_value_sizing"
+    stage_id: "value_sizing"
+    macro_stage: "requirement_analysis"
+    user_input: "这个需求值不值得做？帮我估算收益、成本和不确定性。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "feature-investment-advisor", fallback_skill: "value-vs-effort", required_roles: ["Coach", "Biz"], triggered_roles: ["Data", "CS", "Customer"], required_artifacts: ["value-sizing.md"], stage_gate: "value, cost, and uncertainty are explicit", must_not: ["treat interest as payment evidence"]}
+  - case_id: "S15_prioritization"
+    stage_id: "prioritization"
+    macro_stage: "requirement_analysis"
+    user_input: "这几个需求都有人催，帮我判断先做哪个，哪些先不做。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "prioritization-advisor", fallback_skill: "define-prioritization-framework", required_roles: ["Coach", "Biz"], triggered_roles: ["Tech", "Data", "CS", "Customer"], required_artifacts: ["prioritization-stack.md"], stage_gate: "above-line and below-line scope are clear", must_not: ["rank without criteria"]}
+  - case_id: "S16_solution_exploration"
+    stage_id: "solution_exploration"
+    macro_stage: "solution_design"
+    user_input: "这个问题可能有几种解法，帮我列方案并比较取舍。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "pm-workbench", fallback_skill: "opportunity-solution-tree / value-vs-effort", required_roles: ["Coach"], triggered_roles: ["Design", "Tech", "Data", "CS", "Customer"], required_artifacts: ["solution-options-brief.md"], stage_gate: "at least 2 options and tradeoffs are visible", must_not: ["commit to one option without tradeoff"]}
+  - case_id: "S17_mvp_scope"
+    stage_id: "mvp_scope"
+    macro_stage: "requirement_analysis"
+    user_input: "先做 MVP，不要做大，帮我砍范围和列 not-do。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "scope-cutting", fallback_skill: "shape-up", required_roles: ["Coach", "Biz"], triggered_roles: ["Tech", "Design", "Data", "Customer"], required_artifacts: ["mvp-scope.md", "not-do-list.md"], stage_gate: "MVP can prove one core hypothesis", must_not: ["include full enterprise management"]}
+  - case_id: "S18_one_page_proposal"
+    stage_id: "one_page_proposal"
+    macro_stage: "requirement_analysis"
+    user_input: "我要拿给业务方过一下方向，帮我写一页方案。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "pm-workbench", fallback_skill: "strategy-doc", required_roles: ["Coach", "Biz"], triggered_roles: ["Data", "CS", "Customer"], required_artifacts: ["one-page-proposal.md"], stage_gate: "business owner can approve direction", must_not: ["write detailed PRD first"]}
+  - case_id: "S19_data_feasibility_precheck"
+    stage_id: "data_feasibility_precheck"
+    macro_stage: "solution_design"
+    user_input: "这个功能依赖客户数据和推荐逻辑，先帮我看数据可不可行。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "product-analytics", fallback_skill: "measure-dashboard-requirements", required_roles: ["Coach", "Data"], triggered_roles: ["Tech", "Biz", "Legal"], required_artifacts: ["data-contract.md"], stage_gate: "source, fields, freshness, ownership, SLA are known", must_not: ["skip privacy concern"]}
+  - case_id: "S20_technical_feasibility_precheck"
+    stage_id: "technical_feasibility_precheck"
+    macro_stage: "solution_design"
+    user_input: "这个方案涉及自动化、权限和接口，先找研发视角看看能不能做。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "prd-critic", fallback_skill: "bmad-business-analyst", required_roles: ["Coach", "Tech"], triggered_roles: ["Data", "Design", "QA", "Legal"], required_artifacts: ["technical-feasibility-note.md"], stage_gate: "no unknown blocker prevents PRD writing", must_not: ["claim engineering approval without review"]}
+  - case_id: "S21_compliance_precheck"
+    stage_id: "compliance_precheck"
+    macro_stage: "solution_design"
+    user_input: "这个需求涉及隐私和外部消息触达，先做合规预检。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "pm-workbench", fallback_skill: "stakeholder-alignment-checker", required_roles: ["Coach", "Legal"], triggered_roles: ["Data", "Biz", "Customer"], required_artifacts: ["compliance-risk-note.md"], stage_gate: "compliance constraints are known", must_not: ["give legal certainty beyond evidence"]}
+  - case_id: "S22_core_flow_diagram"
+    stage_id: "core_flow_diagram"
+    macro_stage: "solution_design"
+    user_input: "帮我把核心流程画出来，要包含用户、系统和异常分支。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "user-story-mapping", fallback_skill: "figma:figma-generate-diagram", required_roles: ["Coach", "Design"], triggered_roles: ["Tech", "Data", "CS"], required_artifacts: ["core-flow-diagram.md"], stage_gate: "happy path and key exceptions are represented", must_not: ["generate only static UI"]}
+  - case_id: "S23_low_fi_prototype"
+    stage_id: "low_fi_prototype"
+    macro_stage: "solution_design"
+    user_input: "我想画个原型图，类似内容社区信息流首页，先帮我跑正确流程。"
+    source: {type: "user_correction", priority: "P0"}
+    expected: {product_crew_os_applies: true, primary_skill: "pencil-design", fallback_skill: "figma:figma-use", required_roles: ["Coach", "Design"], triggered_roles: ["CS", "Customer", "Tech", "Data"], required_artifacts: ["low-fi-prototype-brief.md"], stage_gate: "core screens and user decisions are testable", must_not: ["skip stage detection", "claim sub-agent invoked without real call or simulation label"]}
+  - case_id: "S24_metrics_design"
+    stage_id: "metrics_design"
+    macro_stage: "solution_design"
+    user_input: "这个产品怎么定义北极星指标、输入指标和护栏指标？"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "metrics-framework", fallback_skill: "north-star-metric", required_roles: ["Coach", "Data"], triggered_roles: ["Biz", "Tech", "CS"], required_artifacts: ["metrics-tree.md"], stage_gate: "success metric, input metric, guardrail, review window set", must_not: ["use registration as only success metric"]}
+  - case_id: "S25_instrumentation_plan"
+    stage_id: "instrumentation_plan"
+    macro_stage: "solution_design"
+    user_input: "指标确定了，帮我写埋点事件、属性、触发时机和负责人。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "measure-instrumentation-spec", fallback_skill: "product-analytics", required_roles: ["Coach", "Data"], triggered_roles: ["Tech", "QA", "Legal", "Design"], required_artifacts: ["instrumentation-plan.md"], stage_gate: "events, properties, timing, owner are specified", must_not: ["ignore privacy if personal data appears"]}
+  - case_id: "S26_prd_outline"
+    stage_id: "prd_outline"
+    macro_stage: "prd_drafting"
+    user_input: "准备写 PRD，先帮我搭大纲，不要直接写长文。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "prd-development", fallback_skill: "prd-writing", required_roles: ["Coach"], triggered_roles: ["Biz", "Design", "Tech", "Data"], required_artifacts: ["prd-outline.md"], stage_gate: "PRD structure matches decision needs", must_not: ["write full PRD before outline"]}
+  - case_id: "S27_prd_v0_draft"
+    stage_id: "prd_v0_draft"
+    macro_stage: "prd_drafting"
+    user_input: "根据前面的材料，帮我写 PRD 初稿，把假设也标出来。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "deliver-prd", fallback_skill: "prd-taskmaster", required_roles: ["Coach"], triggered_roles: [], required_artifacts: ["prd-v0.md"], stage_gate: "draft exists with assumptions visible", must_not: ["summon all agents by default"]}
+  - case_id: "S28_pm_self_review"
+    stage_id: "pm_self_review"
+    macro_stage: "prd_drafting"
+    user_input: "PRD 写完了，先别叫研发，帮我做产品自审。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "prd-critic", fallback_skill: "product-manager-skills", required_roles: ["Coach"], triggered_roles: ["Biz", "Design", "Tech", "Data", "QA"], required_artifacts: ["pm-self-review.md", "fix-list.md"], stage_gate: "PRD has no obvious contradiction before review", must_not: ["open formal review immediately"]}
+  - case_id: "S29_internal_product_review"
+    stage_id: "internal_product_review"
+    macro_stage: "cross_functional_review"
+    user_input: "组内先过一遍这个 PRD，帮我拉必要角色评审。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "utility-pm-critic", fallback_skill: "stakeholder-alignment-checker", required_roles: ["Coach"], triggered_roles: ["Biz", "Design", "Data", "Tech"], required_artifacts: ["internal-review-notes.md", "revision-plan.md"], stage_gate: "blockers are classified as must-fix / should-fix / later", must_not: ["invite full panel without reason"]}
+  - case_id: "S30_design_review"
+    stage_id: "design_review"
+    macro_stage: "cross_functional_review"
+    user_input: "原型和流程都出来了，让设计视角重点看看路径、状态和文案。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "develop-design-rationale", fallback_skill: "user-story-mapping", required_roles: ["Coach", "Design"], triggered_roles: ["CS", "Tech", "Data"], required_artifacts: ["design-review-report.md"], stage_gate: "user path, states, and copy are clear", must_not: ["let Biz override UX without priority conflict"]}
+  - case_id: "S31_data_review"
+    stage_id: "data_review"
+    macro_stage: "cross_functional_review"
+    user_input: "这个指标和推荐逻辑需要数据负责人评审一下。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "product-analytics", fallback_skill: "metric-dashboard", required_roles: ["Coach", "Data"], triggered_roles: ["Tech", "Biz", "Legal"], required_artifacts: ["data-review-report.md"], stage_gate: "data contract is accepted or blockers named", must_not: ["claim metric is reliable without source"]}
+  - case_id: "S32_technical_pre_review"
+    stage_id: "technical_pre_review"
+    macro_stage: "cross_functional_review"
+    user_input: "找研发看看这个 PRD 有没有系统边界、依赖和工期风险。"
+    source: {type: "user_correction", priority: "P0"}
+    expected: {product_crew_os_applies: true, primary_skill: "prd-critic", fallback_skill: "code-to-prd", required_roles: ["Coach", "Tech"], triggered_roles: ["Data", "Design", "QA", "Legal"], required_artifacts: ["tech-pre-review-notes.md"], stage_gate: "system boundary, dependencies, effort risks are clear", must_not: ["replace Tech decision with Coach opinion"]}
+  - case_id: "S33_formal_requirements_review"
+    stage_id: "formal_requirements_review"
+    macro_stage: "cross_functional_review"
+    user_input: "正式需求评审，帮我收束通过、条件通过或驳回结论。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "stakeholder-alignment-checker", fallback_skill: "pm-workbench", required_roles: ["Coach"], triggered_roles: ["Biz", "Tech", "Design", "Data", "QA", "Customer"], required_artifacts: ["decision-log.md", "review-items.yaml"], stage_gate: "approve / conditional approve / reject is recorded", must_not: ["mark approved without named role or condition"]}
+  - case_id: "S34_task_breakdown"
+    stage_id: "task_breakdown"
+    macro_stage: "delivery_planning"
+    user_input: "PRD 过了，帮我拆 Epic、Story、Task 和依赖。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "prd-taskmaster", fallback_skill: "deliver-user-stories", required_roles: ["Coach", "Tech"], triggered_roles: ["Design", "Data", "QA"], required_artifacts: ["technical-task-breakdown.md"], stage_gate: "tasks have owner, dependency, estimate", must_not: ["create Jira tickets without approval"]}
+  - case_id: "S35_acceptance_criteria"
+    stage_id: "acceptance_criteria"
+    macro_stage: "delivery_planning"
+    user_input: "每个用户故事怎么验收？帮我写 Given/When/Then 和测试场景。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "deliver-acceptance-criteria", fallback_skill: "test-scenarios", required_roles: ["Coach", "QA"], triggered_roles: ["Tech", "Design", "Data"], required_artifacts: ["acceptance-criteria.md", "test-scenario-library.md"], stage_gate: "each story has testable pass/fail", must_not: ["write vague acceptance language"]}
+  - case_id: "S36_development_tracking"
+    stage_id: "development_tracking"
+    macro_stage: "delivery_planning"
+    user_input: "研发过程中范围变了，帮我记录变更、影响和是否接受。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "pm-workbench", fallback_skill: "stakeholder-alignment-checker", required_roles: ["Coach"], triggered_roles: ["Tech", "Biz", "Design", "Data", "QA"], required_artifacts: ["change-log.md", "decision-note.md"], stage_gate: "change is accepted, deferred, or rejected", must_not: ["overwrite old decision without log"]}
+  - case_id: "S37_integration_qa"
+    stage_id: "integration_qa"
+    macro_stage: "launch_readiness"
+    user_input: "联调测试快结束了，帮我整理 bug、风险和能不能上线。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "test-scenarios", fallback_skill: "deliver-acceptance-criteria", required_roles: ["Coach", "QA"], triggered_roles: ["Tech", "Data", "Design", "Biz"], required_artifacts: ["qa-report.md", "release-risk.md"], stage_gate: "critical issues resolved or signed off", must_not: ["ignore rollback risk"]}
+  - case_id: "S38_launch_readiness"
+    stage_id: "launch_readiness"
+    macro_stage: "launch_readiness"
+    user_input: "准备上线了，帮我检查灰度、监控、回滚、客服和运营是否就绪。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "deliver-launch-checklist", fallback_skill: "test-scenarios", required_roles: ["Coach", "QA"], triggered_roles: ["Ops", "CS", "Data", "Tech", "Legal"], required_artifacts: ["launch-checklist.md"], stage_gate: "rollout owner, fallback, monitoring, support ready", must_not: ["mark launch ready without rollback owner"]}
+  - case_id: "S39_training_enablement"
+    stage_id: "training_enablement"
+    macro_stage: "launch_readiness"
+    user_input: "功能上线前，一线怎么培训？帮我写 SOP、FAQ 和话术。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "pm-workbench", fallback_skill: "stakeholder-alignment-checker", required_roles: ["Coach", "Ops"], triggered_roles: ["CS", "Biz", "Design", "Tech", "Data"], required_artifacts: ["enablement-sop.md", "faq.md"], stage_gate: "users know how to adopt the change", must_not: ["skip adoption owner"]}
+  - case_id: "S40_grey_release_pilot"
+    stage_id: "grey_release_pilot"
+    macro_stage: "launch_readiness"
+    user_input: "先做灰度试点，帮我定范围、周期、指标和回滚条件。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "experiment-design", fallback_skill: "trustworthy-experiments", required_roles: ["Coach", "Biz"], triggered_roles: ["Data", "CS", "Customer", "Ops", "QA", "Tech", "Legal"], required_artifacts: ["pilot-plan.md"], stage_gate: "pilot scope, duration, metric, rollback set", must_not: ["expand to full launch by default"]}
+  - case_id: "S41_launch_monitoring"
+    stage_id: "launch_monitoring"
+    macro_stage: "post_launch_review"
+    user_input: "上线后每天看什么？帮我做监控清单和异常记录模板。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "product-analytics", fallback_skill: "metric-dashboard", required_roles: ["Coach", "Data"], triggered_roles: ["Tech", "CS", "Ops", "QA", "Biz"], required_artifacts: ["launch-monitoring-notes.md", "incident-adoption-log.md"], stage_gate: "metrics and incidents are reviewed on schedule", must_not: ["only report vanity metrics"]}
+  - case_id: "S42_post_launch_review"
+    stage_id: "post_launch_review"
+    macro_stage: "post_launch_review"
+    user_input: "上线一周了，帮我做复盘：结果、问题、经验和下一步。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "pm-workbench", fallback_skill: "roadmap-planning", required_roles: ["Coach"], triggered_roles: ["Biz", "Data", "CS", "Tech", "Design", "QA"], required_artifacts: ["postmortem.md", "learnings.md"], stage_gate: "lessons, next iteration, owner are recorded", must_not: ["only summarize without decisions"]}
+  - case_id: "S43_iteration_planning"
+    stage_id: "iteration_planning"
+    macro_stage: "post_launch_review"
+    user_input: "基于复盘和数据，下一版该做什么？帮我形成迭代 backlog。"
+    source: {type: "self_run", priority: "P1"}
+    expected: {product_crew_os_applies: true, primary_skill: "roadmap-planning", fallback_skill: "prioritization-advisor", required_roles: ["Coach", "Biz"], triggered_roles: ["Data", "CS", "Research", "Tech", "Design"], required_artifacts: ["iteration-backlog.md", "roadmap-update.md"], stage_gate: "next cycle scope and validation plan are set", must_not: ["carry over all requests without prioritization"]}
