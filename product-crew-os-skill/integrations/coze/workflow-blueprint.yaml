@@ -1,0 +1,135 @@
+schema_version: "0.1"
+integration: coze
+product: Product Crew OS
+description: "Coze-style Bot + Workflow + Database blueprint for Product Crew OS."
+
+entry_bot:
+  key: CoachBot
+  display_name: "甜心教练-董董"
+  user_visible: true
+  responsibilities:
+    - domain_gate
+    - stage_router
+    - sop_router
+    - skill_router
+    - review_router
+    - stage_gate
+    - next_action_summary
+
+sub_bots:
+  - key: Biz
+    display_name: "业务负责人"
+    user_visible: false
+  - key: Tech
+    display_name: "技术负责人"
+    user_visible: false
+  - key: Design
+    display_name: "产品设计"
+    user_visible: false
+  - key: Research
+    display_name: "用户调研"
+    user_visible: false
+  - key: Data
+    display_name: "数据负责人"
+    user_visible: false
+  - key: QA
+    display_name: "测试负责人"
+    user_visible: false
+  - key: CS
+    display_name: "客户成功"
+    user_visible: false
+  - key: Customer
+    display_name: "客户代表"
+    user_visible: false
+  - key: Legal
+    display_name: "法务合规"
+    user_visible: false
+  - key: Ops
+    display_name: "运营培训"
+    user_visible: false
+
+workflow_nodes:
+  - key: domain_gate
+    input: [user_message]
+    output: [domain_intent]
+  - key: project_state_loader
+    input: [project_id]
+    output: [project_state, latest_artifacts, open_review_items]
+  - key: stage_router
+    input: [user_message, project_state]
+    output: [stage_id, macro_stage, route_confidence]
+  - key: sop_loader
+    input: [stage_id]
+    output: [sop_id, required_input, required_artifacts, required_roles, stage_gate]
+  - key: skill_router
+    input: [stage_id, sop_id, user_skill_overlay]
+    output: [primary_skill, fallback_skill, selected_skill]
+  - key: skill_execution
+    input: [selected_skill, user_message, project_state]
+    output: [draft_output, source_refs]
+  - key: artifact_writer
+    input: [draft_output, stage_id, sop_id]
+    output: [artifact_id, artifact_version, artifact_path]
+  - key: review_router
+    input: [stage_id, artifact_id, stage_gate]
+    output: [required_roles]
+  - key: context_packet_builder
+    input: [role_key, stage_id, artifact_id, decisions, review_items, role_memory]
+    output: [context_packet_id, context_packet]
+  - key: sub_bot_invoker
+    input: [role_key, context_packet]
+    output: [invocation_id, real_invocation_performed, review_output]
+  - key: review_collector
+    input: [review_output]
+    output: [review_items, decision_candidates, memory_candidates]
+  - key: project_memory_writer
+    input: [artifact_id, review_items, decision_candidates, memory_candidates, gate_status]
+    output: [database_rows, event_log, project_files]
+  - key: obsidian_exporter
+    input: [project_id]
+    output: [obsidian_vault_path]
+  - key: next_action_composer
+    input: [gate_status, next_stage, blockers]
+    output: [visible_response]
+
+runtime_actions:
+  runtime_init_project: init-project
+  runtime_record_turn: record-turn
+  runtime_save_artifact: save-artifact
+  runtime_build_context_packet: build-context-packet
+  runtime_record_invocation: record-invocation
+  runtime_write_review_item: write-review-item
+  runtime_write_agent_memory: write-agent-memory
+  runtime_export_obsidian: export-obsidian
+
+database_tables:
+  - projects
+  - stages
+  - sop_runs
+  - skill_runs
+  - artifacts
+  - artifact_versions
+  - decisions
+  - review_items
+  - risks
+  - next_actions
+  - sources
+  - agent_personas
+  - agent_memories
+  - context_packets
+  - agent_invocations
+  - memory_deltas
+  - events
+  - routing_feedback
+  - fts_documents
+
+fallback_policy:
+  if_real_sub_bot_unavailable:
+    action: "emit simulated role perspective"
+    required_ledger:
+      real_invocation_performed: false
+      simulation_label_used: true
+  if_database_unavailable:
+    action: "write Project Workspace files and append event-log.jsonl"
+  if_obsidian_unavailable:
+    action: "keep Markdown project package export"

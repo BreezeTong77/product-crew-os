@@ -53,9 +53,12 @@ Use `config/review-depth-policy.yaml` to decide how much context a sub-agent nee
 Use `references/subagent-context-packet.md` before summoning a sub-agent.
 Use `references/subagent-invocation-contract.md` before claiming a sub-agent has been summoned. If the runtime has a real sub-agent/delegation tool and the role is needed, actually call it. If no real call occurred, label the output as a simulated role perspective.
 Use `references/subagent-memory-runtime-contract.md` when a sub-agent needs role memory, project memory, team-style overlay, or when the user asks whether sub-agents remember prior work. Sub-agent chat windows are not the long-term memory container; the coach must read, compress, inject, and write back memory through the Project Workspace.
+Use `references/runtime-adapter-contract.md` when the user asks whether Product Crew OS is truly runnable, how Project Workspace / SQLite / Obsidian writes happen, or how a host should connect the workflow to durable memory and evaluation events.
+Use `references/coze-runtime-blueprint.md` when the user asks how to implement Product Crew OS in Coze or another Bot + Workflow + Database platform.
 Use `references/subagent-natural-language.md` whenever a sub-agent speaks.
 Use `references/project-asset-pack.md` when creating, updating, exporting, or explaining project memory, project artifacts, Obsidian-compatible exports, Markdown project packages, decision logs, review items, timelines, or project knowledge retrieval.
 Use `references/project-memory-index-architecture.md` when discussing Obsidian sync, SQLite, FTS, vector search, RAG, database CRUD, long-term memory updates, or how to prevent project memory from being overwritten.
+Use `runtime/pco_runtime.rb` when the user wants project memory to be executable, asks to create/update/export a real project workspace, or needs SQLite-backed project state, artifact versions, decisions, review items, agent memory, context packets, invocation logs, or Obsidian-compatible Vault output. Use its `record-turn` adapter after a meaningful coach turn has completed Stage -> SOP -> Skill -> Review -> Artifact, so runtime tables receive `sop_runs`, `skill_runs`, artifact versions, context packets, invocation ledger entries, review items, and gate results instead of leaving the result only in chat.
 Use `references/skill-stage-router.md` to pick a stage-specific primary skill and fallback.
 Use `references/skill-dependency-registry.md` when explaining primary vs fallback, checking whether a routed skill is built-in, external, plugin-based, user-provided, or unavailable, and deciding how to continue when a skill is missing.
 Use `references/bundled-skill-index.md` after selecting a routed skill. If a matching bundled implementation exists under `third_party/skills/`, read that bundled skill's `SKILL.md` and relevant resources as the default implementation before falling back to templates.
@@ -160,6 +163,7 @@ If the user provides colleague replies, emails, meeting transcripts, or real rev
 
 Use `templates/project-state.json` as the minimum project memory schema.
 Use `templates/project-workspace/` as the default Project Asset Pack skeleton when a new project starts, a stage passes, a review closes, or the user asks to export/search project assets.
+Use `runtime/pco_runtime.rb` as the first runnable implementation for project memory. Markdown/YAML/JSON remain readable source artifacts, while SQLite stores project state, artifact versions, review records, memory deltas, context packets, and invocation ledger entries.
 Use `templates/artifacts/` when creating standard PM artifacts instead of inventing the structure from scratch.
 
 Maintain three memory types:

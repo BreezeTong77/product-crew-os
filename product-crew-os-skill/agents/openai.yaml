@@ -5,5 +5,8 @@ interface:
 
 policy:
   allow_implicit_invocation: true
-  implicit_invocation_write_mode: "read_only"
-  memory_write_requires_explicit_user_signal: true
+  implicit_invocation_write_mode: "project_runtime_after_project_init"
+  project_memory_write_mode: "automatic_for_product_work_after_workspace_is_initialized"
+  user_preference_write_requires_explicit_user_signal: true
+  product_rule_write_requires_explicit_maintainer_action: true
+  real_team_material_write_requires_explicit_user_consent: true

@@ -24,8 +24,8 @@ Project Workspace files
 
 | 阶段 | 存储 | 用途 | 适用状态 |
 | --- | --- | --- | --- |
-| M0 | Markdown / YAML / JSON / JSONL | 可读项目包、迁移、Git diff | 当前默认 |
-| M1 | SQLite + FTS5 | 本地结构化查询、全文搜索、轻量索引 | 个人版下一步 |
+| M0 | Markdown / YAML / JSON / JSONL | 可读项目包、迁移、Git diff | 基础文件包 |
+| M1 | SQLite + FTS5 | 本地结构化查询、全文搜索、轻量索引 | 当前 Runtime 已支持 |
 | M2 | SQLite embedding table / LanceDB / Chroma | 语义检索、相似项目、相似决策 | 检索增强版 |
 | M3 | Postgres + pgvector | 多用户、团队云端、权限与审计 | 团队版 |
 
@@ -37,6 +37,27 @@ Project Workspace files
 - 可以随项目包一起迁移。
 - 适合本地个人 PM 工作台。
 - 可从 Markdown/YAML/JSON/JSONL 重建，避免数据库变成黑盒记忆。
+
+## 2.1 当前 Runtime 落地状态
+
+当前发布包已经提供最小本地 Runtime：
+
+```text
+product-crew-os-skill/runtime/
+  db/schema.sql
+  pco_runtime.rb
+  create_demo_vault.rb
+```
+
+它支持：
+
+- `init-project`：创建项目、工作区和 SQLite 记录。
+- `record-turn`：将一次主控产品回合写入 SOP、Skill、Artifact、Context Packet、子 Agent 调用账本、Review Item、Stage Gate 和评估事件。
+- `build-context-packet`：把角色记忆、当前 artifact、历史决策、开放评审项压缩成子 Agent 上下文。
+- `record-invocation`：记录真实或模拟子 Agent 调用。
+- `export-obsidian`：导出 10 大流程结构的 Obsidian-compatible Vault。
+
+这意味着产品本身已经有可运行的项目记忆底座。真正能否“自动在每轮对话后写入”，取决于宿主是否把主控回合接到 Runtime Adapter。普通聊天环境需要手动或脚本触发；Coze、Dify、LangGraph 或自研应用可以把它做成 workflow node。
 
 ## 3. 最小表结构
 
@@ -255,7 +276,7 @@ query
 | 版本 | 能力 |
 | --- | --- |
 | v0.1.x | Markdown 项目包、Project Asset Pack、Obsidian-compatible 导出 |
-| v0.2.x | SQLite + FTS5 本地索引、项目内全文搜索 |
+| v0.2.x | SQLite + FTS5 本地索引、项目内全文搜索、最小本地 Runtime |
 | v0.3.x | Embedding / vector index、相似项目和相似决策检索 |
 | v0.4.x | Obsidian 受控导入、diff review、memory delta 写回 |
 | v0.5.x | 多项目长期记忆、用户偏好检索、团队风格检索 |
@@ -271,3 +292,29 @@ query
 - 把所有聊天记录都向量化。
 - 把用户偏好、项目记忆和产品规则混在同一个索引里。
 - 未经用户确认，把同事邮件、会议转录、客户原话写入长期记忆。
+
+## 11. 当前最小 Runtime 实现
+
+当前发布包已经包含最小本地实现：
+
+```text
+runtime/db/schema.sql
+runtime/pco_runtime.rb
+tests/run-runtime-smoke.rb
+tests/run-sop-e2e-smoke.rb
+```
+
+已实现能力：
+
+- SQLite schema：projects、artifacts、artifact_versions、decisions、review_items、agent_memories、memory_deltas、context_packets、agent_invocations、events、fts_documents。
+- Project initialization：创建项目记录、项目工作区和基础账本文件。
+- Artifact versioning：保存 artifact、写入 version、计算 content hash、更新 artifact index。
+- Review / decision / memory writes：写入数据库并同步 Markdown/YAML 账本。
+- Context Packet builder：从 artifact、决策、评审项、风险和角色记忆生成子 Agent 上下文包。
+- Invocation ledger：记录真实或模拟子 Agent 调用。
+- Runtime adapter：`record-turn` 将一次主控教练回合的 Stage、SOP、Skill、Artifact、Context Packet、调用记录、Review Item 和 Stage Gate 写入 SQLite。
+- Obsidian export：生成 10 大产品流程目录、`_项目账本/` 和 `_团队记忆/`。
+- Runtime smoke test：验证 SQLite 写入、并发写入 timeout、Context Packet 和 Obsidian 导出。
+- SOP e2e smoke test：遍历 44 个 SOP prompt case，读取本地内置 skill，写入 `sop_runs`、`skill_runs`、artifact、context packet、invocation ledger 和 Obsidian 导出。
+
+这仍不是完整云端产品，但已经把 Product Crew OS 从纯规则包推进到可执行本地 Runtime。

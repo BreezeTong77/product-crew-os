@@ -46,6 +46,13 @@ required_files = [
   "references/project-asset-pack.md",
   "references/project-memory-index-architecture.md",
   "references/evaluation-metrics.md",
+  "references/runtime-adapter-contract.md",
+  "references/coze-runtime-blueprint.md",
+  "integrations/coze/workflow-blueprint.yaml",
+  "runtime/README.md",
+  "runtime/create_demo_vault.rb",
+  "runtime/db/schema.sql",
+  "runtime/pco_runtime.rb",
   "templates/agent-context-packet.yaml",
   "templates/project-state.json",
   "templates/project-workspace/project-home.md",
@@ -60,11 +67,14 @@ required_files = [
   "templates/project-workspace/agent-memory/README.md",
   "templates/project-workspace/checkpoints/README.md",
   "templates/project-workspace/export-manifest.yaml",
+  "templates/adapters/host-note-adapter-prompt.md",
   "templates/artifacts/acceptance-criteria.md",
   "templates/artifacts/test-scenario-library.md",
   "tests/evaluation-test-plan.md",
   "tests/prompt-eval-cases.yaml",
-  "tests/run-external-benchmark.rb"
+  "tests/run-external-benchmark.rb",
+  "tests/run-runtime-smoke.rb",
+  "tests/run-sop-e2e-smoke.rb"
 ]
 
 required_files.each do |relative_path|
