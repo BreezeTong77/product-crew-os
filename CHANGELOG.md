@@ -4,21 +4,52 @@ Product Crew OS 的重要变更都会记录在这里。
 
 ## Unreleased
 
-- 增加 Product Crew OS 领域意图门：先判断用户请求是否属于产品工作或 Product Crew OS 自身配置/维护，再进入 stage、SOP、Skill Router、子 Agent Review Loop 和 Stage Gate。
-- 明确非产品请求不会被强行归入 `request_triage`、不会调用产品 skill、不会写入项目记忆，也不会召唤子 Agent。
+- 无待发布内容（待提交后清单会归入 v0.1.2）。
+
+## v0.1.2 - 2026-07-05
+
+### 发布定位
+
+`v0.1.2` 是 Product Crew OS 的运行能力收口版：把“流程文档化”升级为“可追溯执行链路”，并把结构化评审、项目记忆与运行时落库统一收敛到可复现闭环。
+
+### 新增
+
+- 增加 Product Crew OS 领域意图门：先判断用户请求是否属于产品工作或 Product Crew OS 自身配置/维护，再进入 stage、SOP、Skill Router、子 Agent Review Loop 与 Stage Gate。
+- 明确非产品请求不会被强行归入工作流；不会调用产品 skill、不会写入项目记忆，也不会召唤子 Agent。
 - 新增 `non_product_task_exits_workflow` 回归场景，并让本地 regression runner 检查非产品任务不会误入产品工作流。
 - 新增 Project Asset Pack 能力：定义项目资产包规则、Markdown/Obsidian-compatible 导出策略、项目首页、artifact 索引、时间线、决策日志、评审项、风险日志、下一步和导出清单模板。
 - 新增 Project Memory Index Architecture：定义 SQLite/FTS/向量索引路线、数据库 CRUD、Obsidian 受控同步和长期记忆防覆盖机制。
 - 新增最小本地 Runtime：基于 SQLite + Project Workspace 文件实现项目初始化、artifact 版本、决策、评审项、角色记忆、Context Packet、调用 ledger 和 Obsidian-compatible 导出，并新增 `run-runtime-smoke.rb` 验证真实写入链路。
-- 新增 Runtime Adapter：`record-turn` 可将一次主控教练回合的 Stage、SOP、Skill、Artifact、Context Packet、调用 ledger、Review Item 和 Stage Gate 写入 SQLite。
-- 新增 `run-sop-e2e-smoke.rb`：遍历 44 个 SOP prompt case，读取内置 skill，写入 `sop_runs`、`skill_runs`、artifact、context packet、invocation ledger 和 Obsidian 导出，验证 44 个 SOP 的最小端到端链路。
-- 增强 Runtime 评估事件：`record-turn` 现在会写入 `stage_detected`、`skill_selected`、`memory_snapshot_built`、`agent_summoned` 和 `stage_gate_decision`，用于后续统计 Stage 命中率、Skill 命中率、团队记忆注入和评审发生情况。
-- 新增 `runtime/create_demo_vault.rb`，可为其他用户生成持久 SQLite、Project Workspace 和 Obsidian-compatible Vault，不再只依赖临时测试目录。
+- 新增 Runtime Adapter：`record-turn` 可将一次主控教练回合的 Stage、SOP、Skill、Artifact、Context Packet、调用 ledger、Review Item 与 Stage Gate 写入 SQLite。
+- 新增 `run-sop-e2e-smoke.rb`：遍历 44 个 SOP prompt case，读取内置 skill，写入 `sop_runs`、`skill_runs`、artifact、context packet、invocation ledger 与 Obsidian 导出，验证 44 个 SOP 的最小端到端链路。
+- 增强 Runtime 评估事件：`record-turn` 现在会写入 `stage_detected`、`skill_selected`、`memory_snapshot_built`、`agent_summoned`、`stage_gate_decision`，用于 Stage 命中率、Skill 命中率、记忆注入和评审发生率统计。
+- 新增 `runtime/create_demo_vault.rb`，可为其他用户生成持久 SQLite、Project Workspace 与 Obsidian-compatible Vault，不再只依赖临时测试目录。
 - 新增 `references/runtime-adapter-contract.md`，定义宿主环境如何把主控回合、子 Agent 调用、Artifact、评审项、记忆和评估事件写入 Runtime。
-- 新增 `references/coze-runtime-blueprint.md` 和 `integrations/coze/workflow-blueprint.yaml`，描述 Coze 式主 Bot、子 Bot、workflow node、数据库表和导出插件的可实现形态。
+- 新增 `references/coze-runtime-blueprint.md` 与 `integrations/coze/workflow-blueprint.yaml`，描述 Coze 式主 Bot、子 Bot、workflow node、数据库表和导出插件的可实现形态。
 - 更新 `agents/openai.yaml`：项目初始化后，产品工作回合应自动写入 Project Runtime；用户偏好、产品规则和真实团队材料仍需显式授权或维护动作。
 - 新增 `templates/adapters/host-note-adapter-prompt.md`，提供不同宿主环境和 Markdown 笔记工具的可复制适配提示词。
-- README 和 Runtime Adapter Contract 明确 Obsidian 只是默认示例，用户可自行适配 Logseq、Foam、Dendron、VS Code、Typora、Notion、飞书或通用 Markdown 文件夹。
+- README 与 Runtime Adapter Contract 明确 Obsidian 只是默认示例，用户可自行适配 Logseq、Foam、Dendron、VS Code、Typora、Notion、飞书或通用 Markdown 文件夹。
+- 引入结构化评审闭环：角色独立评审、冲突矩阵、复评范围收敛、用户决策可追溯。
+- 外部材料反哺策略落地：同事邮件和会议截图先入 `source-ledger`，授权后更新角色风格记忆，避免污染当前上下文。
+
+### 验证
+
+- `ruby product-crew-os-skill/tests/validate-package.rb`
+- `ruby product-crew-os-skill/tests/run-runtime-smoke.rb`
+- `ruby product-crew-os-skill/tests/run-sop-e2e-smoke.rb`
+- `ruby product-crew-os-skill/tests/run-regression.rb`
+- `ruby product-crew-os-skill/tests/run-external-benchmark.rb`
+
+### 不变
+
+- 不改变核心产品机制。
+- 不改变记忆隔离的三线并行规则。
+
+### 已知限制
+
+- 仍未内置完整可视化编排器，不同宿主环境仍需承载本地 Runtime 的主控实现。
+- 对外集成采用建议化/可选适配，非强依赖。
+- 外部基准通过的示例数据为本地与公开可复现样本，不替代真实生产流量评估。
 
 ## v0.1.1 - 2026-06-28
 

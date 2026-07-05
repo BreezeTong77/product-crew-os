@@ -1,8 +1,8 @@
 # GitHub 发布检查清单 v0
 
-日期：2026-06-28
+日期：2026-07-05
 
-发布目标：`v0.1.1`
+发布目标：`v0.1.2`
 
 ## 1. 备份
 
@@ -29,6 +29,7 @@
 - [x] `CHANGELOG.md`
 - [x] `.gitignore`
 - [x] `github-release-checklist-v0.md`
+- [x] `releases/v0.1.2.md`
 - [x] `releases/v0.1.1.md`
 - [x] `docs/product-rules.md`
 - [x] `docs/portability-manifest.md`
@@ -124,9 +125,9 @@ find . -maxdepth 3 -type f | sort
 
 ```text
 git add .
-git commit -m "chore: release product crew os v0.1.1"
+git commit -m "chore: release product crew os v0.1.2"
 git branch -M main
-git tag v0.1.1
+git tag v0.1.2
 ```
 
 然后创建 GitHub 仓库并推送：
@@ -134,12 +135,12 @@ git tag v0.1.1
 ```text
 git remote add origin <your-repo-url>
 git push -u origin main
-git push origin v0.1.1
+git push origin v0.1.2
 ```
 
 ## 8. 发布后
 
-- [ ] 使用 `releases/v0.1.1.md` 创建 GitHub Release。
+- [ ] 使用 `releases/v0.1.2.md` 创建 GitHub Release。
 - [ ] 后续工作放在 `next` 或 `dev` 分支。
 - [ ] 每次有意义的改动都更新 `CHANGELOG.md`。
 - [ ] 当配置 schema 变化时补充迁移说明。

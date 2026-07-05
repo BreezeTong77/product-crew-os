@@ -1,6 +1,6 @@
 # Product Crew OS
 
-[![Release](https://img.shields.io/badge/release-v0.1.1-blue)](releases/v0.1.1.md)
+[![Release](https://img.shields.io/badge/release-v0.1.2-blue)](releases/v0.1.2.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Docs](https://img.shields.io/badge/docs-Chinese-red)](README.md)
 [![Regression](https://img.shields.io/badge/regression-local%20check-lightgrey)](product-crew-os-skill/tests)
@@ -540,9 +540,9 @@ Product Crew OS 使用三类记忆容器：
 
 ## 当前版本
 
-当前 release：`v0.1.1`
+当前 release：`v0.1.2`
 
-`v0.1.1` 是当前推荐发布版本。它把近期迭代完成的能力收束成可检查、可部署的 GitHub 发布包：
+`v0.1.2` 是当前推荐发布版本。它把近期迭代完成的能力收束成可检查、可部署的 GitHub 发布包：
 
 - GitHub 首屏可读性和新用户进入路径。
 - 44 个 SOP 卡片的 8 字段结构。
@@ -555,9 +555,11 @@ Product Crew OS 使用三类记忆容器：
 - 低保真原型，并支持 image 概念图 -> HTML Demo -> Pencil / Figma 的逐级增强路径。
 - 技术任务拆解。
 - 测试场景。
-- 19 个回归场景。
+- 21 个回归场景。
 - Project Asset Pack：项目首页、artifact 索引、时间线、决策日志、评审项、风险日志、下一步和导出清单模板。
-- 本地 SQLite Runtime：支持 `record-turn`、Context Packet、Invocation Ledger、评估事件和 Obsidian-compatible 持久导出。
+- 结构化评审闭环：角色独立评审、冲突矩阵、复评范围收敛、用户决策可追溯。
+- 项目运行时（SQLite）与项目资产写入：支持 Stage 命中、Skill 选择、记忆注入、调用记录、Artifact 版本和评审事件落库。
+- 外部资料反哺：同事邮件/会议截图等通过 `source-ledger` 入库，不进入当前上下文，经过授权后写入角色风格记忆。
 
 ## 后续迭代方向
 
