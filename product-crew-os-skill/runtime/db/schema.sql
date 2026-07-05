@@ -113,6 +113,37 @@ CREATE TABLE IF NOT EXISTS review_items (
   FOREIGN KEY (project_id) REFERENCES projects(project_id)
 );
 
+CREATE TABLE IF NOT EXISTS review_sessions (
+  session_id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  stage_id TEXT DEFAULT '',
+  artifact_id TEXT DEFAULT '',
+  artifact_version INTEGER DEFAULT 1,
+  status TEXT DEFAULT 'review_open',
+  required_roles TEXT DEFAULT '',
+  triggered_roles TEXT DEFAULT '',
+  decision_owner TEXT DEFAULT 'user',
+  path TEXT DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (project_id) REFERENCES projects(project_id)
+);
+
+CREATE TABLE IF NOT EXISTS raw_review_records (
+  record_id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  project_id TEXT NOT NULL,
+  role_key TEXT NOT NULL,
+  artifact_id TEXT DEFAULT '',
+  context_packet_id TEXT DEFAULT '',
+  invocation_id TEXT DEFAULT '',
+  conclusion TEXT DEFAULT 'advice_only',
+  raw_review TEXT NOT NULL,
+  path TEXT DEFAULT '',
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (project_id) REFERENCES projects(project_id)
+);
+
 CREATE TABLE IF NOT EXISTS risks (
   risk_id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,

@@ -30,9 +30,10 @@ Product Crew OS 不能单靠 Markdown 规则包强制任意宿主自动调用子
 -> Skill Router
 -> Artifact Writer
 -> Review Router
+-> Review Session Writer
 -> Context Packet Builder
 -> Sub-agent Invocation Ledger
--> Review Item / Decision / Memory Delta
+-> Raw Review Record / Review Item / Decision / Memory Delta
 -> Stage Gate
 -> Project Memory Writer
 -> Obsidian / Markdown Export
@@ -65,8 +66,10 @@ ruby product-crew-os-skill/runtime/pco_runtime.rb record-turn \
 | `sop_runs` | stage、sop、用户输入、路由置信度 |
 | `skill_runs` | selected skill、fallback、执行状态、输出引用 |
 | `artifacts` / `artifact_versions` | 可编辑产物与版本 |
+| `review_sessions` | 结构化评审会、artifact 版本、参与角色、状态 |
 | `context_packets` | 角色评审上下文包 |
 | `agent_invocations` | 子 Agent 调用账本，区分真实和模拟 |
+| `raw_review_records` | 每个角色的原始评审输出和证据 |
 | `review_items` | 评审项与建议 |
 | `events` | 指标事件 |
 | Project Workspace | 项目首页、时间线、决策、评审、来源、团队记忆 |
@@ -83,7 +86,7 @@ ruby product-crew-os-skill/runtime/pco_runtime.rb record-turn \
 -> 调用宿主子 Bot / delegation API
 -> 记录 agent_invocations
 -> 收集评审输出
--> 写 review_items / decisions / memory_deltas
+-> 写 raw_review_records / review_items / decisions / memory_deltas
 ```
 
 如果宿主没有子 Bot 能力：
@@ -106,6 +109,8 @@ Runtime 必须记录以下核心事件，便于回归和评估：
 | `context_packet_built` | 检查是否为评审构建上下文 |
 | `memory_snapshot_built` | 检查团队记忆是否被读取并注入 |
 | `agent_summoned` | 检查子 Agent 是否真的调用或明确模拟 |
+| `review_session_opened` | 检查正式评审是否绑定 artifact 版本 |
+| `raw_review_record_written` | 检查原始角色评审是否可追溯 |
 | `review_item_written` | 检查评审是否沉淀 |
 | `decision_written` | 检查决策是否沉淀 |
 | `stage_gate_decision` | 检查阶段门是否明确 |

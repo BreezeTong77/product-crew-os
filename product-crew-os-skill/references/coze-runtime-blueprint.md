@@ -49,11 +49,17 @@ flowchart TD
   H --> I["Artifact Writer"]
   I --> J["Review Router"]
   J -->|无需评审| N["Stage Gate"]
-  J -->|需要评审| K["Context Packet Builder"]
+  J -->|需要评审| S["Review Session Writer"]
+  S --> K["Context Packet Builder"]
   K --> L["Sub Bot Invoker"]
-  L --> M["Review Collector"]
-  M --> O["Decision and Memory Writer"]
-  O --> N["Stage Gate"]
+  L --> M["Raw Review Record Writer"]
+  M --> O["Review Item and Conflict Collector"]
+  O --> U["User Decision Parser"]
+  U -->|修改 artifact| V["Artifact Revision and Diff Writer"]
+  V --> W["Re-review Router"]
+  W --> K
+  U -->|用户确认收束| X["Decision and Memory Writer"]
+  X --> N["Stage Gate"]
   N --> P["Project Memory Writer"]
   P --> Q["Obsidian Export Node"]
   P --> R["Next Action Composer"]
@@ -71,10 +77,15 @@ flowchart TD
 | Skill Execution Node | selected_skill、user_message、context | draft_output、source_refs |
 | Artifact Writer | draft_output、stage_id、sop_id | artifact_id、version、path |
 | Review Router | stage_id、artifact_id、gate | required_roles |
+| Review Session Writer | artifact_id、version、required_roles | review_session_id、locked_artifact_version |
 | Context Packet Builder | role_key、artifact、memory | context_packet_id、packet |
 | Sub Bot Invoker | role_key、packet | invocation_id、real_invocation_performed、raw_review |
-| Review Collector | raw_review | review_items、decision_candidates、memory_candidates |
-| Decision and Memory Writer | review_items、memory_candidates | decisions、memory_deltas |
+| Raw Review Record Writer | raw_review、invocation_id | raw_review_record_id、record_path |
+| Review Item and Conflict Collector | raw_review_records | review_items、conflict_matrix、open_questions |
+| User Decision Parser | 用户指令、review_items、conflicts | accepted_items、rejected_items、deferred_items、needs_confirmation |
+| Artifact Revision and Diff Writer | accepted_items、artifact | new_artifact_version、artifact_diff |
+| Re-review Router | artifact_diff、affected_roles | re_review_roles |
+| Decision and Memory Writer | review_items、user_decisions、memory_candidates | decisions、memory_deltas |
 | Stage Gate | artifact、review_items、gate | gate_status、conditions、next_stage |
 | Project Memory Writer | all outputs | database rows、event-log、project files |
 | Obsidian Export Node | project_id | markdown vault path |
@@ -92,8 +103,12 @@ Coze 数据库或外部数据库至少需要这些表。字段可直接参考 `r
 | `skill_runs` | skill 选择和执行记录 |
 | `artifacts` | 当前 artifact 索引 |
 | `artifact_versions` | artifact 版本 |
+| `review_sessions` | 评审会状态、artifact 锁定版本、参与角色 |
+| `raw_review_records` | 每个子 Bot 的原始评审输出 |
 | `decisions` | 决策日志 |
 | `review_items` | 评审项 |
+| `conflict_matrix` | 角色冲突点、用户决策、处理状态 |
+| `open_questions` | 缺证据和待确认问题 |
 | `agent_memories` | 项目内角色记忆 |
 | `memory_deltas` | 记忆增量写回 |
 | `context_packets` | 子 Bot 调用上下文 |
@@ -111,8 +126,10 @@ Coze 数据库或外部数据库至少需要这些表。字段可直接参考 `r
 | `runtime_init_project` | `init-project` |
 | `runtime_record_turn` | `record-turn` |
 | `runtime_save_artifact` | `save-artifact` |
+| `runtime_open_review_session` | `record-turn` 中的 Review Session Writer |
 | `runtime_build_context_packet` | `build-context-packet` |
 | `runtime_record_invocation` | `record-invocation` |
+| `runtime_write_raw_review_record` | `record-turn` 中的 Raw Review Record Writer |
 | `runtime_write_review_item` | `write-review-item` |
 | `runtime_write_agent_memory` | `write-agent-memory` |
 | `runtime_export_obsidian` | `export-obsidian` |
@@ -150,10 +167,13 @@ Coze M1 最小闭环：
 2. Workflow 命中 Stage 和 SOP。
 3. 调用一个 selected skill 或模板。
 4. 写 artifact。
-5. 对需要评审的 stage 调用 1 到 3 个子 Bot。
-6. 写 review_items、decisions、agent_memories。
-7. 给用户返回下一步。
-8. 支持导出 Obsidian-compatible 项目包。
+5. 对需要评审的 stage 创建 Review Session，并按批次调用必要子 Bot。
+6. 写 raw_review_records、review_items、conflict_matrix、open_questions。
+7. 让用户决定采纳、拒绝、暂缓或补证据。
+8. 修改 artifact 后生成 artifact_diff，并只让相关角色复评。
+9. 写 decisions、agent_memories。
+10. 给用户返回下一步。
+11. 支持导出 Obsidian-compatible 项目包。
 
 ## 9. 不建议做的事
 

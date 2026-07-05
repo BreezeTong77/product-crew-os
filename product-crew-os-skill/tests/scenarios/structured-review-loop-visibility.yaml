@@ -1,0 +1,24 @@
+scenario_id: "structured_review_loop_visibility"
+user_input: "这份 PRD 拉技术、设计、数据和测试做一次正式评审，评审记录我要能看到，改完后再复评。"
+expected:
+  product_crew_os_applies: true
+  stage_id_any_of:
+    - "internal_product_review"
+    - "formal_requirements_review"
+  required_reference: "structured-review-loop.md"
+  required_files:
+    - "review-session.md"
+    - "review-items.yaml"
+    - "conflict-matrix.md"
+    - "open-questions.md"
+    - "artifact-diff.md"
+  must_include:
+    - "Review Session"
+    - "raw review"
+    - "用户决策"
+    - "复评"
+    - "退出评审需要用户确认"
+  must_not:
+    - "let coach decide acceptance silently"
+    - "drop raw role review records"
+    - "mark unresolved block as pass"

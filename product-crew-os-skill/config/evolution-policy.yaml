@@ -12,15 +12,34 @@ principles:
   no_full_panel_by_default: true
 
 run_controls:
-  max_agents_per_turn: 3
+  max_agents_per_review_batch: 3
+  max_review_batches_per_stage_gate: 3
   max_review_turns_per_agent: 1
   max_stage_jump_without_user_confirmation: 1
   max_guardrail_retries: 2
+  required_roles_must_not_be_suppressed_by_batch_limit: true
+  full_panel_requires_user_confirmation: true
   require_domain_intent_gate_before_stage_detection: true
   require_stage_detection_before_product_action: true
   require_artifact_or_next_action_before_reply: true
   implicit_invocation_write_mode: "read_only"
   memory_write_requires_explicit_user_signal: true
+  review_batching_policy:
+    purpose: "Prevent token burn and noisy meetings without overriding SOP/stage-boundary required roles."
+    batch_size_limit_scope: "per visible review batch, not per stage and not per SOP"
+    selection_order:
+      - "required roles from SOP and stage boundary"
+      - "triggered roles with direct gate-blocking risk"
+      - "triggered roles with artifact-quality risk"
+      - "optional roles requested by user"
+    when_roles_exceed_batch_limit:
+      - "split into ordered review batches"
+      - "show batch plan to user before continuing if the review is not explicitly requested"
+      - "stop after required blockers are known unless user asks for deeper review"
+    must_not:
+      - "drop required roles only because the first batch is full"
+      - "summon every role for simple drafting"
+      - "run repeated review batches after the same conclusion is reached"
 
 state_delta_policy:
   enabled: true
@@ -180,6 +199,7 @@ observability:
     - "sop_hit_rate"
     - "skill_hit_rate"
     - "agent_routing_precision"
+    - "review_batch_coverage_rate"
     - "agent_invocation_honesty_rate"
     - "review_pass_rate"
     - "artifact_completion_rate"
@@ -249,6 +269,8 @@ regression_suite:
     - "subagent_context_depth"
     - "subagent_memory_runtime"
     - "subagent_real_invocation_contract"
+    - "review_batch_coverage"
+    - "structured_review_loop_visibility"
   each_scenario_checks:
     - "domain_intent_gate_checked"
     - "stage_detected_when_product_work"

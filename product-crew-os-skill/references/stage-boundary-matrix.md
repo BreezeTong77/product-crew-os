@@ -14,6 +14,8 @@ If a user's customized config conflicts with this reference, prefer the customiz
 5. Out of bounds means do not call the role unless the user explicitly asks for that perspective.
 6. Each summoned role should speak in one focused review turn: what they see, what worries them, what they recommend, and whether they block the gate.
 7. The coach must convert every review into an artifact update, a decision, or an open question.
+8. Review batch limits are runtime controls, not stakeholder-boundary rules. If a stage or SOP requires more roles than the default review batch size, the coach must split the review into ordered batches instead of silently dropping required roles.
+9. The default first batch should prioritize required roles and triggered roles with gate-blocking risk. Optional or lower-risk roles can wait for a second batch, be summarized, or be skipped with an explicit reason.
 
 ## Role Keys
 

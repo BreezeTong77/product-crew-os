@@ -151,6 +151,68 @@ class ProductCrewRuntime
     payload
   end
 
+  def open_review_session(project_id:, stage_id:, artifact_id:, artifact_version:, required_roles:, triggered_roles: [], status: "review_open", emit: true)
+    ensure_project!(project_id)
+    now = timestamp
+    session_id = id("rs")
+    rel_path = File.join("review-sessions", "#{session_id}.md")
+    abs_path = File.join(project_dir(project_id), rel_path)
+    FileUtils.mkdir_p(File.dirname(abs_path))
+    session_body = review_session_markdown(
+      session_id: session_id,
+      project_id: project_id,
+      stage_id: stage_id,
+      artifact_id: artifact_id,
+      artifact_version: artifact_version,
+      status: status,
+      required_roles: required_roles,
+      triggered_roles: triggered_roles
+    )
+    File.write(abs_path, session_body)
+    exec_sql(<<~SQL)
+      INSERT INTO review_sessions
+        (session_id, project_id, stage_id, artifact_id, artifact_version, status, required_roles, triggered_roles, decision_owner, path, created_at, updated_at)
+      VALUES
+        (#{q(session_id)}, #{q(project_id)}, #{q(stage_id)}, #{q(artifact_id)}, #{artifact_version.to_i}, #{q(status)}, #{q(required_roles.join(","))}, #{q(triggered_roles.join(","))}, 'user', #{q(rel_path)}, #{q(now)}, #{q(now)});
+    SQL
+    record_event(project_id, "review_session_opened", { session_id: session_id, stage_id: stage_id, artifact_id: artifact_id, artifact_version: artifact_version, roles: required_roles })
+    payload = { session_id: session_id, path: abs_path, relative_path: rel_path }
+    puts_json(payload) if emit
+    payload
+  end
+
+  def write_raw_review_record(project_id:, session_id:, role_key:, artifact_id:, context_packet_id:, invocation_id:, conclusion: "advice_only", raw_review:, emit: true)
+    ensure_project!(project_id)
+    now = timestamp
+    record_id = id("rr")
+    rel_path = File.join("raw-review-records", session_id, "#{safe_slug(role_key)}.md")
+    abs_path = File.join(project_dir(project_id), rel_path)
+    FileUtils.mkdir_p(File.dirname(abs_path))
+    record_body = raw_review_markdown(
+      record_id: record_id,
+      session_id: session_id,
+      project_id: project_id,
+      role_key: role_key,
+      artifact_id: artifact_id,
+      context_packet_id: context_packet_id,
+      invocation_id: invocation_id,
+      conclusion: conclusion,
+      raw_review: raw_review
+    )
+    File.write(abs_path, record_body)
+    exec_sql(<<~SQL)
+      INSERT INTO raw_review_records
+        (record_id, session_id, project_id, role_key, artifact_id, context_packet_id, invocation_id, conclusion, raw_review, path, created_at)
+      VALUES
+        (#{q(record_id)}, #{q(session_id)}, #{q(project_id)}, #{q(role_key)}, #{q(artifact_id)}, #{q(context_packet_id)}, #{q(invocation_id)}, #{q(conclusion)}, #{q(raw_review)}, #{q(rel_path)}, #{q(now)});
+    SQL
+    upsert_fts(project_id, "raw_review_record", record_id, "#{role_key} raw review", raw_review, rel_path)
+    record_event(project_id, "raw_review_record_written", { record_id: record_id, session_id: session_id, role_key: role_key })
+    payload = { record_id: record_id, path: abs_path, relative_path: rel_path }
+    puts_json(payload) if emit
+    payload
+  end
+
   def write_agent_memory(project_id:, role_key:, summary:, source_ref: "", confidence: "confirmed")
     ensure_project!(project_id)
     now = timestamp
@@ -281,7 +343,7 @@ class ProductCrewRuntime
     root = File.expand_path(output_dir)
     project_root = File.join(root, "Projects", safe_slug(project.fetch("name")))
     flow_dirs = FLOW_DIRS.values.uniq
-    (flow_dirs + ["_项目账本", "_团队记忆", "_导出", File.join("_导出", "word"), File.join("_导出", "pdf"), File.join("_导出", "release-notes")]).each do |dir|
+    (flow_dirs + ["_项目账本", File.join("_项目账本", "review-sessions"), File.join("_项目账本", "raw-review-records"), "_团队记忆", "_导出", File.join("_导出", "word"), File.join("_导出", "pdf"), File.join("_导出", "release-notes")]).each do |dir|
       FileUtils.mkdir_p(File.join(project_root, dir))
     end
     write_obsidian_home(project_id, project_root)
@@ -378,8 +440,19 @@ class ProductCrewRuntime
     )
 
     role_outputs = []
-    roles = split_roles(review_roles)
-    roles = ["Coach"] if roles.empty?
+    requested_roles = split_roles(review_roles)
+    roles = requested_roles.empty? ? ["Coach"] : requested_roles
+    review_session = nil
+    unless requested_roles.empty?
+      review_session = open_review_session(
+        project_id: project_id,
+        stage_id: stage_id,
+        artifact_id: artifact[:artifact_id],
+        artifact_version: artifact[:version],
+        required_roles: roles,
+        emit: false
+      )
+    end
     roles.each do |role_key|
       packet = build_context_packet(
         project_id: project_id,
@@ -412,11 +485,26 @@ class ProductCrewRuntime
         source_ref: "runtime-adapter:#{sop_run_id}",
         emit: false
       )
+      raw_review = nil
+      if review_session
+        raw_review = write_raw_review_record(
+          project_id: project_id,
+          session_id: review_session[:session_id],
+          role_key: role_key,
+          artifact_id: artifact[:artifact_id],
+          context_packet_id: packet[:packet_id],
+          invocation_id: invocation[:invocation_id],
+          conclusion: "advice_only",
+          raw_review: "Runtime adapter recorded #{role_key} independent review for #{artifact_name}. Host runtimes with real sub-agents should replace this with the actual raw review output.",
+          emit: false
+        )
+      end
       role_outputs << {
         role_key: role_key,
         packet_id: packet[:packet_id],
         invocation_id: invocation[:invocation_id],
-        review_item_id: review_item[:review_item_id]
+        review_item_id: review_item[:review_item_id],
+        raw_review_record_id: raw_review ? raw_review[:record_id] : ""
       }
     end
 
@@ -451,6 +539,7 @@ class ProductCrewRuntime
       sop_run_id: sop_run_id,
       skill_run_id: skill_run_id,
       artifact_id: artifact[:artifact_id],
+      review_session_id: review_session ? review_session[:session_id] : "",
       stage_id: stage_id,
       gate_status: gate_status,
       roles: role_outputs
@@ -513,7 +602,7 @@ class ProductCrewRuntime
 
   def create_project_workspace(project_id, name)
     root = project_dir(project_id)
-    dirs = %w[artifacts context-packets agent-memory checkpoints exports]
+    dirs = %w[artifacts context-packets review-sessions raw-review-records agent-memory checkpoints exports]
     dirs.each { |dir| FileUtils.mkdir_p(File.join(root, dir)) }
     write_if_missing(File.join(root, "project-home.md"), "# #{name}\n\n- Project ID: `#{project_id}`\n- Source of truth: Product Crew OS Runtime\n")
     write_if_missing(File.join(root, "timeline.md"), "# Timeline\n")
@@ -521,9 +610,13 @@ class ProductCrewRuntime
     write_if_missing(File.join(root, "source-ledger.md"), "# Source Ledger\n")
     write_if_missing(File.join(root, "next-actions.md"), "# Next Actions\n")
     write_if_missing(File.join(root, "risk-log.md"), "# Risk Log\n")
+    write_if_missing(File.join(root, "conflict-matrix.md"), "# Conflict Matrix\n")
+    write_if_missing(File.join(root, "open-questions.md"), "# Open Questions\n")
+    write_if_missing(File.join(root, "artifact-diff.md"), "# Artifact Diff\n")
     write_if_missing(File.join(root, "event-log.jsonl"), "")
     write_if_missing(File.join(root, "review-items.yaml"), { "review_items" => [] }.to_yaml)
     write_if_missing(File.join(root, "artifact-index.yaml"), { "artifacts" => [] }.to_yaml)
+    write_if_missing(File.join(root, "exports", "export-manifest.yaml"), { "exports" => [] }.to_yaml)
   end
 
   def write_if_missing(path, content)
@@ -694,6 +787,83 @@ class ProductCrewRuntime
     ["---", frontmatter.to_yaml.sub(/\A---\n/, "").strip, "---", "", "# #{title}", "", body].join("\n")
   end
 
+  def review_session_markdown(session_id:, project_id:, stage_id:, artifact_id:, artifact_version:, status:, required_roles:, triggered_roles:)
+    frontmatter = {
+      "project_id" => project_id,
+      "review_session_id" => session_id,
+      "stage_id" => stage_id,
+      "artifact_id" => artifact_id,
+      "artifact_version" => artifact_version,
+      "status" => status,
+      "source_of_truth" => "Product Crew OS Runtime",
+      "last_synced_at" => timestamp
+    }
+    lines = [
+      "---",
+      frontmatter.to_yaml.sub(/\A---\n/, "").strip,
+      "---",
+      "",
+      "# Review Session #{session_id}",
+      "",
+      "## 评审对象",
+      "",
+      "- Artifact: `#{artifact_id}`",
+      "- Version: `#{artifact_version}`",
+      "- Stage: `#{stage_id}`",
+      "- Status: `#{status}`",
+      "- Decision owner: `user`",
+      "",
+      "## 参与角色",
+      "",
+      "| role_key | role_type |",
+      "| --- | --- |"
+    ]
+    required_roles.each { |role| lines << "| #{role} | required |" }
+    triggered_roles.each { |role| lines << "| #{role} | triggered |" }
+    lines += [
+      "",
+      "## 评审规则",
+      "",
+      "- 角色独立评审，不先互相看结论。",
+      "- 主控只收束 must-fix、should-fix、conflict 和 open questions。",
+      "- 用户决定采纳、拒绝、暂缓或要求补证据。",
+      "- Artifact 修改后要写 artifact-diff，并只让相关角色复评。"
+    ]
+    lines.join("\n")
+  end
+
+  def raw_review_markdown(record_id:, session_id:, project_id:, role_key:, artifact_id:, context_packet_id:, invocation_id:, conclusion:, raw_review:)
+    frontmatter = {
+      "project_id" => project_id,
+      "review_record_id" => record_id,
+      "review_session_id" => session_id,
+      "role_key" => role_key,
+      "artifact_id" => artifact_id,
+      "context_packet_id" => context_packet_id,
+      "invocation_id" => invocation_id,
+      "conclusion" => conclusion,
+      "source_of_truth" => "Product Crew OS Runtime",
+      "last_synced_at" => timestamp
+    }
+    [
+      "---",
+      frontmatter.to_yaml.sub(/\A---\n/, "").strip,
+      "---",
+      "",
+      "# Raw Review: #{role_key}",
+      "",
+      "- Review Session: `#{session_id}`",
+      "- Artifact: `#{artifact_id}`",
+      "- Context Packet: `#{context_packet_id}`",
+      "- Invocation: `#{invocation_id}`",
+      "- Conclusion: `#{conclusion}`",
+      "",
+      "## 原始评审记录",
+      "",
+      raw_review
+    ].join("\n")
+  end
+
   def write_obsidian_home(project_id, project_root)
     project = project(project_id)
     artifacts = query("SELECT artifact_id, name, stage_id, status, path FROM artifacts WHERE project_id = #{q(project_id)} ORDER BY updated_at DESC;")
@@ -741,6 +911,9 @@ class ProductCrewRuntime
       "review-items.yaml" => "review-items.yaml",
       "risk-log.md" => "risk-log.md",
       "next-actions.md" => "next-actions.md",
+      "conflict-matrix.md" => "conflict-matrix.md",
+      "open-questions.md" => "open-questions.md",
+      "artifact-diff.md" => "artifact-diff.md",
       "source-ledger.md" => "source-ledger.md",
       "event-log.jsonl" => "event-log.jsonl"
     }
@@ -748,11 +921,27 @@ class ProductCrewRuntime
       source_path = File.join(project_dir(project_id), source)
       FileUtils.cp(source_path, File.join(project_root, "_项目账本", target)) if File.exist?(source_path)
     end
+    copy_directory(File.join(project_dir(project_id), "review-sessions"), File.join(project_root, "_项目账本", "review-sessions"))
+    copy_directory(File.join(project_dir(project_id), "raw-review-records"), File.join(project_root, "_项目账本", "raw-review-records"))
   end
 
   def export_team_memory(project_id, project_root)
     Dir[File.join(project_dir(project_id), "agent-memory", "*.md")].each do |path|
       FileUtils.cp(path, File.join(project_root, "_团队记忆", File.basename(path)))
+    end
+  end
+
+  def copy_directory(source_dir, target_dir)
+    return unless Dir.exist?(source_dir)
+
+    FileUtils.mkdir_p(target_dir)
+    Dir[File.join(source_dir, "**", "*")].each do |source_path|
+      next if File.directory?(source_path)
+
+      relative = source_path.sub("#{source_dir}/", "")
+      target_path = File.join(target_dir, relative)
+      FileUtils.mkdir_p(File.dirname(target_path))
+      FileUtils.cp(source_path, target_path)
     end
   end
 

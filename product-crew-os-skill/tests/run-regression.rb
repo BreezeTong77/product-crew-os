@@ -86,7 +86,7 @@ assert(errors, !asset_pack_scenario.nil?, "missing project_asset_pack_persistenc
 state = JSON.parse(File.read(File.join(skill_root, "templates", "project-state.json")))
 asset_pack = state["project_asset_pack"] || {}
 assert(errors, !asset_pack.empty?, "project-state.json missing project_asset_pack")
-%w[project_home artifact_index timeline decision_log review_items risk_log next_actions source_ledger event_log agent_memory checkpoints export_manifest].each do |key|
+%w[project_home artifact_index timeline decision_log review_items conflict_matrix open_questions artifact_diff risk_log next_actions source_ledger event_log agent_memory checkpoints export_manifest].each do |key|
   assert(errors, asset_pack[key].to_s != "", "project_asset_pack missing #{key}")
 end
 if asset_pack_scenario
@@ -120,6 +120,43 @@ if asset_pack_scenario
   end
 end
 
+structured_review_scenario = scenarios["structured_review_loop_visibility"]
+assert(errors, !structured_review_scenario.nil?, "missing structured_review_loop_visibility scenario")
+if structured_review_scenario
+  reference_path = File.join(skill_root, "references", "structured-review-loop.md")
+  assert(errors, File.exist?(reference_path), "missing structured review loop reference")
+  reference_text = File.read(reference_path)
+  expected = structured_review_scenario["expected"] || {}
+  (expected["required_files"] || []).each do |required_file|
+    case required_file
+    when "review-session.md"
+      assert(errors, File.exist?(File.join(skill_root, "templates", "artifacts", required_file)), "structured review template missing #{required_file}")
+    else
+      assert(errors, File.exist?(File.join(skill_root, "templates", "project-workspace", required_file)), "structured review workspace template missing #{required_file}")
+    end
+  end
+  (expected["must_include"] || []).each do |phrase|
+    assert(errors, reference_text.include?(phrase), "structured review loop missing phrase: #{phrase}")
+  end
+  assert(errors, !reference_text.include?("主控教练可以替用户采纳"), "structured review loop must not let coach decide acceptance")
+  assert(errors, reference_text.include?("每个角色的原始评审意见"), "structured review loop must require raw role review records")
+end
+
+review_batch_scenario = scenarios["review_batch_coverage"]
+assert(errors, !review_batch_scenario.nil?, "missing review_batch_coverage scenario")
+evolution_policy = YAML.load_file(File.join(skill_root, "config", "evolution-policy.yaml"))
+run_controls = evolution_policy["run_controls"] || {}
+assert(errors, run_controls["max_agents_per_review_batch"].to_i > 0, "run_controls missing max_agents_per_review_batch")
+assert(errors, run_controls["max_review_batches_per_stage_gate"].to_i > 0, "run_controls missing max_review_batches_per_stage_gate")
+assert(errors, run_controls["required_roles_must_not_be_suppressed_by_batch_limit"] == true, "batch limit may suppress required roles")
+batching_policy = run_controls["review_batching_policy"] || {}
+assert(errors, batching_policy["batch_size_limit_scope"].to_s.include?("not per stage"), "review batching policy must clarify batch limit is not a stage limit")
+assert(errors, Array(batching_policy["must_not"]).any? { |item| item.include?("drop required roles") }, "review batching policy must forbid dropping required roles")
+if review_batch_scenario
+  expected = review_batch_scenario["expected"] || {}
+  assert(errors, (expected["must_not"] || []).include?("drop required roles because the first batch is full"), "review batch scenario should forbid first-batch role dropping")
+end
+
 assert(errors, prompt_eval_cases.length == 44, "prompt eval should cover 44 SOP cases, found #{prompt_eval_cases.length}")
 %w[project_intake low_fi_prototype formal_requirements_review launch_readiness iteration_planning].each do |stage_id|
   assert(errors, prompt_eval_cases.any? { |test_case| test_case["stage_id"] == stage_id }, "prompt eval missing stage: #{stage_id}")
@@ -142,7 +179,7 @@ command = "ruby product-crew-os-skill/tests/run-regression.rb #{ARGV.join(" ")}"
 if errors.empty?
   unless check_only
     FileUtils.mkdir_p(result_dir)
-    File.write(result_path, "# Regression Result\n\nstatus: PASS\n\ngenerated_at: #{generated_at}\ncommand: #{command}\n\nchecks:\n- package scenarios loaded\n- mock delegate invocation ledger assertion passed\n- simulation fallback label assertion passed\n- memory snapshot and memory delta assertion passed\n- non-product task exits Product Crew OS workflow assertion passed\n- project asset pack persistence assertion passed\n- 44 SOP prompt eval coverage assertion passed\n")
+    File.write(result_path, "# Regression Result\n\nstatus: PASS\n\ngenerated_at: #{generated_at}\ncommand: #{command}\n\nchecks:\n- package scenarios loaded\n- mock delegate invocation ledger assertion passed\n- simulation fallback label assertion passed\n- memory snapshot and memory delta assertion passed\n- non-product task exits Product Crew OS workflow assertion passed\n- project asset pack persistence assertion passed\n- review batch coverage assertion passed\n- 44 SOP prompt eval coverage assertion passed\n")
   end
   puts "run-regression: PASS"
   puts "result: #{check_only ? "not written (--check-only)" : result_path}"

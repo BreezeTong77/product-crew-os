@@ -73,17 +73,32 @@ workflow_nodes:
   - key: review_router
     input: [stage_id, artifact_id, stage_gate]
     output: [required_roles]
+  - key: review_session_writer
+    input: [artifact_id, artifact_version, stage_id, required_roles]
+    output: [review_session_id, locked_artifact_version]
   - key: context_packet_builder
-    input: [role_key, stage_id, artifact_id, decisions, review_items, role_memory]
+    input: [review_session_id, role_key, stage_id, artifact_id, decisions, review_items, role_memory]
     output: [context_packet_id, context_packet]
   - key: sub_bot_invoker
     input: [role_key, context_packet]
     output: [invocation_id, real_invocation_performed, review_output]
-  - key: review_collector
-    input: [review_output]
-    output: [review_items, decision_candidates, memory_candidates]
+  - key: raw_review_record_writer
+    input: [review_session_id, role_key, invocation_id, context_packet_id, review_output]
+    output: [raw_review_record_id, record_path]
+  - key: review_item_and_conflict_collector
+    input: [review_session_id, raw_review_record_id]
+    output: [review_items, conflict_matrix, open_questions, memory_candidates]
+  - key: user_decision_parser
+    input: [user_message, review_items, conflict_matrix, open_questions]
+    output: [accepted_items, rejected_items, deferred_items, needs_confirmation]
+  - key: artifact_revision_and_diff_writer
+    input: [accepted_items, artifact_id]
+    output: [new_artifact_version, artifact_diff]
+  - key: re_review_router
+    input: [artifact_diff, affected_roles]
+    output: [re_review_roles]
   - key: project_memory_writer
-    input: [artifact_id, review_items, decision_candidates, memory_candidates, gate_status]
+    input: [artifact_id, review_session_id, review_items, user_decisions, memory_candidates, gate_status]
     output: [database_rows, event_log, project_files]
   - key: obsidian_exporter
     input: [project_id]
@@ -96,8 +111,10 @@ runtime_actions:
   runtime_init_project: init-project
   runtime_record_turn: record-turn
   runtime_save_artifact: save-artifact
+  runtime_open_review_session: record-turn.review_session_writer
   runtime_build_context_packet: build-context-packet
   runtime_record_invocation: record-invocation
+  runtime_write_raw_review_record: record-turn.raw_review_record_writer
   runtime_write_review_item: write-review-item
   runtime_write_agent_memory: write-agent-memory
   runtime_export_obsidian: export-obsidian
@@ -109,6 +126,8 @@ database_tables:
   - skill_runs
   - artifacts
   - artifact_versions
+  - review_sessions
+  - raw_review_records
   - decisions
   - review_items
   - risks

@@ -71,11 +71,28 @@ memory_snapshot:
 | 类型 | 写入位置 | 示例 |
 | --- | --- | --- |
 | Artifact 修改 | 当前 artifact | PRD、原型 brief、测试场景 |
-| Review Item | `review-items.md` | 需补充异常状态 |
+| Review Item | `review-items.yaml` | 需补充异常状态 |
 | Decision Log | `decision-log.md` | 采纳 / 拒绝 / 延后某建议 |
 | Memory Delta | `memory_delta_queue` | 该角色反复关注某风险 |
 
 不是每条子 Agent 发言都能直接写入长期记忆。
+
+### 3.1 外部材料怎么写入
+
+用户上传的同事邮件截图、会议纪要、聊天导出、客服对话等都属于外部材料，不直接写进角色上下文窗口或 `agent-memory`。
+
+执行顺序：
+
+```text
+1) 提取证据（OCR/转写）并去标识化
+2) 生成来源摘要，写入 source-ledger（source_ref）
+3) 若涉及当前 artifact 依据，更新 decision / review item / source mapping
+4) 依据用户授权，决定是否写入
+   - 项目知识层：`Project Workspace`（可追溯）
+   - 角色风格层：`agent-memory/{role_key}.md`（仅偏好与风格摘要）
+```
+
+这样既保留了可追溯链条，也避免把原文“原样”长期记忆化。
 
 长期记忆写入必须满足：
 

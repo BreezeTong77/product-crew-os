@@ -50,23 +50,47 @@ Dir.mktmpdir("pco-runtime-smoke") do |dir|
     Thread.new { run_cmd(errors, *cmd) }
   end.each(&:join)
 
-  packet = run_cmd(errors, ruby, runtime, "build-context-packet", "--workspace", workspace, "--db", db, "--project-id", project_id, "--role-key", "Tech", "--stage-id", "requirement_analysis", "--review-question", "Check runtime MVP risk")
-  assert(errors, File.exist?(packet["path"].to_s), "runtime did not write context packet")
+	  packet = run_cmd(errors, ruby, runtime, "build-context-packet", "--workspace", workspace, "--db", db, "--project-id", project_id, "--role-key", "Tech", "--stage-id", "requirement_analysis", "--review-question", "Check runtime MVP risk")
+	  assert(errors, File.exist?(packet["path"].to_s), "runtime did not write context packet")
 
-  export = run_cmd(errors, ruby, runtime, "export-obsidian", "--workspace", workspace, "--db", db, "--project-id", project_id, "--output-dir", vault)
-  project_path = export["project_path"].to_s
-  assert(errors, File.exist?(File.join(project_path, "00_项目首页.md")), "obsidian export missing project home")
-  assert(errors, File.exist?(File.join(project_path, "_项目账本", "decision-log.md")), "obsidian export missing decision log")
-  assert(errors, File.exist?(File.join(project_path, "_项目账本", "review-items.yaml")), "obsidian export missing review items")
-  assert(errors, File.exist?(File.join(project_path, "_团队记忆", "tech.md")), "obsidian export missing role memory")
+	  turn = run_cmd(
+	    errors,
+	    ruby,
+	    runtime,
+	    "record-turn",
+	    "--workspace", workspace,
+	    "--db", db,
+	    "--project-id", project_id,
+	    "--stage-id", "formal_requirements_review",
+	    "--macro-stage", "cross_functional_review",
+	    "--sop-id", "formal_requirements_review",
+	    "--user-input", "Run structured review smoke",
+	    "--primary-skill", "stakeholder-alignment-checker",
+	    "--fallback-skill", "prd-critic",
+	    "--artifact-name", "Structured Review Smoke",
+	    "--artifact-content", "Runtime smoke validates review session and raw review record persistence.",
+	    "--review-roles", "Biz,Tech,Design",
+	    "--gate-status", "conditional_pass",
+	    "--gate-result", "Structured review artifacts were persisted."
+	  )
+	  assert(errors, turn["review_session_id"].to_s != "", "record-turn did not return review_session_id")
 
-  query = "select 'projects' as table_name, count(*) as count from projects union all select 'artifacts', count(*) from artifacts union all select 'decisions', count(*) from decisions union all select 'review_items', count(*) from review_items union all select 'agent_memories', count(*) from agent_memories union all select 'context_packets', count(*) from context_packets;"
-  stdout, stderr, status = Open3.capture3("sqlite3", "-json", db, query)
-  if status.success?
-    counts = JSON.parse(stdout).each_with_object({}) { |row, memo| memo[row.fetch("table_name")] = row.fetch("count").to_i }
-    %w[projects artifacts decisions review_items agent_memories context_packets].each do |table|
-      assert(errors, counts[table].to_i >= 1, "runtime sqlite table #{table} is empty")
-    end
+	  export = run_cmd(errors, ruby, runtime, "export-obsidian", "--workspace", workspace, "--db", db, "--project-id", project_id, "--output-dir", vault)
+	  project_path = export["project_path"].to_s
+	  assert(errors, File.exist?(File.join(project_path, "00_项目首页.md")), "obsidian export missing project home")
+	  assert(errors, File.exist?(File.join(project_path, "_项目账本", "decision-log.md")), "obsidian export missing decision log")
+	  assert(errors, File.exist?(File.join(project_path, "_项目账本", "review-items.yaml")), "obsidian export missing review items")
+	  assert(errors, Dir[File.join(project_path, "_项目账本", "review-sessions", "*.md")].any?, "obsidian export missing review session records")
+	  assert(errors, Dir[File.join(project_path, "_项目账本", "raw-review-records", "**", "*.md")].any?, "obsidian export missing raw review records")
+	  assert(errors, File.exist?(File.join(project_path, "_团队记忆", "tech.md")), "obsidian export missing role memory")
+
+	  query = "select 'projects' as table_name, count(*) as count from projects union all select 'artifacts', count(*) from artifacts union all select 'decisions', count(*) from decisions union all select 'review_sessions', count(*) from review_sessions union all select 'raw_review_records', count(*) from raw_review_records union all select 'review_items', count(*) from review_items union all select 'agent_memories', count(*) from agent_memories union all select 'context_packets', count(*) from context_packets;"
+	  stdout, stderr, status = Open3.capture3("sqlite3", "-json", db, query)
+	  if status.success?
+	    counts = JSON.parse(stdout).each_with_object({}) { |row, memo| memo[row.fetch("table_name")] = row.fetch("count").to_i }
+	    %w[projects artifacts decisions review_sessions raw_review_records review_items agent_memories context_packets].each do |table|
+	      assert(errors, counts[table].to_i >= 1, "runtime sqlite table #{table} is empty")
+	    end
   else
     errors << "sqlite count query failed: #{stderr}"
   end

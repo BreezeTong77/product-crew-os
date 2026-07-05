@@ -1,0 +1,17 @@
+scenario_id: "review_batch_coverage"
+user_input: "正式需求评审，业务、技术、设计、数据、测试、客户代表都要看一下，但不要开成乱糟糟的全员会。"
+expected:
+  stage_id_any_of: ["formal_requirements_review", "internal_product_review"]
+  required_agents: ["Coach"]
+  gate_blocking_roles_any_of:
+    - ["Biz", "Tech", "Design", "Data", "QA"]
+    - ["Biz", "Tech", "Design", "Data", "QA", "Customer"]
+  must_do:
+    - "treat max_agents_per_review_batch as a batch limit, not a stage limit"
+    - "prioritize required roles and gate-blocking triggered roles in the first batch"
+    - "split extra roles into ordered review batches"
+    - "record which roles were covered, deferred, or skipped with reason"
+  must_not:
+    - "drop required roles because the first batch is full"
+    - "summon all roles without a batch plan"
+    - "let optional roles override required stage gate reviewers"

@@ -45,6 +45,7 @@ required_files = [
   "references/subagent-memory-runtime-contract.md",
   "references/project-asset-pack.md",
   "references/project-memory-index-architecture.md",
+  "references/structured-review-loop.md",
   "references/evaluation-metrics.md",
   "references/runtime-adapter-contract.md",
   "references/coze-runtime-blueprint.md",
@@ -60,6 +61,9 @@ required_files = [
   "templates/project-workspace/timeline.md",
   "templates/project-workspace/decision-log.md",
   "templates/project-workspace/review-items.yaml",
+  "templates/project-workspace/conflict-matrix.md",
+  "templates/project-workspace/open-questions.md",
+  "templates/project-workspace/artifact-diff.md",
   "templates/project-workspace/risk-log.md",
   "templates/project-workspace/next-actions.md",
   "templates/project-workspace/source-ledger.md",
@@ -68,6 +72,7 @@ required_files = [
   "templates/project-workspace/checkpoints/README.md",
   "templates/project-workspace/export-manifest.yaml",
   "templates/adapters/host-note-adapter-prompt.md",
+  "templates/artifacts/review-session.md",
   "templates/artifacts/acceptance-criteria.md",
   "templates/artifacts/test-scenario-library.md",
   "tests/evaluation-test-plan.md",
@@ -103,7 +108,7 @@ state = JSON.parse(File.read(File.join(skill_root, "templates", "project-state.j
 end
 
 asset_pack = state["project_asset_pack"] || {}
-%w[project_home artifact_index timeline decision_log review_items risk_log next_actions source_ledger event_log agent_memory checkpoints export_manifest].each do |key|
+%w[project_home artifact_index timeline decision_log review_items conflict_matrix open_questions artifact_diff risk_log next_actions source_ledger event_log agent_memory checkpoints export_manifest].each do |key|
   errors << "project_asset_pack missing #{key}" unless asset_pack.key?(key)
 end
 

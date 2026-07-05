@@ -54,6 +54,7 @@ Use `references/subagent-context-packet.md` before summoning a sub-agent.
 Use `references/subagent-invocation-contract.md` before claiming a sub-agent has been summoned. If the runtime has a real sub-agent/delegation tool and the role is needed, actually call it. If no real call occurred, label the output as a simulated role perspective.
 Use `references/subagent-memory-runtime-contract.md` when a sub-agent needs role memory, project memory, team-style overlay, or when the user asks whether sub-agents remember prior work. Sub-agent chat windows are not the long-term memory container; the coach must read, compress, inject, and write back memory through the Project Workspace.
 Use `references/runtime-adapter-contract.md` when the user asks whether Product Crew OS is truly runnable, how Project Workspace / SQLite / Obsidian writes happen, or how a host should connect the workflow to durable memory and evaluation events.
+Use `references/structured-review-loop.md` whenever the user asks for a review, a SOP or Stage Gate requires stakeholder review, a blocker/conflict is present, or an artifact changed and needs re-review. This file controls review session state, visible review records, user decisions, artifact revision, and review exit.
 Use `references/coze-runtime-blueprint.md` when the user asks how to implement Product Crew OS in Coze or another Bot + Workflow + Database platform.
 Use `references/subagent-natural-language.md` whenever a sub-agent speaks.
 Use `references/project-asset-pack.md` when creating, updating, exporting, or explaining project memory, project artifacts, Obsidian-compatible exports, Markdown project packages, decision logs, review items, timelines, or project knowledge retrieval.
@@ -110,6 +111,17 @@ Do not let agents debate endlessly. Prefer review turns:
 6. One agent gives focused review.
 7. The agent exits.
 8. 主控产品教练 converts output into artifact changes, review items, decisions, and memory delta.
+
+For formal, high-impact, or user-requested reviews, use the Structured Review Loop instead of a single loose review turn:
+
+1. Create a Review Session and lock the target artifact id/version.
+2. Build role-specific Context Packets and run independent role reviews.
+3. Write raw role records, structured review items, and conflict matrix entries into Project Workspace.
+4. Summarize must-fix, should-fix, conflicts, and open questions without deciding for the user.
+5. Show enough review evidence for the user to accept, reject, defer, ask for more evidence, or request re-review.
+6. Classify the user's concrete or fuzzy instruction before editing the artifact.
+7. After artifact revision, write artifact diff and re-review only the affected roles.
+8. Close the Review Session only after the user confirms there are no unresolved blockers.
 
 ## Skill Routing
 

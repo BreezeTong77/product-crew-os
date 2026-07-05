@@ -11,7 +11,7 @@ Project Asset Pack 是 Product Crew OS 的项目级知识库形态。
 ```text
 Project Workspace = 运行时事实源
 Project Asset Pack = 用户可读项目知识库
-Obsidian / Notion / 飞书 / Word / PDF = 可选导出目标
+Obsidian / Notion / 飞书 / Word / Excel / PPTX / PDF / PNG = 可选导出目标
 ```
 
 主控教练必须把项目推进中已经收束的关键内容写入项目资产包，避免重要产物只停留在聊天气泡中。
@@ -24,22 +24,27 @@ Product Crew OS 的唯一事实源仍然是 Project Workspace：
 - `artifact-index.yaml`
 - `timeline.md`
 - `decision-log.md`
+- `review-sessions/`
+- `raw-review-records/`
 - `review-items.yaml`
 - `risk-log.md`
 - `next-actions.md`
+- `conflict-matrix.md`
+- `open-questions.md`
+- `artifact-diff.md`
 - `source-ledger.md`
 - `agent-memory/`
 - `event-log.jsonl`
 - `checkpoints/`
 
-Obsidian-compatible Vault、Markdown ZIP、Word、PDF、Notion、飞书文档都是导出或镜像，不反向替代 Project Workspace。
+Obsidian-compatible Vault、Markdown ZIP、Word、Excel、PPTX、PNG、PDF、Notion、飞书文档都是导出或镜像，不反向替代 Project Workspace。
 
 Machine-checkable contract:
 
 - Project Workspace remains source of truth.
 - Markdown project package is the default portable form.
 - Obsidian-compatible export is optional.
-- artifact index, timeline, decision log, review items, risk log, next actions, source ledger, event log, checkpoints, and export manifest are the core project asset surfaces.
+- artifact index, timeline, decision log, review sessions, raw review records, review items, conflict matrix, open questions, artifact diff, risk log, next actions, source ledger, event log, checkpoints, and export manifest are the core project asset surfaces.
 
 ## 3. 应沉淀什么
 
@@ -47,6 +52,7 @@ Machine-checkable contract:
 
 - 阶段性 artifact：项目卡、问题定义、调研计划、MVP 范围、PRD、上线清单、复盘。
 - 已收束评审：review summary、accepted/rejected items、decision log。
+- 评审全记录：review session、原始角色评审、冲突矩阵、用户决策和复评结果。
 - 阶段门结果：通过、条件通过、未通过、回退原因。
 - 项目时间线：关键推进节点、阶段变化、重要产物版本。
 - 下一步：owner、deadline、依赖、阻塞。
@@ -54,6 +60,15 @@ Machine-checkable contract:
 - 事件日志：重要写入、导出、阶段门变化和回滚事件。
 - checkpoint：阶段通过、关键产物定版、评审收束后的恢复点。
 - 角色项目记忆摘要：各角色在本项目中的关注点、历史 objection、已解决/未解决问题。
+
+### 外部材料反哺样例（邮件截图 / 纪要截图 / 客户通信）
+
+同事邮件截图、会议纪要截图、客服对话这类外部材料不直接写入当前会话上下文，也不写入角色的长期原文记忆。标准沉淀路径：
+
+- `source-ledger.md`：先写 `source_ref`（来源、时间、置信度、脱敏范围）；
+- `decision-log.md` / `review-items.yaml`：该材料作为依据时，记录关联的决策与争议；
+- `project-state.json`：补充本次引用的 `evidence_refs`（引用索引），不写全文；
+- `agent-memory/{role}.md`：仅在用户授权后，写“语气/偏好/常见卡点”等可复用摘要。
 
 默认不沉淀：
 
@@ -77,11 +92,12 @@ Machine-checkable contract:
 | Project Created | 创建项目目录、`project-state.json`、`project-home.md`、`artifact-index.yaml` |
 | Artifact Created | 写入 artifact，并更新 `artifact-index.yaml` 与 `timeline.md` |
 | Artifact Revised | 更新版本、状态、来源和修改摘要 |
-| Review Closed | 更新 `timeline.md`、`decision-log.md`、`review-items.yaml`、`next-actions.md`、`export-manifest.yaml` 和对应 review artifact |
+| Review Opened | 创建 `review-session.md`，记录 artifact 版本、参与角色和 context packet 引用 |
+| Review Closed | 更新 `timeline.md`、`decision-log.md`、`review-items.yaml`、`conflict-matrix.md`、`open-questions.md`、`artifact-diff.md`、`next-actions.md`、`export-manifest.yaml` 和对应 review artifact |
 | Stage Gate Passed | 更新 `project-state.json`、`timeline.md`、`decision-log.md`、`next-actions.md` |
 | Stage Gate Blocked | 更新 `risk-log.md`、`review-items.yaml`、`next-actions.md` |
 | Agent Memory Delta | 更新 `agent-memory/{role_key}.md`，只写项目相关摘要 |
-| User Export Requested | 生成 Markdown / Word / PDF / Obsidian-compatible 导出包 |
+| User Export Requested | 生成 Markdown / Word / Excel / PPTX / PNG / PDF / Obsidian-compatible 导出包 |
 
 ## 5. 44 个 SOP 的沉淀策略
 
@@ -109,7 +125,12 @@ Machine-checkable contract:
 | `artifact-index.yaml` | 所有 artifact 的 id、stage、sop、版本、状态和路径 |
 | `timeline.md` | 项目推进时间线、阶段变化、关键里程碑 |
 | `decision-log.md` | 已确认决策、理由、影响、验证点 |
+| `review-sessions/` | 每次结构化评审会的对象、版本、角色和状态 |
+| `raw-review-records/` | 每个角色的原始评审输出，按 review session 分组 |
 | `review-items.yaml` | 子 Agent / 人类评审意见、状态、采纳与否 |
+| `conflict-matrix.md` | 角色意见冲突、主控建议和用户决策 |
+| `open-questions.md` | 缺证据、待确认、不能靠主控推断的问题 |
+| `artifact-diff.md` | 根据评审修改 artifact 的版本差异 |
 | `risk-log.md` | 风险、阻塞、owner、缓解方案 |
 | `next-actions.md` | 下一步动作、负责人、截止时间、依赖 |
 | `source-ledger.md` | 结论来源、会议/访谈/用户确认的引用位置 |
@@ -150,7 +171,12 @@ Product Crew OS Vault/
         artifact-index.yaml
         timeline.md
         decision-log.md
+        review-sessions/
+        raw-review-records/
         review-items.yaml
+        conflict-matrix.md
+        open-questions.md
+        artifact-diff.md
         risk-log.md
         next-actions.md
         source-ledger.md

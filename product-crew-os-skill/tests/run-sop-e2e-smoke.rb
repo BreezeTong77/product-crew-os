@@ -147,31 +147,34 @@ Dir.mktmpdir("pco-sop-e2e-") do |dir|
     "--output-dir", obsidian_dir
   )
 
-  expected_counts = {
-    "projects" => 1,
-    "stages" => 44,
-    "sop_runs" => 44,
-    "skill_runs" => 44,
-    "artifacts" => 44,
-    "artifact_versions" => 44
-  }
+	  expected_counts = {
+	    "projects" => 1,
+	    "stages" => 44,
+	    "sop_runs" => 44,
+	    "skill_runs" => 44,
+	    "artifacts" => 44,
+	    "artifact_versions" => 44,
+	    "review_sessions" => 44
+	  }
   expected_counts.each do |table, expected_count|
     actual_count = query_count(db, table)
     raise "#{table} expected #{expected_count}, got #{actual_count}" unless actual_count == expected_count
   end
 
-  %w[context_packets agent_invocations review_items fts_documents events].each do |table|
-    actual_count = query_count(db, table)
-    raise "#{table} expected at least 44, got #{actual_count}" if actual_count < 44
-  end
+	  %w[context_packets agent_invocations raw_review_records review_items fts_documents events].each do |table|
+	    actual_count = query_count(db, table)
+	    raise "#{table} expected at least 44, got #{actual_count}" if actual_count < 44
+	  end
 
   {
     "stage_detected" => 44,
     "skill_selected" => 44,
-    "stage_gate_decision" => 44,
-    "agent_summoned" => 44,
-    "memory_snapshot_built" => 44
-  }.each do |event_type, minimum_count|
+	    "stage_gate_decision" => 44,
+	    "agent_summoned" => 44,
+	    "memory_snapshot_built" => 44,
+	    "review_session_opened" => 44,
+	    "raw_review_record_written" => 44
+	  }.each do |event_type, minimum_count|
     actual_count = event_count(db, event_type)
     raise "#{event_type} expected at least #{minimum_count}, got #{actual_count}" if actual_count < minimum_count
   end
@@ -187,9 +190,11 @@ Dir.mktmpdir("pco-sop-e2e-") do |dir|
   exported_artifacts = Dir[File.join(obsidian_dir, "Projects", "sop-e2e-smoke", "**", "*.md")]
   raise "expected exported Obsidian markdown files, got 0" if exported_artifacts.empty?
 
-  flow_dirs = Dir[File.join(obsidian_dir, "Projects", "sop-e2e-smoke", "[0-9][0-9]_*")].select { |path| File.directory?(path) }
-  non_empty_flow_dirs = flow_dirs.select { |path| Dir[File.join(path, "*.md")].any? }
-  raise "expected artifacts across 10 product flow directories, got #{non_empty_flow_dirs.length}" unless non_empty_flow_dirs.length == 10
-end
+	  flow_dirs = Dir[File.join(obsidian_dir, "Projects", "sop-e2e-smoke", "[0-9][0-9]_*")].select { |path| File.directory?(path) }
+	  non_empty_flow_dirs = flow_dirs.select { |path| Dir[File.join(path, "*.md")].any? }
+	  raise "expected artifacts across 10 product flow directories, got #{non_empty_flow_dirs.length}" unless non_empty_flow_dirs.length == 10
+	  raise "expected exported review sessions" unless Dir[File.join(obsidian_dir, "Projects", "sop-e2e-smoke", "_项目账本", "review-sessions", "*.md")].any?
+	  raise "expected exported raw review records" unless Dir[File.join(obsidian_dir, "Projects", "sop-e2e-smoke", "_项目账本", "raw-review-records", "**", "*.md")].any?
+	end
 
 puts "run-sop-e2e-smoke: PASS"
