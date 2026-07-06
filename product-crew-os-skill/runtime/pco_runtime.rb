@@ -137,11 +137,12 @@ class ProductCrewRuntime
     ensure_project!(project_id)
     now = timestamp
     review_item_id = id("ri")
+    resolved_reviewer_name = reviewer_name.to_s.empty? && !role_key.to_s.empty? ? persona_display_name(role_key) : reviewer_name
     exec_sql(<<~SQL)
       INSERT INTO review_items
         (review_item_id, project_id, artifact_id, stage_id, role_key, reviewer_name, comment, recommendation, status, source_ref, created_at, updated_at)
       VALUES
-        (#{q(review_item_id)}, #{q(project_id)}, #{q(artifact_id)}, #{q(stage_id)}, #{q(role_key)}, #{q(reviewer_name)}, #{q(comment)}, #{q(recommendation)}, #{q(status)}, #{q(source_ref)}, #{q(now)}, #{q(now)});
+        (#{q(review_item_id)}, #{q(project_id)}, #{q(artifact_id)}, #{q(stage_id)}, #{q(role_key)}, #{q(resolved_reviewer_name)}, #{q(comment)}, #{q(recommendation)}, #{q(status)}, #{q(source_ref)}, #{q(now)}, #{q(now)});
     SQL
     upsert_fts(project_id, "review_item", review_item_id, "#{role_key} review", [comment, recommendation].join("\n"), source_ref)
     record_event(project_id, "review_item_written", { review_item_id: review_item_id, role_key: role_key, status: status })
@@ -185,7 +186,7 @@ class ProductCrewRuntime
     ensure_project!(project_id)
     now = timestamp
     record_id = id("rr")
-    rel_path = File.join("raw-review-records", session_id, "#{safe_slug(role_key)}.md")
+    rel_path = File.join("raw-review-records", session_id, "#{safe_file_stem(role_key)}.md")
     abs_path = File.join(project_dir(project_id), rel_path)
     FileUtils.mkdir_p(File.dirname(abs_path))
     record_body = raw_review_markdown(
@@ -309,30 +310,42 @@ class ProductCrewRuntime
     payload
   end
 
-  def record_invocation(project_id:, role_key:, display_name: "", runtime_agent_id: "", context_packet_id: "", real: false, result: "", emit: true)
+  def record_invocation(project_id:, role_key:, role_title: "", display_name: "", runtime_agent_id: "", runtime_nickname: "", context_packet_id: "", real: false, result: "", emit: true)
     ensure_project!(project_id)
     now = timestamp
     invocation_id = id("inv")
+    resolved_role_title = role_title.to_s.empty? ? persona_role_title(role_key) : role_title
+    resolved_display_name = display_name.to_s.empty? ? persona_display_name(role_key) : display_name
     exec_sql(<<~SQL)
       INSERT INTO agent_invocations
-        (invocation_id, project_id, role_key, display_name, runtime_agent_id, context_packet_id, real_invocation_performed, simulation_label_used, result, created_at)
+        (invocation_id, project_id, role_key, role_title, display_name, runtime_agent_id, runtime_nickname, context_packet_id, real_invocation_performed, simulation_label_used, result, created_at)
       VALUES
-        (#{q(invocation_id)}, #{q(project_id)}, #{q(role_key)}, #{q(display_name)}, #{q(runtime_agent_id)}, #{q(context_packet_id)}, #{real ? 1 : 0}, #{real ? 0 : 1}, #{q(result)}, #{q(now)});
+        (#{q(invocation_id)}, #{q(project_id)}, #{q(role_key)}, #{q(resolved_role_title)}, #{q(resolved_display_name)}, #{q(runtime_agent_id)}, #{q(runtime_nickname)}, #{q(context_packet_id)}, #{real ? 1 : 0}, #{real ? 0 : 1}, #{q(result)}, #{q(now)});
     SQL
-    record_event(project_id, "agent_invocation_recorded", { invocation_id: invocation_id, role_key: role_key, real: real })
+    record_event(project_id, "agent_invocation_recorded", { invocation_id: invocation_id, role_key: role_key, role_title: resolved_role_title, display_name: resolved_display_name, runtime_nickname: runtime_nickname, real: real })
     record_event(
       project_id,
       "agent_summoned",
       {
         invocation_id: invocation_id,
         role_key: role_key,
+        role_title: resolved_role_title,
+        display_name: resolved_display_name,
         runtime_agent_id: runtime_agent_id,
+        runtime_nickname: runtime_nickname,
         real_invocation_performed: real,
         simulation_label_used: !real,
         context_packet_id: context_packet_id
       }
     )
-    payload = { invocation_id: invocation_id }
+    payload = {
+      invocation_id: invocation_id,
+      role_key: role_key,
+      role_title: resolved_role_title,
+      display_name: resolved_display_name,
+      runtime_agent_id: runtime_agent_id,
+      runtime_nickname: runtime_nickname
+    }
     puts_json(payload) if emit
     payload
   end
@@ -454,6 +467,7 @@ class ProductCrewRuntime
       )
     end
     roles.each do |role_key|
+      display_name = persona_display_name(role_key)
       packet = build_context_packet(
         project_id: project_id,
         role_key: role_key,
@@ -466,8 +480,9 @@ class ProductCrewRuntime
       invocation = record_invocation(
         project_id: project_id,
         role_key: role_key,
-        display_name: role_key,
+        display_name: display_name,
         runtime_agent_id: "",
+        runtime_nickname: "",
         context_packet_id: packet[:packet_id],
         real: false,
         result: "runtime_adapter_recorded_context",
@@ -478,8 +493,8 @@ class ProductCrewRuntime
         artifact_id: artifact[:artifact_id],
         stage_id: stage_id,
         role_key: role_key,
-        reviewer_name: role_key,
-        comment: "Runtime adapter recorded #{role_key} review context for #{stage_id}.",
+        reviewer_name: display_name,
+        comment: "Runtime adapter recorded #{display_name} (#{role_key}) review context for #{stage_id}.",
         recommendation: "Use a real sub-agent invocation when the host environment provides one; otherwise keep the simulated-perspective label.",
         status: "open",
         source_ref: "runtime-adapter:#{sop_run_id}",
@@ -495,7 +510,7 @@ class ProductCrewRuntime
           context_packet_id: packet[:packet_id],
           invocation_id: invocation[:invocation_id],
           conclusion: "advice_only",
-          raw_review: "Runtime adapter recorded #{role_key} independent review for #{artifact_name}. Host runtimes with real sub-agents should replace this with the actual raw review output.",
+          raw_review: "Runtime adapter recorded #{display_name} (#{role_key}) independent review for #{artifact_name}. Host runtimes with real sub-agents should replace this with the actual raw review output.",
           emit: false
         )
       end
@@ -551,6 +566,19 @@ class ProductCrewRuntime
   def apply_schema
     schema_path = File.expand_path("db/schema.sql", __dir__)
     exec_sql(File.read(schema_path))
+    migrate_schema!
+  end
+
+  def migrate_schema!
+    ensure_column("agent_invocations", "role_title", "TEXT DEFAULT ''")
+    ensure_column("agent_invocations", "runtime_nickname", "TEXT DEFAULT ''")
+  end
+
+  def ensure_column(table, column, definition)
+    columns = query("PRAGMA table_info(#{table});").map { |row| row.fetch("name") }
+    return if columns.include?(column)
+
+    exec_sql("ALTER TABLE #{table} ADD COLUMN #{column} #{definition};")
   end
 
   def sqlite_args
@@ -738,8 +766,36 @@ class ProductCrewRuntime
     slug.empty? ? "untitled" : slug
   end
 
+  def safe_file_stem(value)
+    stem = value.to_s.strip.gsub(/[^0-9a-zA-Z\p{Han}_-]+/u, "-").gsub(/-+/, "-").gsub(/^-|-$/, "")
+    stem.empty? ? "untitled" : stem
+  end
+
   def split_roles(value)
     value.to_s.split(/[,\n;]/).map(&:strip).reject(&:empty?).uniq
+  end
+
+  def persona_by_role_key
+    @persona_by_role_key ||= begin
+      config_path = File.expand_path("../config/crew-personas.yaml", __dir__)
+      personas = File.exist?(config_path) ? YAML.load_file(config_path).fetch("personas", {}) : {}
+      personas.values.each_with_object({}) do |persona, memo|
+        role_key = persona.fetch("role_key", "").to_s
+        memo[role_key] = persona unless role_key.empty?
+      end
+    end
+  end
+
+  def persona(role_key)
+    persona_by_role_key.fetch(role_key.to_s, {})
+  end
+
+  def persona_display_name(role_key)
+    persona(role_key).fetch("display_name", role_key.to_s)
+  end
+
+  def persona_role_title(role_key)
+    persona(role_key).fetch("title", role_key.to_s)
   end
 
   def infer_macro_stage(stage_id)
@@ -815,11 +871,11 @@ class ProductCrewRuntime
       "",
       "## 参与角色",
       "",
-      "| role_key | role_type |",
-      "| --- | --- |"
+      "| role_key | 角色 | 显示名 | role_type |",
+      "| --- | --- | --- | --- |"
     ]
-    required_roles.each { |role| lines << "| #{role} | required |" }
-    triggered_roles.each { |role| lines << "| #{role} | triggered |" }
+    required_roles.each { |role| lines << "| #{role} | #{persona_role_title(role)} | #{persona_display_name(role)} | required |" }
+    triggered_roles.each { |role| lines << "| #{role} | #{persona_role_title(role)} | #{persona_display_name(role)} | triggered |" }
     lines += [
       "",
       "## 评审规则",
@@ -833,11 +889,21 @@ class ProductCrewRuntime
   end
 
   def raw_review_markdown(record_id:, session_id:, project_id:, role_key:, artifact_id:, context_packet_id:, invocation_id:, conclusion:, raw_review:)
+    invocation = invocation_id.to_s.empty? ? nil : query_one("SELECT role_title, display_name, runtime_agent_id, runtime_nickname FROM agent_invocations WHERE invocation_id = #{q(invocation_id)};")
+    role_title = invocation ? invocation["role_title"].to_s : persona_role_title(role_key)
+    display_name = invocation ? invocation["display_name"].to_s : persona_display_name(role_key)
+    runtime_agent_id = invocation ? invocation["runtime_agent_id"].to_s : ""
+    runtime_nickname = invocation ? invocation["runtime_nickname"].to_s : ""
     frontmatter = {
       "project_id" => project_id,
       "review_record_id" => record_id,
       "review_session_id" => session_id,
       "role_key" => role_key,
+      "role_title" => role_title,
+      "display_name" => display_name,
+      "runtime_agent_id" => runtime_agent_id,
+      "runtime_nickname" => runtime_nickname,
+      "runtime_nickname_policy" => "audit_only",
       "artifact_id" => artifact_id,
       "context_packet_id" => context_packet_id,
       "invocation_id" => invocation_id,
@@ -850,8 +916,11 @@ class ProductCrewRuntime
       frontmatter.to_yaml.sub(/\A---\n/, "").strip,
       "---",
       "",
-      "# Raw Review: #{role_key}",
+      "# Raw Review: #{display_name} / #{role_key}",
       "",
+      "- Role title: `#{role_title}`",
+      "- Display name: `#{display_name}`",
+      "- Runtime nickname: `#{runtime_nickname}` (audit only)",
       "- Review Session: `#{session_id}`",
       "- Artifact: `#{artifact_id}`",
       "- Context Packet: `#{context_packet_id}`",
@@ -1040,8 +1109,10 @@ when "record-invocation"
   runtime.record_invocation(
     project_id: require_option(options, "project_id"),
     role_key: require_option(options, "role_key"),
+    role_title: options["role_title"].to_s,
     display_name: options["display_name"].to_s,
     runtime_agent_id: options["runtime_agent_id"].to_s,
+    runtime_nickname: options["runtime_nickname"].to_s,
     context_packet_id: options["context_packet_id"].to_s,
     real: options["real"].to_s == "true",
     result: options["result"].to_s

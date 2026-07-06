@@ -187,6 +187,13 @@ Dir.mktmpdir("pco-sop-e2e-") do |dir|
   raise "expected fallback_used count #{fallback_used}, got #{fallback_count}" unless fallback_count == fallback_used
   raise "expected template_used count #{template_used}, got #{template_count}" unless template_count == template_used
 
+  known_roles = %w[Coach Biz Research CS Customer Design Tech Data QA Legal Ops].map { |role| "'#{role}'" }.join(",")
+  misbound_role_count = query_value(db, "SELECT COUNT(*) AS count FROM agent_invocations WHERE role_key IN (#{known_roles}) AND display_name = role_key;", "count")
+  raise "known crew roles should resolve display_name from crew-personas, got #{misbound_role_count} misbound invocations" unless misbound_role_count == 0
+
+  empty_role_title_count = query_value(db, "SELECT COUNT(*) AS count FROM agent_invocations WHERE role_key IN (#{known_roles}) AND role_title = '';", "count")
+  raise "known crew roles should persist role_title in invocation ledger, got #{empty_role_title_count} missing titles" unless empty_role_title_count == 0
+
   exported_artifacts = Dir[File.join(obsidian_dir, "Projects", "sop-e2e-smoke", "**", "*.md")]
   raise "expected exported Obsidian markdown files, got 0" if exported_artifacts.empty?
 

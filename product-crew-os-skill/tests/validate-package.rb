@@ -77,9 +77,13 @@ required_files = [
   "templates/artifacts/test-scenario-library.md",
   "tests/evaluation-test-plan.md",
   "tests/prompt-eval-cases.yaml",
+  "tests/badcase-loop-50.md",
+  "tests/test-ledger.md",
+  "tests/test-ledger-schema.sql",
   "tests/run-external-benchmark.rb",
   "tests/run-runtime-smoke.rb",
-  "tests/run-sop-e2e-smoke.rb"
+  "tests/run-sop-e2e-smoke.rb",
+  "tests/run-loop-50-cases.rb"
 ]
 
 required_files.each do |relative_path|

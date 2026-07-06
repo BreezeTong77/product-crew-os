@@ -448,6 +448,7 @@ ruby product-crew-os-skill/tests/run-regression.rb --mock-delegate --check-only
 ruby product-crew-os-skill/tests/run-external-benchmark.rb
 ruby product-crew-os-skill/tests/run-runtime-smoke.rb
 ruby product-crew-os-skill/tests/run-sop-e2e-smoke.rb
+ruby product-crew-os-skill/tests/run-loop-50-cases.rb
 ```
 
 预期输出：
@@ -458,6 +459,7 @@ run-regression: PASS
 run-external-benchmark: PASS
 run-runtime-smoke: PASS
 run-sop-e2e-smoke: PASS
+run-loop-50-cases: PASS
 ```
 
 `validate-package.rb` 会检查配置、模板和回归场景是否齐全；`run-regression.rb` 会用 mock delegate 验证真实子 Agent 调用 ledger、模拟视角降级、memory_snapshot / memory delta、非产品任务退出机制，以及 Project Asset Pack 的持久化、可选导出和记忆边界。
@@ -469,6 +471,8 @@ run-sop-e2e-smoke: PASS
 `run-sop-e2e-smoke.rb` 会遍历 44 个 SOP prompt case，解析 Stage / Skill Router，读取本地内置 skill 的 `SKILL.md`，通过 `record-turn` 写入 SQLite，并检查 `sop_runs`、`skill_runs`、`artifacts`、`context_packets`、`agent_invocations`、`review_items` 和 Obsidian 导出是否真实产生记录。
 
 它还会检查 `stage_detected`、`skill_selected`、`memory_snapshot_built`、`agent_summoned` 和 `stage_gate_decision` 这些指标事件，避免“流程看起来跑了，但没有可观测数据”。
+
+`run-loop-50-cases.rb` 会用 loop 方法跑 50 个 case：44 个标准 SOP 基准用例，加上非产品退出、子 Agent 身份绑定、raw review 可见、团队风格授权、项目资产包导出和用户决策闭环 6 个高风险 Bad Case。它默认启用本地 SQLite 测试账本，已通过且指纹未变化的 case 会显示 `SKIP_PASS`，不用重复执行；发布前可用 `ruby product-crew-os-skill/tests/run-loop-50-cases.rb --force` 强制全量重跑。详细档案见 [50 个 Loop 测试与 Bad Case 档案](product-crew-os-skill/tests/badcase-loop-50.md)，账本说明见 [测试用例与 Bad Case 数据库](product-crew-os-skill/tests/test-ledger.md)。
 
 如果 `validate-package: PASS`，说明当前 release 包具备完整部署所需的本地文件：入口规则、配置、SOP、模板、回归场景、第三方声明和内置 PM skill pack 都已就绪。
 

@@ -17,9 +17,12 @@
 | L1 | Rule Regression | 子 Agent 调用契约、记忆、非产品退出、项目资产包 | `run-regression.rb` + `tests/scenarios/` |
 | L2 | Prompt Eval | 44 个 SOP 的用户输入、stage、skill、artifact、agent、gate | `prompt-eval-cases.yaml` |
 | L3 | External Benchmark | 第三方 PM benchmark 是否能被映射到 stage / skill / artifact / gate | `run-external-benchmark.rb` |
-| L4 | Team Memory Eval | 团队角色记忆是否读取、注入、引用、回写和隔离 | `subagent-memory-runtime.yaml` + `memory-resume-after-context-loss.yaml` |
-| L5 | Human Review | 评估回答是否像产品办公室、是否能用于真实工作 | 人工抽检 |
-| L6 | Bad Case Evolution | 用户纠偏和失败是否进入测试集 | `evolution-notes.md` + 新 scenario |
+| L4 | Runtime Smoke | SQLite runtime、项目资产包、Context Packet、Obsidian-compatible 导出是否可运行 | `run-runtime-smoke.rb` |
+| L5 | SOP E2E Smoke | 44 个 SOP 是否能真实写入 runtime，并产生可观测记录 | `run-sop-e2e-smoke.rb` |
+| L6 | Loop 50 Bad Case | 44 个 SOP + 6 个高风险 Bad Case 是否闭环通过，是否写入测试账本 | `run-loop-50-cases.rb` + `badcase-loop-50.md` + `test-ledger.md` |
+| L7 | Team Memory Eval | 团队角色记忆是否读取、注入、引用、回写和隔离 | `subagent-memory-runtime.yaml` + `memory-resume-after-context-loss.yaml` |
+| L8 | Human Review | 评估回答是否像产品办公室、是否能用于真实工作 | 人工抽检 |
+| L9 | Bad Case Evolution | 用户纠偏和失败是否进入测试集 | `evolution-notes.md` + 新 scenario |
 
 ## 2. 发布前最小测试命令
 
@@ -27,6 +30,9 @@
 ruby product-crew-os-skill/tests/validate-package.rb
 ruby product-crew-os-skill/tests/run-regression.rb --mock-delegate --check-only
 ruby product-crew-os-skill/tests/run-external-benchmark.rb
+ruby product-crew-os-skill/tests/run-runtime-smoke.rb
+ruby product-crew-os-skill/tests/run-sop-e2e-smoke.rb
+ruby product-crew-os-skill/tests/run-loop-50-cases.rb
 ```
 
 通过标准：
@@ -34,6 +40,9 @@ ruby product-crew-os-skill/tests/run-external-benchmark.rb
 - `validate-package: PASS`
 - `run-regression: PASS`
 - `run-external-benchmark: PASS`
+- `run-runtime-smoke: PASS`
+- `run-sop-e2e-smoke: PASS`
+- `run-loop-50-cases: PASS`
 - `prompt-eval-cases.yaml` 至少包含 44 个 case。
 - 每个 case 必须有 `stage_id`、`user_input`、`expected.primary_skill`、`expected.required_artifacts`、`expected.stage_gate`。
 
@@ -94,8 +103,53 @@ source:
 - 至少 1 条低置信度澄清 case。
 - 至少 1 条 primary skill 不可用后的 fallback case。
 - 至少 1 条项目记忆恢复 case。
+- 至少 1 组 loop 50 case，用来锁定近期高风险 Bad Case：非产品退出、角色名绑定、raw review、团队风格授权、项目资产包导出、用户决策闭环。
 
-## 6. 团队记忆测试
+## 6. 50 个 Loop 测试
+
+`run-loop-50-cases.rb` 是当前发布前的综合 loop runner。它不是单纯检查文件存在，而是把 44 个 SOP prompt case 逐条写入 runtime，并额外验证 6 个高风险 Bad Case。
+
+它默认启用本地 SQLite 测试账本：
+
+```text
+tests/results/product-crew-os-test-ledger.sqlite3
+```
+
+如果 case 上次已通过，且输入、runner、runtime、schema、README、结构化评审规则和团队风格授权规则等指纹没有变化，本轮会标记为 `SKIP_PASS`，不重复执行。
+
+执行命令：
+
+```bash
+ruby product-crew-os-skill/tests/run-loop-50-cases.rb
+```
+
+发布前强制全量重跑：
+
+```bash
+ruby product-crew-os-skill/tests/run-loop-50-cases.rb --force
+```
+
+输出位置：
+
+```text
+tests/results/loop-50-cases-latest.md
+```
+
+可提交档案：
+
+```text
+tests/badcase-loop-50.md
+```
+
+通过标准：
+
+- 50/50 case 通过。
+- 已通过且指纹未变化的 case 可以 `SKIP_PASS`。
+- 44 个 SOP 都能产生 artifact、review session、context packet、invocation ledger 和 raw review record。
+- 已知 Bad Case 不复发。
+- 如果出现失败，必须修正规则或代码后重新运行，不能只修改报告。
+
+## 7. 团队记忆测试
 
 团队记忆是否成功，不看底层子 Agent 聊天窗口是否自带长期记忆，而看主控教练是否完成：
 
@@ -125,7 +179,7 @@ source:
 - 有 `scope`，且只写入 project / user overlay / product rule 中正确的一类。
 - 如果没有历史记忆，必须说明为空，不能编造。
 
-## 7. 第三方 Benchmark 接入
+## 8. 第三方 Benchmark 接入
 
 `run-external-benchmark.rb` 可读取第三方 PM benchmark 目录，默认使用内置 `third_party/skills/pm-workbench/benchmark`。
 
@@ -150,7 +204,7 @@ tests/results/external-benchmark-YYYYMMDD-HHMMSS/
 ruby product-crew-os-skill/tests/run-external-benchmark.rb /path/to/external/benchmark /path/to/output
 ```
 
-## 8. 后续自动化方向
+## 9. 后续自动化方向
 
 当前 `prompt-eval-cases.yaml` 是测试数据源。下一步可以新增一个 runner：
 

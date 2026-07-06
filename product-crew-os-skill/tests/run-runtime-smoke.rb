@@ -42,7 +42,7 @@ Dir.mktmpdir("pco-runtime-smoke") do |dir|
 
   parallel = [
     [ruby, runtime, "write-decision", "--workspace", workspace, "--db", db, "--project-id", project_id, "--title", "Runtime MVP", "--decision", "Ship SQLite runtime first.", "--stage-id", "requirement_analysis", "--rationale", "Memory must be executable, not only described.", "--source-ref", "smoke:decision"],
-    [ruby, runtime, "write-review-item", "--workspace", workspace, "--db", db, "--project-id", project_id, "--role-key", "Tech", "--reviewer-name", "Tech Reviewer", "--comment", "Check write failure visibility.", "--recommendation", "Exit non-zero and keep event trail.", "--stage-id", "requirement_analysis", "--source-ref", "smoke:review"],
+    [ruby, runtime, "write-review-item", "--workspace", workspace, "--db", db, "--project-id", project_id, "--role-key", "Tech", "--reviewer-name", "张工", "--comment", "Check write failure visibility.", "--recommendation", "Exit non-zero and keep event trail.", "--stage-id", "requirement_analysis", "--source-ref", "smoke:review"],
     [ruby, runtime, "write-agent-memory", "--workspace", workspace, "--db", db, "--project-id", project_id, "--role-key", "Tech", "--summary", "Tech watches database writes, rollback, and error visibility.", "--source-ref", "smoke:review", "--confidence", "confirmed"]
   ]
 
@@ -52,6 +52,25 @@ Dir.mktmpdir("pco-runtime-smoke") do |dir|
 
 	  packet = run_cmd(errors, ruby, runtime, "build-context-packet", "--workspace", workspace, "--db", db, "--project-id", project_id, "--role-key", "Tech", "--stage-id", "requirement_analysis", "--review-question", "Check runtime MVP risk")
 	  assert(errors, File.exist?(packet["path"].to_s), "runtime did not write context packet")
+
+	  invocation = run_cmd(
+	    errors,
+	    ruby,
+	    runtime,
+	    "record-invocation",
+	    "--workspace", workspace,
+	    "--db", db,
+	    "--project-id", project_id,
+	    "--role-key", "Tech",
+	    "--runtime-agent-id", "agent-runtime-001",
+	    "--runtime-nickname", "Faraday",
+	    "--context-packet-id", packet["packet_id"].to_s,
+	    "--real", "true",
+	    "--result", "block"
+	  )
+	  assert(errors, invocation["display_name"] == "张工", "real invocation did not resolve Tech display_name from crew-personas")
+	  assert(errors, invocation["role_title"] == "技术负责人", "real invocation did not resolve Tech role_title from crew-personas")
+	  assert(errors, invocation["runtime_nickname"] == "Faraday", "real invocation did not preserve runtime_nickname as audit metadata")
 
 	  turn = run_cmd(
 	    errors,
@@ -94,6 +113,15 @@ Dir.mktmpdir("pco-runtime-smoke") do |dir|
   else
     errors << "sqlite count query failed: #{stderr}"
   end
+
+	  stdout, stderr, status = Open3.capture3("sqlite3", "-json", db, "SELECT role_key, role_title, display_name, runtime_agent_id, runtime_nickname FROM agent_invocations;")
+	  if status.success?
+	    invocations = JSON.parse(stdout)
+	    assert(errors, invocations.any? { |row| row["role_key"] == "Tech" && row["display_name"] == "张工" && row["runtime_nickname"] == "Faraday" }, "invocation ledger did not keep runtime nickname separate from configured role")
+	    assert(errors, invocations.none? { |row| %w[Biz Tech Design].include?(row["role_key"]) && row["display_name"] == row["role_key"] }, "known crew role used role_key as user-facing display_name")
+	  else
+	    errors << "sqlite invocation query failed: #{stderr}"
+	  end
 end
 
 if errors.empty?
