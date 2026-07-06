@@ -472,7 +472,7 @@ run-loop-50-cases: PASS
 
 它还会检查 `stage_detected`、`skill_selected`、`memory_snapshot_built`、`agent_summoned` 和 `stage_gate_decision` 这些指标事件，避免“流程看起来跑了，但没有可观测数据”。
 
-`run-loop-50-cases.rb` 会用 loop 方法跑 50 个 case：44 个标准 SOP 基准用例，加上非产品退出、子 Agent 身份绑定、raw review 可见、团队风格授权、项目资产包导出和用户决策闭环 6 个高风险 Bad Case。它默认启用本地 SQLite 测试账本，已通过且指纹未变化的 case 会显示 `SKIP_PASS`，不用重复执行；发布前可用 `ruby product-crew-os-skill/tests/run-loop-50-cases.rb --force` 强制全量重跑。详细档案见 [50 个 Loop 测试与 Bad Case 档案](product-crew-os-skill/tests/badcase-loop-50.md)，账本说明见 [测试用例与 Bad Case 数据库](product-crew-os-skill/tests/test-ledger.md)。
+`run-loop-50-cases.rb` 会用 loop 方法跑 50 个 case：44 个标准 SOP 基准用例，加上非产品退出、子 Agent 身份绑定、raw review 可见、团队风格授权、项目资产包导出和用户决策闭环 6 个高风险 Bad Case。它默认启用本地 SQLite 测试账本，已通过且指纹未变化的 case 会显示 `SKIP_PASS`，不用重复执行；发布门禁必须使用 `ruby product-crew-os-skill/tests/run-loop-50-cases.rb --release-gate` 强制全量重跑，并要求 50 个 case 本次全部实际通过。详细档案见 [50 个 Loop 测试与 Bad Case 档案](product-crew-os-skill/tests/badcase-loop-50.md)，账本说明见 [测试用例与 Bad Case 数据库](product-crew-os-skill/tests/test-ledger.md)。
 
 如果 `validate-package: PASS`，说明当前 release 包具备完整部署所需的本地文件：入口规则、配置、SOP、模板、回归场景、第三方声明和内置 PM skill pack 都已就绪。
 

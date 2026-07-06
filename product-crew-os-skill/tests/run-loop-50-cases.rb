@@ -10,16 +10,18 @@ require "time"
 require "tmpdir"
 require "yaml"
 
-RUNNER_VERSION = "loop-50-ledger-v1"
+RUNNER_VERSION = "loop-50-ledger-v2"
 
 skill_root = File.expand_path("..", __dir__)
 runtime = File.join(skill_root, "runtime", "pco_runtime.rb")
 prompt_eval_path = File.join(skill_root, "tests", "prompt-eval-cases.yaml")
 bundled_index_path = File.join(skill_root, "references", "bundled-skill-index.md")
 results_dir = File.join(skill_root, "tests", "results")
-report_path = File.join(results_dir, "loop-50-cases-latest.md")
 ledger_schema_path = File.join(skill_root, "tests", "test-ledger-schema.sql")
+original_argv = ARGV.dup
+release_gate = ARGV.delete("--release-gate")
 force = ARGV.delete("--force")
+force = true if release_gate
 no_ledger = ARGV.delete("--no-ledger")
 ledger_db_index = ARGV.index("--ledger-db")
 ledger_db = if ledger_db_index
@@ -32,6 +34,7 @@ else
   File.join(results_dir, "product-crew-os-test-ledger.sqlite3")
 end
 raise "unknown arguments: #{ARGV.join(" ")}" unless ARGV.empty?
+report_path = File.join(results_dir, force ? "loop-50-cases-latest-force.md" : "loop-50-cases-latest.md")
 ruby = RbConfig.ruby
 
 def run_cmd(*args)
@@ -51,6 +54,15 @@ end
 
 def query_value(db, sql, key = "count")
   query_json(db, sql).first&.fetch(key, nil)
+end
+
+def sqlite_version
+  run_cmd("sqlite3", "--version").split.first
+end
+
+def git_sha
+  stdout, _stderr, status = Open3.capture3("git", "rev-parse", "--short", "HEAD")
+  status.success? ? stdout.strip : "unknown"
 end
 
 def file_digest(path)
@@ -98,7 +110,7 @@ def markdown_table(rows)
   lines.join("\n")
 end
 
-def record_result(results:, ledger:, case_id:, case_type:, status:, badcase:, evidence:, case_hash:, source_ref:)
+def record_result(results:, ledger:, suite_run_id:, case_id:, case_type:, status:, badcase:, evidence:, case_hash:, source_ref:)
   results << {
     case_id: case_id,
     case_type: case_type,
@@ -107,6 +119,7 @@ def record_result(results:, ledger:, case_id:, case_type:, status:, badcase:, ev
     evidence: evidence
   }
   ledger.record_case(
+    suite_run_id: suite_run_id,
     case_id: case_id,
     suite: "loop-50-cases",
     case_type: case_type,
@@ -119,10 +132,11 @@ def record_result(results:, ledger:, case_id:, case_type:, status:, badcase:, ev
   )
 end
 
-def skip_result(results:, ledger:, case_id:, case_type:, badcase:, case_hash:, source_ref:)
+def skip_result(results:, ledger:, suite_run_id:, case_id:, case_type:, badcase:, case_hash:, source_ref:)
   record_result(
     results: results,
     ledger: ledger,
+    suite_run_id: suite_run_id,
     case_id: case_id,
     case_type: case_type,
     status: "SKIP_PASS",
@@ -143,6 +157,8 @@ class TestLedger
 
     FileUtils.mkdir_p(File.dirname(@db))
     sqlite(File.read(schema_path))
+    ensure_column("test_cases", "last_checked_at", "TEXT DEFAULT ''")
+    ensure_column("test_case_runs", "suite_run_id", "TEXT DEFAULT ''")
   end
 
   def disabled?
@@ -153,18 +169,60 @@ class TestLedger
     return false if disabled?
 
     rows = query("SELECT last_status, last_case_hash FROM test_cases WHERE case_id = #{q(case_id)} LIMIT 1;")
-    rows.first && %w[PASS SKIP_PASS].include?(rows.first["last_status"]) && rows.first["last_case_hash"] == hash
+    rows.first && rows.first["last_status"] == "PASS" && rows.first["last_case_hash"] == hash
   end
 
-  def record_case(case_id:, suite:, case_type:, title:, source_ref:, case_hash:, status:, evidence:, badcase:)
+  def start_suite_run(suite:, runner_version:, git_sha:, command:, force_rerun:, release_gate:, ruby_version:, sqlite_version:)
+    return "disabled" if disabled?
+
+    at = now_iso
+    suite_run_id = "suite_#{at}_#{SecureRandom.hex(4)}"
+    sqlite(<<~SQL)
+      INSERT INTO suite_runs
+        (suite_run_id, suite, runner_version, git_sha, command, force_rerun, release_gate, ruby_version, sqlite_version, status, started_at)
+      VALUES
+        (#{q(suite_run_id)}, #{q(suite)}, #{q(runner_version)}, #{q(git_sha)}, #{q(command)}, #{force_rerun ? 1 : 0}, #{release_gate ? 1 : 0}, #{q(ruby_version)}, #{q(sqlite_version)}, 'running', #{q(at)});
+    SQL
+    suite_run_id
+  end
+
+  def finish_suite_run(suite_run_id:, status:, total_count:, pass_count:, fail_count:, skip_count:, actual_executed_count:, report_path:)
+    return if disabled?
+
+    sqlite(<<~SQL)
+      UPDATE suite_runs
+      SET
+        status = #{q(status)},
+        total_count = #{total_count.to_i},
+        pass_count = #{pass_count.to_i},
+        fail_count = #{fail_count.to_i},
+        skip_count = #{skip_count.to_i},
+        actual_executed_count = #{actual_executed_count.to_i},
+        report_path = #{q(report_path)},
+        finished_at = #{q(now_iso)}
+      WHERE suite_run_id = #{q(suite_run_id)};
+    SQL
+  end
+
+  def record_case(suite_run_id:, case_id:, suite:, case_type:, title:, source_ref:, case_hash:, status:, evidence:, badcase:)
     return if disabled?
 
     at = now_iso
+    if status == "SKIP_PASS"
+      sqlite(<<~SQL)
+        UPDATE test_cases
+        SET
+          updated_at = #{q(at)},
+          last_checked_at = #{q(at)},
+          skip_count = skip_count + 1
+        WHERE case_id = #{q(case_id)};
+      SQL
+    else
     sqlite(<<~SQL)
       INSERT INTO test_cases
-        (case_id, suite, case_type, title, source_ref, created_at, updated_at, last_status, last_case_hash, last_evidence, last_run_at, pass_count, fail_count, skip_count)
+        (case_id, suite, case_type, title, source_ref, created_at, updated_at, last_status, last_case_hash, last_evidence, last_run_at, last_checked_at, pass_count, fail_count, skip_count)
       VALUES
-        (#{q(case_id)}, #{q(suite)}, #{q(case_type)}, #{q(title)}, #{q(source_ref)}, #{q(at)}, #{q(at)}, #{q(status)}, #{q(case_hash)}, #{q(evidence)}, #{q(at)}, #{status == "PASS" ? 1 : 0}, #{status == "FAIL" ? 1 : 0}, #{status == "SKIP_PASS" ? 1 : 0})
+        (#{q(case_id)}, #{q(suite)}, #{q(case_type)}, #{q(title)}, #{q(source_ref)}, #{q(at)}, #{q(at)}, #{q(status)}, #{q(case_hash)}, #{q(evidence)}, #{q(at)}, #{q(at)}, #{status == "PASS" ? 1 : 0}, #{status == "FAIL" ? 1 : 0}, 0)
       ON CONFLICT(case_id) DO UPDATE SET
         suite = excluded.suite,
         case_type = excluded.case_type,
@@ -175,15 +233,16 @@ class TestLedger
         last_case_hash = excluded.last_case_hash,
         last_evidence = excluded.last_evidence,
         last_run_at = excluded.last_run_at,
+        last_checked_at = excluded.last_checked_at,
         pass_count = test_cases.pass_count + CASE WHEN excluded.last_status = 'PASS' THEN 1 ELSE 0 END,
-        fail_count = test_cases.fail_count + CASE WHEN excluded.last_status = 'FAIL' THEN 1 ELSE 0 END,
-        skip_count = test_cases.skip_count + CASE WHEN excluded.last_status = 'SKIP_PASS' THEN 1 ELSE 0 END;
+        fail_count = test_cases.fail_count + CASE WHEN excluded.last_status = 'FAIL' THEN 1 ELSE 0 END;
     SQL
+    end
     sqlite(<<~SQL)
       INSERT INTO test_case_runs
-        (run_id, case_id, suite, case_type, case_hash, status, evidence, badcase, source_ref, started_at, finished_at)
+        (run_id, suite_run_id, case_id, suite, case_type, case_hash, status, evidence, badcase, source_ref, started_at, finished_at)
       VALUES
-        (#{q("run_#{at}_#{SecureRandom.hex(4)}_#{case_id}")}, #{q(case_id)}, #{q(suite)}, #{q(case_type)}, #{q(case_hash)}, #{q(status)}, #{q(evidence)}, #{q(badcase)}, #{q(source_ref)}, #{q(at)}, #{q(at)});
+        (#{q("run_#{at}_#{SecureRandom.hex(4)}_#{case_id}")}, #{q(suite_run_id)}, #{q(case_id)}, #{q(suite)}, #{q(case_type)}, #{q(case_hash)}, #{q(status)}, #{q(evidence)}, #{q(badcase)}, #{q(source_ref)}, #{q(at)}, #{q(at)});
     SQL
   end
 
@@ -211,15 +270,22 @@ class TestLedger
 
   private
 
+  def ensure_column(table, column, definition)
+    columns = query("PRAGMA table_info(#{table});").map { |row| row.fetch("name") }
+    return if columns.include?(column)
+
+    sqlite("ALTER TABLE #{table} ADD COLUMN #{column} #{definition};")
+  end
+
   def sqlite(sql)
-    stdout, stderr, status = Open3.capture3("sqlite3", @db, sql)
+    stdout, stderr, status = Open3.capture3("sqlite3", "-cmd", "PRAGMA foreign_keys = ON;", @db, sql)
     raise "ledger sqlite failed: #{stderr}\n#{stdout}" unless status.success?
 
     stdout
   end
 
   def query(sql)
-    stdout, stderr, status = Open3.capture3("sqlite3", "-json", @db, sql)
+    stdout, stderr, status = Open3.capture3("sqlite3", "-cmd", "PRAGMA foreign_keys = ON;", "-json", @db, sql)
     raise "ledger query failed: #{stderr}\n#{stdout}" unless status.success?
 
     stdout.strip.empty? ? [] : JSON.parse(stdout)
@@ -238,6 +304,7 @@ bundled_index = File.read(bundled_index_path)
 bundled = bundled_index.scan(/^\|\s*`([^`]+)`\s*\|\s*`([^`]+)`/).to_h
 signature_files = [
   __FILE__,
+  ledger_schema_path,
   runtime,
   File.join(skill_root, "runtime", "db", "schema.sql"),
   prompt_eval_path,
@@ -249,6 +316,16 @@ signature_files = [
   File.join(skill_root, "config", "crew-personas.yaml")
 ]
 ledger = TestLedger.new(db: ledger_db, schema_path: ledger_schema_path, disabled: no_ledger)
+suite_run_id = ledger.start_suite_run(
+  suite: "loop-50-cases",
+  runner_version: RUNNER_VERSION,
+  git_sha: git_sha,
+  command: "ruby product-crew-os-skill/tests/run-loop-50-cases.rb #{original_argv.join(" ")}".strip,
+  force_rerun: force,
+  release_gate: release_gate,
+  ruby_version: RUBY_VERSION,
+  sqlite_version: sqlite_version
+)
 
 [
   ["L45", "L45_non_product_task_exit", "非产品问题被强行套入 SOP", "用户问普通问题时系统仍进入 Product Crew OS 阶段流", "README / SOP 明确 Domain Gate，非产品任务退出 Product Crew OS", "run-loop-50-cases.rb"],
@@ -299,6 +376,7 @@ Dir.mktmpdir("pco-loop-50-") do |dir|
       skip_result(
         results: results,
         ledger: ledger,
+        suite_run_id: suite_run_id,
         case_id: case_id,
         case_type: "44 SOP 基准",
         badcase: "Stage/SOP/Skill/Artifact/Review Session 可写入",
@@ -360,6 +438,7 @@ Dir.mktmpdir("pco-loop-50-") do |dir|
       record_result(
         results: results,
         ledger: ledger,
+        suite_run_id: suite_run_id,
         case_id: case_id,
         case_type: "44 SOP 基准",
         status: "PASS",
@@ -373,6 +452,7 @@ Dir.mktmpdir("pco-loop-50-") do |dir|
       record_result(
         results: results,
         ledger: ledger,
+        suite_run_id: suite_run_id,
         case_id: case_id,
         case_type: "44 SOP 基准",
         status: "FAIL",
@@ -394,6 +474,7 @@ Dir.mktmpdir("pco-loop-50-") do |dir|
     skip_result(
       results: results,
       ledger: ledger,
+      suite_run_id: suite_run_id,
       case_id: case_id,
       case_type: "负例路由",
       badcase: "非产品问题被强行套 SOP",
@@ -406,6 +487,7 @@ Dir.mktmpdir("pco-loop-50-") do |dir|
   record_result(
     results: results,
     ledger: ledger,
+    suite_run_id: suite_run_id,
     case_id: case_id,
     case_type: "负例路由",
     status: non_product_ok ? "PASS" : "FAIL",
@@ -424,6 +506,7 @@ Dir.mktmpdir("pco-loop-50-") do |dir|
     skip_result(
       results: results,
       ledger: ledger,
+      suite_run_id: suite_run_id,
       case_id: case_id,
       case_type: "子 Agent 绑定",
       badcase: "运行时昵称覆盖产品角色名",
@@ -460,6 +543,7 @@ Dir.mktmpdir("pco-loop-50-") do |dir|
   record_result(
     results: results,
     ledger: ledger,
+    suite_run_id: suite_run_id,
     case_id: case_id,
     case_type: "子 Agent 绑定",
     status: role_binding_ok ? "PASS" : "FAIL",
@@ -479,6 +563,7 @@ Dir.mktmpdir("pco-loop-50-") do |dir|
     skip_result(
       results: results,
       ledger: ledger,
+      suite_run_id: suite_run_id,
       case_id: case_id,
       case_type: "结构化评审",
       badcase: "主控摘要替代子 Agent 原文",
@@ -509,6 +594,7 @@ Dir.mktmpdir("pco-loop-50-") do |dir|
   record_result(
     results: results,
     ledger: ledger,
+    suite_run_id: suite_run_id,
     case_id: case_id,
     case_type: "结构化评审",
     status: raw_review_ok ? "PASS" : "FAIL",
@@ -528,6 +614,7 @@ Dir.mktmpdir("pco-loop-50-") do |dir|
     skip_result(
       results: results,
       ledger: ledger,
+      suite_run_id: suite_run_id,
       case_id: case_id,
       case_type: "记忆边界",
       badcase: "同事材料未授权进入长期角色记忆",
@@ -545,6 +632,7 @@ Dir.mktmpdir("pco-loop-50-") do |dir|
   record_result(
     results: results,
     ledger: ledger,
+    suite_run_id: suite_run_id,
     case_id: case_id,
     case_type: "记忆边界",
     status: consent_ok ? "PASS" : "FAIL",
@@ -563,6 +651,7 @@ Dir.mktmpdir("pco-loop-50-") do |dir|
     skip_result(
       results: results,
       ledger: ledger,
+      suite_run_id: suite_run_id,
       case_id: case_id,
       case_type: "项目资产包",
       badcase: "项目资料只留在聊天框，未进入可读项目包",
@@ -580,6 +669,7 @@ Dir.mktmpdir("pco-loop-50-") do |dir|
   record_result(
     results: results,
     ledger: ledger,
+    suite_run_id: suite_run_id,
     case_id: case_id,
     case_type: "项目资产包",
     status: asset_pack_ok ? "PASS" : "FAIL",
@@ -598,6 +688,7 @@ Dir.mktmpdir("pco-loop-50-") do |dir|
     skip_result(
       results: results,
       ledger: ledger,
+      suite_run_id: suite_run_id,
       case_id: case_id,
       case_type: "Review Loop",
       badcase: "主控替用户采纳/拒绝评审建议",
@@ -613,6 +704,7 @@ Dir.mktmpdir("pco-loop-50-") do |dir|
   record_result(
     results: results,
     ledger: ledger,
+    suite_run_id: suite_run_id,
     case_id: case_id,
     case_type: "Review Loop",
     status: decision_loop_ok ? "PASS" : "FAIL",
@@ -656,6 +748,10 @@ Dir.mktmpdir("pco-loop-50-") do |dir|
   pass_count = results.count { |row| row[:status] == "PASS" }
   skip_count = results.count { |row| row[:status] == "SKIP_PASS" }
   fail_count = results.count { |row| row[:status] == "FAIL" }
+  actual_executed_count = pass_count + fail_count
+  if release_gate && (pass_count != results.length || skip_count.positive? || fail_count.positive?)
+    badcases << "release gate requires a fresh full run: expected #{results.length} fresh PASS cases, got pass=#{pass_count}, skip=#{skip_count}, fail=#{fail_count}"
+  end
 
   FileUtils.mkdir_p(results_dir)
   report = [
@@ -666,9 +762,13 @@ Dir.mktmpdir("pco-loop-50-") do |dir|
     "- 通过: `#{pass_count}`",
     "- 跳过已通过: `#{skip_count}`",
     "- 失败: `#{fail_count}`",
-    "- 本次实际执行: `#{pass_count + fail_count}`",
+    "- 本次实际执行: `#{actual_executed_count}`",
     "- Test Ledger: `#{ledger.disabled? ? "disabled" : ledger.db}`",
+    "- Runner version: `#{RUNNER_VERSION}`",
+    "- Git SHA: `#{git_sha}`",
     "- Force rerun: `#{force ? "true" : "false"}`",
+    "- Release gate: `#{release_gate ? "true" : "false"}`",
+    "- Suite run id: `#{suite_run_id}`",
     "- Runtime DB: `#{db}`",
     "- Project Workspace: `#{File.join(workspace, "memory", "projects", project_id)}`",
     "- Obsidian-compatible export: `#{project_path}`",
@@ -713,6 +813,17 @@ Dir.mktmpdir("pco-loop-50-") do |dir|
     "- 如果迁移到 Coze/Dify/LangGraph，需要把 L46/L47 作为宿主适配验收项，确保真实子 Bot 名称和产品角色绑定不混。"
   ]
   File.write(report_path, report.join("\n"))
+  suite_status = badcases.empty? ? "PASS" : "FAIL"
+  ledger.finish_suite_run(
+    suite_run_id: suite_run_id,
+    status: suite_status,
+    total_count: results.length,
+    pass_count: pass_count,
+    fail_count: fail_count,
+    skip_count: skip_count,
+    actual_executed_count: actual_executed_count,
+    report_path: report_path
+  )
 
   if badcases.empty?
     puts "run-loop-50-cases: PASS"

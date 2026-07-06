@@ -35,7 +35,7 @@ product-crew-os-skill/tests/test-ledger-schema.sql
 ruby product-crew-os-skill/tests/run-loop-50-cases.rb
 ```
 
-如果某个 case 上次已经 `PASS`，且 case 输入、runner、runtime、schema、README、结构化评审规则、团队风格授权规则等指纹都没有变化，本轮会显示：
+如果某个 case 上次已经真实 `PASS`，且 case 输入、runner、runtime、schema、README、结构化评审规则、团队风格授权规则等指纹都没有变化，本轮会显示：
 
 ```text
 SKIP_PASS
@@ -43,9 +43,17 @@ SKIP_PASS
 
 这表示该 case 已由历史 PASS 记录和当前指纹共同确认，不再重复执行。
 
-## 强制全量重跑
+`SKIP_PASS` 只写入 `test_case_runs` 流水，不会覆盖 `test_cases.last_status` 中最近一次真实 `PASS`。因此下一次是否跳过，仍然回溯到最近一次真实通过和当前指纹。
 
-发布前或大改 runtime 后，可以强制重跑全部 50 个 case：
+## 发布门禁全量重跑
+
+发布前或大改 runtime 后，使用发布门禁命令。它会强制重跑全部 50 个 case，并且不允许 `SKIP_PASS`：
+
+```bash
+ruby product-crew-os-skill/tests/run-loop-50-cases.rb --release-gate
+```
+
+普通强制重跑也可使用：
 
 ```bash
 ruby product-crew-os-skill/tests/run-loop-50-cases.rb --force

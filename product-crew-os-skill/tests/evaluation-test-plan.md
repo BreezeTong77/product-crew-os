@@ -123,17 +123,15 @@ tests/results/product-crew-os-test-ledger.sqlite3
 ruby product-crew-os-skill/tests/run-loop-50-cases.rb
 ```
 
-发布前强制全量重跑：
+发布门禁强制全量重跑：
 
 ```bash
-ruby product-crew-os-skill/tests/run-loop-50-cases.rb --force
+ruby product-crew-os-skill/tests/run-loop-50-cases.rb --release-gate
 ```
 
 输出位置：
 
-```text
-tests/results/loop-50-cases-latest.md
-```
+普通增量报告写入 `tests/results/loop-50-cases-latest.md`；发布门禁全量报告写入 `tests/results/loop-50-cases-latest-force.md`。
 
 可提交档案：
 
@@ -144,7 +142,8 @@ tests/badcase-loop-50.md
 通过标准：
 
 - 50/50 case 通过。
-- 已通过且指纹未变化的 case 可以 `SKIP_PASS`。
+- 日常增量测试允许已通过且指纹未变化的 case 标记为 `SKIP_PASS`。
+- 发布门禁不允许 `SKIP_PASS`，必须 50 个 case 本次实际执行并通过。
 - 44 个 SOP 都能产生 artifact、review session、context packet、invocation ledger 和 raw review record。
 - 已知 Bad Case 不复发。
 - 如果出现失败，必须修正规则或代码后重新运行，不能只修改报告。

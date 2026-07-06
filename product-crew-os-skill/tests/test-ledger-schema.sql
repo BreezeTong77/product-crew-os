@@ -10,13 +10,36 @@ CREATE TABLE IF NOT EXISTS test_cases (
   last_case_hash TEXT DEFAULT '',
   last_evidence TEXT DEFAULT '',
   last_run_at TEXT DEFAULT '',
+  last_checked_at TEXT DEFAULT '',
   pass_count INTEGER DEFAULT 0,
   fail_count INTEGER DEFAULT 0,
   skip_count INTEGER DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS suite_runs (
+  suite_run_id TEXT PRIMARY KEY,
+  suite TEXT NOT NULL,
+  runner_version TEXT DEFAULT '',
+  git_sha TEXT DEFAULT '',
+  command TEXT DEFAULT '',
+  force_rerun INTEGER DEFAULT 0,
+  release_gate INTEGER DEFAULT 0,
+  ruby_version TEXT DEFAULT '',
+  sqlite_version TEXT DEFAULT '',
+  status TEXT DEFAULT '',
+  total_count INTEGER DEFAULT 0,
+  pass_count INTEGER DEFAULT 0,
+  fail_count INTEGER DEFAULT 0,
+  skip_count INTEGER DEFAULT 0,
+  actual_executed_count INTEGER DEFAULT 0,
+  report_path TEXT DEFAULT '',
+  started_at TEXT NOT NULL,
+  finished_at TEXT DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS test_case_runs (
   run_id TEXT PRIMARY KEY,
+  suite_run_id TEXT DEFAULT '',
   case_id TEXT NOT NULL,
   suite TEXT NOT NULL,
   case_type TEXT DEFAULT '',
@@ -26,7 +49,8 @@ CREATE TABLE IF NOT EXISTS test_case_runs (
   badcase TEXT DEFAULT '',
   source_ref TEXT DEFAULT '',
   started_at TEXT NOT NULL,
-  finished_at TEXT NOT NULL
+  finished_at TEXT NOT NULL,
+  FOREIGN KEY(case_id) REFERENCES test_cases(case_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_test_case_runs_case_id

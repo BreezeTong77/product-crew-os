@@ -582,7 +582,7 @@ class ProductCrewRuntime
   end
 
   def sqlite_args
-    ["sqlite3", "-cmd", ".timeout 5000", @db_path]
+    ["sqlite3", "-cmd", ".timeout 5000", "-cmd", "PRAGMA foreign_keys = ON;", @db_path]
   end
 
   def exec_sql(sql)
@@ -592,7 +592,7 @@ class ProductCrewRuntime
   end
 
   def query(sql)
-    stdout, stderr, status = Open3.capture3("sqlite3", "-cmd", ".timeout 5000", "-json", @db_path, sql)
+    stdout, stderr, status = Open3.capture3("sqlite3", "-cmd", ".timeout 5000", "-cmd", "PRAGMA foreign_keys = ON;", "-json", @db_path, sql)
     raise "sqlite query failed: #{stderr.strip}\n#{sql}" unless status.success?
     stdout.strip.empty? ? [] : JSON.parse(stdout)
   end

@@ -1,6 +1,6 @@
 # 50 个 Loop 测试与 Bad Case 档案
 
-本文件记录 Product Crew OS 的 50 个 loop 测试来源、验证目标和近期 Bad Case 修正点。它是可提交的测试档案；每次真实运行产生的详细报告写入 `tests/results/loop-50-cases-latest.md`，该目录默认不进入公开发布包。
+本文件记录 Product Crew OS 的 50 个 loop 测试来源、验证目标和近期 Bad Case 修正点。它是可提交的测试档案；普通增量测试报告写入 `tests/results/loop-50-cases-latest.md`，发布门禁全量报告写入 `tests/results/loop-50-cases-latest-force.md`，该目录默认不进入公开发布包。
 
 增量测试状态写入本地 SQLite 测试账本：
 
@@ -54,11 +54,13 @@ tests/results/product-crew-os-test-ledger.sqlite3
 ruby product-crew-os-skill/tests/run-loop-50-cases.rb
 ```
 
-发布前强制全量重跑：
+发布门禁强制全量重跑：
 
 ```bash
-ruby product-crew-os-skill/tests/run-loop-50-cases.rb --force
+ruby product-crew-os-skill/tests/run-loop-50-cases.rb --release-gate
 ```
+
+`--release-gate` 不允许 `SKIP_PASS`，必须 50 个 case 本次全部实际执行并通过。
 
 预期输出：
 
