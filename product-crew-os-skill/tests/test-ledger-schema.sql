@@ -50,7 +50,8 @@ CREATE TABLE IF NOT EXISTS test_case_runs (
   source_ref TEXT DEFAULT '',
   started_at TEXT NOT NULL,
   finished_at TEXT NOT NULL,
-  FOREIGN KEY(case_id) REFERENCES test_cases(case_id)
+  FOREIGN KEY(case_id) REFERENCES test_cases(case_id),
+  FOREIGN KEY(suite_run_id) REFERENCES suite_runs(suite_run_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_test_case_runs_case_id

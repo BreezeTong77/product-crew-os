@@ -18,6 +18,7 @@ product-crew-os-skill/tests/results/product-crew-os-test-ledger.sqlite3
 | 表 | 作用 |
 | --- | --- |
 | `test_cases` | 每个测试用例的最新状态、指纹、通过次数、失败次数和跳过次数 |
+| `suite_runs` | 每次测试套件运行的 Git SHA、命令、release gate 标记、执行数量和报告路径 |
 | `test_case_runs` | 每次执行或跳过的流水记录 |
 | `badcases` | Bad Case 标题、症状、修复方式、回归文件和状态 |
 
