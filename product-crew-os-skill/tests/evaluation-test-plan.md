@@ -17,11 +17,13 @@
 | L1 | Rule Regression | 子 Agent 调用契约、记忆、非产品退出、项目资产包 | `run-regression.rb` + `tests/scenarios/` |
 | L2 | Prompt Eval | 44 个 SOP 的用户输入、stage、skill、artifact、agent、gate | `prompt-eval-cases.yaml` |
 | L3 | External Benchmark | 第三方 PM benchmark 是否能被映射到 stage / skill / artifact / gate | `run-external-benchmark.rb` |
+| L3a | Semantic Routing Eval | 用 gold label 计算 Domain / Stage / Skill / Agent 命中率 | `run-routing-eval.rb` + `external-benchmark-cases.yaml` |
 | L4 | Runtime Smoke | SQLite runtime、项目资产包、Context Packet、Obsidian-compatible 导出是否可运行 | `run-runtime-smoke.rb` |
 | L5 | SOP E2E Smoke | 44 个 SOP 是否能真实写入 runtime，并产生可观测记录 | `run-sop-e2e-smoke.rb` |
 | L6 | Loop 50 Bad Case | 44 个 SOP + 6 个高风险 Bad Case 是否闭环通过，是否写入测试账本 | `run-loop-50-cases.rb` + `badcase-loop-50.md` + `test-ledger.md` |
+| L6a | Review Loop E2E | 用户决策闭环、must-fix 阻塞、真实 raw review 透传、角色记忆注入 | `run-review-loop-e2e.rb` |
 | L7 | Team Memory Eval | 团队角色记忆是否读取、注入、引用、回写和隔离 | `subagent-memory-runtime.yaml` + `memory-resume-after-context-loss.yaml` |
-| L8 | Human Review | 评估回答是否像产品办公室、是否能用于真实工作 | 人工抽检 |
+| L8 | Human Review | 评估回答是否像产品办公室、是否能用于真实工作 | `manual-score-cases.yaml` + 人工抽检 |
 | L9 | Bad Case Evolution | 用户纠偏和失败是否进入测试集 | `evolution-notes.md` + 新 scenario |
 
 ## 2. 发布前最小测试命令
@@ -30,8 +32,10 @@
 ruby product-crew-os-skill/tests/validate-package.rb
 ruby product-crew-os-skill/tests/run-regression.rb --mock-delegate --check-only
 ruby product-crew-os-skill/tests/run-external-benchmark.rb
+ruby product-crew-os-skill/tests/run-routing-eval.rb
 ruby product-crew-os-skill/tests/run-runtime-smoke.rb
 ruby product-crew-os-skill/tests/run-sop-e2e-smoke.rb
+ruby product-crew-os-skill/tests/run-review-loop-e2e.rb
 ruby product-crew-os-skill/tests/run-loop-50-cases.rb
 ```
 
@@ -40,10 +44,15 @@ ruby product-crew-os-skill/tests/run-loop-50-cases.rb
 - `validate-package: PASS`
 - `run-regression: PASS`
 - `run-external-benchmark: PASS`
+- `run-routing-eval: PASS`
 - `run-runtime-smoke: PASS`
 - `run-sop-e2e-smoke: PASS`
+- `run-review-loop-e2e: PASS`
 - `run-loop-50-cases: PASS`
+- `run-routing-eval` 的 Stage accuracy、Skill hit rate、Agent recall 必须达到阈值。
+- `run-review-loop-e2e` 必须证明用户未确认不能关闭评审，未解决 must-fix 不能关闭评审。
 - `prompt-eval-cases.yaml` 至少包含 44 个 case。
+- `manual-score-cases.yaml` 至少保留核心人工评分样本，用于判断人味、可追溯性和 Review Loop 质量。
 - 每个 case 必须有 `stage_id`、`user_input`、`expected.primary_skill`、`expected.required_artifacts`、`expected.stage_gate`。
 
 ## 3. Prompt Eval 人工评分表
@@ -69,6 +78,19 @@ ruby product-crew-os-skill/tests/run-loop-50-cases.rb
 - `>= 16`：通过。
 - `13-15`：条件通过，需要补规则或示例。
 - `<= 10`：Bad Case，进入 evolution loop。
+
+人工评分样本沉淀在：
+
+```text
+tests/manual-score-cases.yaml
+```
+
+它不替代自动测试，主要用于评估：
+
+- 主控教练是否真的判断 Stage，而不是顺着用户随口回答。
+- 子 Agent 是否绑定用户配置的角色名、职责和记忆，而不是环境随机昵称。
+- Review Loop 是否把完整评审原文、修改点、冲突点、用户决策和再评审记录下来。
+- 产品体验是否像“有温度的 AI 产品办公室”，而不是一组裸工具命令。
 
 ## 4. Bad Case 入库规则
 

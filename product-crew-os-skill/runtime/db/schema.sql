@@ -100,10 +100,16 @@ CREATE TABLE IF NOT EXISTS decisions (
 CREATE TABLE IF NOT EXISTS review_items (
   review_item_id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
+  session_id TEXT DEFAULT '',
   artifact_id TEXT DEFAULT '',
   stage_id TEXT DEFAULT '',
   role_key TEXT DEFAULT '',
   reviewer_name TEXT DEFAULT '',
+  artifact_ref TEXT DEFAULT '',
+  conclusion TEXT DEFAULT 'advice_only',
+  priority TEXT DEFAULT 'should_fix',
+  evidence_level TEXT DEFAULT 'from_artifact',
+  user_decision TEXT DEFAULT '',
   comment TEXT NOT NULL,
   recommendation TEXT DEFAULT '',
   status TEXT DEFAULT 'open',
@@ -228,11 +234,18 @@ CREATE TABLE IF NOT EXISTS agent_invocations (
   role_key TEXT NOT NULL,
   role_title TEXT DEFAULT '',
   display_name TEXT DEFAULT '',
+  session_id TEXT DEFAULT '',
+  stage_id TEXT DEFAULT '',
+  artifact_id TEXT DEFAULT '',
+  trigger_reason TEXT DEFAULT '',
   runtime_agent_id TEXT DEFAULT '',
   runtime_nickname TEXT DEFAULT '',
   context_packet_id TEXT DEFAULT '',
   real_invocation_performed INTEGER DEFAULT 0,
   simulation_label_used INTEGER DEFAULT 1,
+  invocation_status TEXT DEFAULT 'completed',
+  timeout_seconds INTEGER DEFAULT 0,
+  required_for_gate INTEGER DEFAULT 0,
   result TEXT DEFAULT '',
   created_at TEXT NOT NULL,
   FOREIGN KEY (project_id) REFERENCES projects(project_id)
@@ -248,6 +261,19 @@ CREATE TABLE IF NOT EXISTS memory_deltas (
   confidence TEXT DEFAULT 'candidate',
   summary TEXT NOT NULL,
   status TEXT DEFAULT 'candidate',
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (project_id) REFERENCES projects(project_id)
+);
+
+CREATE TABLE IF NOT EXISTS review_decisions (
+  decision_id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  action TEXT NOT NULL,
+  item_ids TEXT DEFAULT '',
+  user_confirmed INTEGER DEFAULT 0,
+  notes TEXT DEFAULT '',
+  result TEXT DEFAULT '',
   created_at TEXT NOT NULL,
   FOREIGN KEY (project_id) REFERENCES projects(project_id)
 );

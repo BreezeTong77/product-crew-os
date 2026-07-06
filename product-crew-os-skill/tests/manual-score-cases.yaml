@@ -1,0 +1,117 @@
+schema_version: "0.1"
+dataset_kind: "manual_score_cases"
+purpose: "Human-scored evaluation set for Product Crew OS response quality, review traceability, and product-office feel."
+
+rubric:
+  max_score: 18
+  dimensions:
+    domain_intent: "0=wrong enter/exit, 1=asks useful clarification, 2=correct enter/exit"
+    stage: "0=wrong stage, 1=near stage, 2=correct canonical stage"
+    sop: "0=no SOP path, 1=partial SOP, 2=input/action/output/gate are clear"
+    skill: "0=random/missing, 1=one of primary/fallback correct, 2=primary/fallback reasonable"
+    agent: "0=random/missing critical role, 1=roles useful but boundary unclear, 2=roles, boundary, exit all clear"
+    memory: "0=fake memory or pollution, 1=partial memory source, 2=read/inject/write/isolate are traceable"
+    artifact: "0=chat only, 1=artifact direction but incomplete, 2=editable artifact or artifact delta"
+    stage_gate: "0=no gate, 1=unclear gate, 2=pass/block/rollback criteria clear"
+    warmth: "0=mechanical, 1=acceptable, 2=feels like a product office with next action"
+  thresholds:
+    pass: 16
+    conditional_pass: 13
+    badcase: 10
+
+cases:
+  - case_id: "manual-001-new-pm-starts-idea"
+    source:
+      type: "human_review"
+      priority: "P1"
+    user_input: "我有个产品想法，但不知道下一步应该做什么。"
+    expected_focus:
+      stage_id: "idea_intake"
+      must_show: ["stage judgment", "next artifact", "recommended stakeholder", "warm guidance"]
+      must_not: ["jump directly to PRD", "summon full panel"]
+    human_score: null
+    reviewer_notes: ""
+
+  - case_id: "manual-002-half-prd-review"
+    source:
+      type: "human_review"
+      priority: "P0"
+    user_input: "我写了半份 PRD，帮我按标准 SOP 跑评审。"
+    expected_focus:
+      stage_id: "prd_review"
+      must_show: ["configured role names", "raw review visibility", "review items", "user decision gate"]
+      must_not: ["claim real sub-agent call without invocation", "only summarize without full reviewer text"]
+    human_score: null
+    reviewer_notes: ""
+
+  - case_id: "manual-003-non-product-exit"
+    source:
+      type: "human_review"
+      priority: "P0"
+    user_input: "帮我翻译一下这句话：今天晚上吃什么。"
+    expected_focus:
+      stage_id: "domain_exit"
+      must_show: ["normal answer", "no Product Crew OS stage forced"]
+      must_not: ["route to product SOP", "write project memory"]
+    human_score: null
+    reviewer_notes: ""
+
+  - case_id: "manual-004-role-memory-feedback"
+    source:
+      type: "human_review"
+      priority: "P0"
+    user_input: "这是我们技术负责人邮件截图，他很谨慎，以后张工评审要体现这个风格。"
+    expected_focus:
+      stage_id: "team_style_overlay"
+      must_show: ["consent question", "scope choice", "role_key binding", "no public rule pollution"]
+      must_not: ["store real colleague material without consent", "write to product rule memory"]
+    human_score: null
+    reviewer_notes: ""
+
+  - case_id: "manual-005-review-timeout"
+    source:
+      type: "human_review"
+      priority: "P1"
+    user_input: "张工这轮超过两分钟还没返回，怎么办？"
+    expected_focus:
+      stage_id: "review_runtime_control"
+      must_show: ["120s default timeout", "invocation ledger timeout", "required role blocker", "user choice"]
+      must_not: ["pretend review completed", "wait indefinitely"]
+    human_score: null
+    reviewer_notes: ""
+
+  - case_id: "manual-006-prototype-request"
+    source:
+      type: "human_review"
+      priority: "P1"
+    user_input: "我想画一个类似小红书首页的低保真原型。"
+    expected_focus:
+      stage_id: "low_fi_prototype"
+      must_show: ["prototype SOP", "image -> HTML -> optional Figma/Pencil path", "design/tech review boundary"]
+      must_not: ["skip stage judgment", "write external tool without confirmation"]
+    human_score: null
+    reviewer_notes: ""
+
+  - case_id: "manual-007-demand-authenticity"
+    source:
+      type: "human_review"
+      priority: "P0"
+    user_input: "客户说必须加这个功能，你判断下是真需求还是伪需求。"
+    expected_focus:
+      stage_id: "demand_authenticity"
+      must_show: ["frequency", "pain intensity", "workaround", "investment evidence", "accept/reject/defer suggestion"]
+      must_not: ["turn into PRD before validation", "treat one customer as universal truth"]
+    human_score: null
+    reviewer_notes: ""
+
+  - case_id: "manual-008-routing-correction"
+    source:
+      type: "human_review"
+      priority: "P1"
+    user_input: "你刚才 stage 判断错了，这应该是上线验收，不是需求评审。"
+    expected_focus:
+      stage_id: "routing_feedback"
+      must_show: ["accept correction", "routing feedback", "decision log", "rerun correct SOP"]
+      must_not: ["argue without evidence", "keep old stage silently"]
+    human_score: null
+    reviewer_notes: ""

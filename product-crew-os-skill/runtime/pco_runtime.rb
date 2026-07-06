@@ -7,6 +7,7 @@ require "open3"
 require "securerandom"
 require "time"
 require "yaml"
+require_relative "stage_router"
 
 class ProductCrewRuntime
   FLOW_DIRS = {
@@ -117,7 +118,7 @@ class ProductCrewRuntime
     payload
   end
 
-  def write_decision(project_id:, title:, decision:, stage_id: "", artifact_id: "", rationale: "", impact: "", verification: "", source_ref: "", status: "confirmed")
+  def write_decision(project_id:, title:, decision:, stage_id: "", artifact_id: "", rationale: "", impact: "", verification: "", source_ref: "", status: "confirmed", emit: true)
     ensure_project!(project_id)
     now = timestamp
     decision_id = id("dec")
@@ -130,19 +131,20 @@ class ProductCrewRuntime
     upsert_fts(project_id, "decision", decision_id, title, [decision, rationale, impact, verification].join("\n"), source_ref)
     record_event(project_id, "decision_written", { decision_id: decision_id, title: title })
     refresh_all_ledgers(project_id)
-    puts_json(decision_id: decision_id)
+    puts_json(decision_id: decision_id) if emit
+    { decision_id: decision_id }
   end
 
-  def write_review_item(project_id:, comment:, role_key: "", reviewer_name: "", artifact_id: "", stage_id: "", recommendation: "", status: "open", source_ref: "", emit: true)
+  def write_review_item(project_id:, comment:, session_id: "", role_key: "", reviewer_name: "", artifact_id: "", stage_id: "", artifact_ref: "", conclusion: "advice_only", priority: "should_fix", evidence_level: "from_artifact", user_decision: "", recommendation: "", status: "open", source_ref: "", emit: true)
     ensure_project!(project_id)
     now = timestamp
     review_item_id = id("ri")
     resolved_reviewer_name = reviewer_name.to_s.empty? && !role_key.to_s.empty? ? persona_display_name(role_key) : reviewer_name
     exec_sql(<<~SQL)
       INSERT INTO review_items
-        (review_item_id, project_id, artifact_id, stage_id, role_key, reviewer_name, comment, recommendation, status, source_ref, created_at, updated_at)
+        (review_item_id, project_id, session_id, artifact_id, stage_id, role_key, reviewer_name, artifact_ref, conclusion, priority, evidence_level, user_decision, comment, recommendation, status, source_ref, created_at, updated_at)
       VALUES
-        (#{q(review_item_id)}, #{q(project_id)}, #{q(artifact_id)}, #{q(stage_id)}, #{q(role_key)}, #{q(resolved_reviewer_name)}, #{q(comment)}, #{q(recommendation)}, #{q(status)}, #{q(source_ref)}, #{q(now)}, #{q(now)});
+        (#{q(review_item_id)}, #{q(project_id)}, #{q(session_id)}, #{q(artifact_id)}, #{q(stage_id)}, #{q(role_key)}, #{q(resolved_reviewer_name)}, #{q(artifact_ref)}, #{q(conclusion)}, #{q(priority)}, #{q(evidence_level)}, #{q(user_decision)}, #{q(comment)}, #{q(recommendation)}, #{q(status)}, #{q(source_ref)}, #{q(now)}, #{q(now)});
     SQL
     upsert_fts(project_id, "review_item", review_item_id, "#{role_key} review", [comment, recommendation].join("\n"), source_ref)
     record_event(project_id, "review_item_written", { review_item_id: review_item_id, role_key: role_key, status: status })
@@ -310,19 +312,20 @@ class ProductCrewRuntime
     payload
   end
 
-  def record_invocation(project_id:, role_key:, role_title: "", display_name: "", runtime_agent_id: "", runtime_nickname: "", context_packet_id: "", real: false, result: "", emit: true)
+  def record_invocation(project_id:, role_key:, role_title: "", display_name: "", session_id: "", stage_id: "", artifact_id: "", trigger_reason: "", runtime_agent_id: "", runtime_nickname: "", context_packet_id: "", real: false, invocation_status: "", timeout_seconds: 0, required_for_gate: false, result: "", emit: true)
     ensure_project!(project_id)
     now = timestamp
     invocation_id = id("inv")
     resolved_role_title = role_title.to_s.empty? ? persona_role_title(role_key) : role_title
     resolved_display_name = display_name.to_s.empty? ? persona_display_name(role_key) : display_name
+    resolved_invocation_status = invocation_status.to_s.empty? ? "completed" : invocation_status.to_s
     exec_sql(<<~SQL)
       INSERT INTO agent_invocations
-        (invocation_id, project_id, role_key, role_title, display_name, runtime_agent_id, runtime_nickname, context_packet_id, real_invocation_performed, simulation_label_used, result, created_at)
+        (invocation_id, project_id, role_key, role_title, display_name, session_id, stage_id, artifact_id, trigger_reason, runtime_agent_id, runtime_nickname, context_packet_id, real_invocation_performed, simulation_label_used, invocation_status, timeout_seconds, required_for_gate, result, created_at)
       VALUES
-        (#{q(invocation_id)}, #{q(project_id)}, #{q(role_key)}, #{q(resolved_role_title)}, #{q(resolved_display_name)}, #{q(runtime_agent_id)}, #{q(runtime_nickname)}, #{q(context_packet_id)}, #{real ? 1 : 0}, #{real ? 0 : 1}, #{q(result)}, #{q(now)});
+        (#{q(invocation_id)}, #{q(project_id)}, #{q(role_key)}, #{q(resolved_role_title)}, #{q(resolved_display_name)}, #{q(session_id)}, #{q(stage_id)}, #{q(artifact_id)}, #{q(trigger_reason)}, #{q(runtime_agent_id)}, #{q(runtime_nickname)}, #{q(context_packet_id)}, #{real ? 1 : 0}, #{real ? 0 : 1}, #{q(resolved_invocation_status)}, #{timeout_seconds.to_i}, #{required_for_gate ? 1 : 0}, #{q(result)}, #{q(now)});
     SQL
-    record_event(project_id, "agent_invocation_recorded", { invocation_id: invocation_id, role_key: role_key, role_title: resolved_role_title, display_name: resolved_display_name, runtime_nickname: runtime_nickname, real: real })
+    record_event(project_id, "agent_invocation_recorded", { invocation_id: invocation_id, role_key: role_key, role_title: resolved_role_title, display_name: resolved_display_name, session_id: session_id, runtime_nickname: runtime_nickname, real: real, invocation_status: resolved_invocation_status })
     record_event(
       project_id,
       "agent_summoned",
@@ -331,21 +334,123 @@ class ProductCrewRuntime
         role_key: role_key,
         role_title: resolved_role_title,
         display_name: resolved_display_name,
+        session_id: session_id,
+        stage_id: stage_id,
+        artifact_id: artifact_id,
+        trigger_reason: trigger_reason,
         runtime_agent_id: runtime_agent_id,
         runtime_nickname: runtime_nickname,
         real_invocation_performed: real,
         simulation_label_used: !real,
+        invocation_status: resolved_invocation_status,
+        timeout_seconds: timeout_seconds.to_i,
+        required_for_gate: required_for_gate,
         context_packet_id: context_packet_id
       }
     )
+    if resolved_invocation_status == "timeout"
+      update_review_session_status(project_id, session_id, "blocked_by_timeout") if required_for_gate && !session_id.to_s.empty?
+      record_event(
+        project_id,
+        "agent_invocation_timeout",
+        {
+          invocation_id: invocation_id,
+          session_id: session_id,
+          role_key: role_key,
+          display_name: resolved_display_name,
+          stage_id: stage_id,
+          artifact_id: artifact_id,
+          timeout_seconds: timeout_seconds.to_i,
+          required_for_gate: required_for_gate
+        }
+      )
+    end
     payload = {
       invocation_id: invocation_id,
       role_key: role_key,
       role_title: resolved_role_title,
       display_name: resolved_display_name,
       runtime_agent_id: runtime_agent_id,
-      runtime_nickname: runtime_nickname
+      runtime_nickname: runtime_nickname,
+      invocation_status: resolved_invocation_status
     }
+    puts_json(payload) if emit
+    payload
+  end
+
+  def route_intent(user_input:, project_id: "", emit: true)
+    router = SemanticStageRouter.new(prompt_eval_path: File.expand_path("../tests/prompt-eval-cases.yaml", __dir__))
+    decision = router.route(user_input)
+    if !project_id.to_s.empty?
+      ensure_project!(project_id)
+      record_event(project_id, "stage_route_decision", decision.merge("user_input" => user_input))
+    end
+    puts_json(decision) if emit
+    decision
+  end
+
+  def record_review_decision(project_id:, session_id:, action:, item_ids: "", user_confirmed: false, notes: "", emit: true)
+    ensure_project!(project_id)
+    session = query_one("SELECT * FROM review_sessions WHERE project_id = #{q(project_id)} AND session_id = #{q(session_id)};")
+    raise "review session not found: #{session_id}" unless session
+
+    now = timestamp
+    decision_id = id("rdec")
+    ids = split_roles(item_ids)
+    result = "needs_user_confirmation"
+
+    if user_confirmed
+      case action
+      when "accept"
+        update_review_items(project_id, ids, "accepted", "accepted") unless ids.empty?
+        result = "revision_needed"
+        update_review_session_status(project_id, session_id, "revision_needed")
+      when "reject"
+        update_review_items(project_id, ids, "rejected", "rejected") unless ids.empty?
+        result = "decision_logged"
+        update_review_session_status(project_id, session_id, "awaiting_user_decision")
+      when "defer"
+        update_review_items(project_id, ids, "deferred", "deferred") unless ids.empty?
+        result = "deferred"
+        update_review_session_status(project_id, session_id, "awaiting_user_decision")
+      when "needs_evidence"
+        update_review_items(project_id, ids, "needs_evidence", "needs_evidence") unless ids.empty?
+        result = "evidence_needed"
+        update_review_session_status(project_id, session_id, "evidence_needed")
+      when "close"
+        blockers = query_value("SELECT COUNT(*) AS count FROM review_items WHERE project_id = #{q(project_id)} AND session_id = #{q(session_id)} AND status = 'open' AND priority IN ('must_fix', 'block');").to_i
+        if blockers.positive?
+          result = "blocked_by_open_must_fix"
+          update_review_session_status(project_id, session_id, "awaiting_user_decision")
+        else
+          result = "closed_by_user"
+          update_review_session_status(project_id, session_id, "closed_by_user")
+        end
+      else
+        raise "unknown review decision action: #{action}"
+      end
+    end
+
+    exec_sql(<<~SQL)
+      INSERT INTO review_decisions
+        (decision_id, project_id, session_id, action, item_ids, user_confirmed, notes, result, created_at)
+      VALUES
+        (#{q(decision_id)}, #{q(project_id)}, #{q(session_id)}, #{q(action)}, #{q(item_ids)}, #{user_confirmed ? 1 : 0}, #{q(notes)}, #{q(result)}, #{q(now)});
+    SQL
+    write_decision(
+      project_id: project_id,
+      title: "Review decision #{action}",
+      decision: result,
+      stage_id: session["stage_id"].to_s,
+      artifact_id: session["artifact_id"].to_s,
+      rationale: notes,
+      source_ref: "review-session:#{session_id}",
+      status: user_confirmed ? "confirmed" : "pending_confirmation",
+      emit: false
+    )
+    record_event(project_id, "review_decision_recorded", { session_id: session_id, action: action, item_ids: ids, user_confirmed: user_confirmed, result: result })
+    refresh_all_ledgers(project_id)
+    payload = { decision_id: decision_id, session_id: session_id, action: action, user_confirmed: user_confirmed, result: result, status: review_session_status(project_id, session_id) }
     puts_json(payload) if emit
     payload
   end
@@ -481,19 +586,30 @@ class ProductCrewRuntime
         project_id: project_id,
         role_key: role_key,
         display_name: display_name,
+        session_id: review_session ? review_session[:session_id] : "",
+        stage_id: stage_id,
+        artifact_id: artifact[:artifact_id],
+        trigger_reason: "record-turn review_roles",
         runtime_agent_id: "",
         runtime_nickname: "",
         context_packet_id: packet[:packet_id],
         real: false,
+        invocation_status: "completed",
+        required_for_gate: requested_roles.include?(role_key),
         result: "runtime_adapter_recorded_context",
         emit: false
       )
       review_item = write_review_item(
         project_id: project_id,
+        session_id: review_session ? review_session[:session_id] : "",
         artifact_id: artifact[:artifact_id],
         stage_id: stage_id,
         role_key: role_key,
         reviewer_name: display_name,
+        artifact_ref: "#{artifact_name} v#{artifact[:version]}",
+        conclusion: "advice_only",
+        priority: "should_fix",
+        evidence_level: "from_artifact",
         comment: "Runtime adapter recorded #{display_name} (#{role_key}) review context for #{stage_id}.",
         recommendation: "Use a real sub-agent invocation when the host environment provides one; otherwise keep the simulated-perspective label.",
         status: "open",
@@ -522,6 +638,7 @@ class ProductCrewRuntime
         raw_review_record_id: raw_review ? raw_review[:record_id] : ""
       }
     end
+    update_review_session_status(project_id, review_session[:session_id], "awaiting_user_decision") if review_session
 
     record_event(
       project_id,
@@ -572,6 +689,19 @@ class ProductCrewRuntime
   def migrate_schema!
     ensure_column("agent_invocations", "role_title", "TEXT DEFAULT ''")
     ensure_column("agent_invocations", "runtime_nickname", "TEXT DEFAULT ''")
+    ensure_column("agent_invocations", "session_id", "TEXT DEFAULT ''")
+    ensure_column("agent_invocations", "stage_id", "TEXT DEFAULT ''")
+    ensure_column("agent_invocations", "artifact_id", "TEXT DEFAULT ''")
+    ensure_column("agent_invocations", "trigger_reason", "TEXT DEFAULT ''")
+    ensure_column("agent_invocations", "invocation_status", "TEXT DEFAULT 'completed'")
+    ensure_column("agent_invocations", "timeout_seconds", "INTEGER DEFAULT 0")
+    ensure_column("agent_invocations", "required_for_gate", "INTEGER DEFAULT 0")
+    ensure_column("review_items", "session_id", "TEXT DEFAULT ''")
+    ensure_column("review_items", "artifact_ref", "TEXT DEFAULT ''")
+    ensure_column("review_items", "conclusion", "TEXT DEFAULT 'advice_only'")
+    ensure_column("review_items", "priority", "TEXT DEFAULT 'should_fix'")
+    ensure_column("review_items", "evidence_level", "TEXT DEFAULT 'from_artifact'")
+    ensure_column("review_items", "user_decision", "TEXT DEFAULT ''")
   end
 
   def ensure_column(table, column, definition)
@@ -599,6 +729,10 @@ class ProductCrewRuntime
 
   def query_one(sql)
     query(sql).first
+  end
+
+  def query_value(sql, key = "count")
+    query(sql).first&.fetch(key, nil)
   end
 
   def q(value)
@@ -773,6 +907,35 @@ class ProductCrewRuntime
 
   def split_roles(value)
     value.to_s.split(/[,\n;]/).map(&:strip).reject(&:empty?).uniq
+  end
+
+  def update_review_items(project_id, item_ids, status, user_decision)
+    return if item_ids.empty?
+
+    quoted_ids = item_ids.map { |item_id| q(item_id) }.join(",")
+    exec_sql(<<~SQL)
+      UPDATE review_items
+      SET status = #{q(status)},
+          user_decision = #{q(user_decision)},
+          updated_at = #{q(timestamp)}
+      WHERE project_id = #{q(project_id)}
+        AND review_item_id IN (#{quoted_ids});
+    SQL
+  end
+
+  def update_review_session_status(project_id, session_id, status)
+    exec_sql(<<~SQL)
+      UPDATE review_sessions
+      SET status = #{q(status)},
+          updated_at = #{q(timestamp)}
+      WHERE project_id = #{q(project_id)}
+        AND session_id = #{q(session_id)};
+    SQL
+    record_event(project_id, "review_session_status_changed", { session_id: session_id, status: status })
+  end
+
+  def review_session_status(project_id, session_id)
+    query_one("SELECT status FROM review_sessions WHERE project_id = #{q(project_id)} AND session_id = #{q(session_id)};")&.fetch("status", "")
   end
 
   def persona_by_role_key
@@ -1080,10 +1243,16 @@ when "write-review-item"
   runtime.write_review_item(
     project_id: require_option(options, "project_id"),
     comment: require_option(options, "comment"),
+    session_id: options["session_id"].to_s,
     role_key: options["role_key"].to_s,
     reviewer_name: options["reviewer_name"].to_s,
     artifact_id: options["artifact_id"].to_s,
     stage_id: options["stage_id"].to_s,
+    artifact_ref: options["artifact_ref"].to_s,
+    conclusion: options["conclusion"] || "advice_only",
+    priority: options["priority"] || "should_fix",
+    evidence_level: options["evidence_level"] || "from_artifact",
+    user_decision: options["user_decision"].to_s,
     recommendation: options["recommendation"].to_s,
     status: options["status"] || "open",
     source_ref: options["source_ref"].to_s
@@ -1111,11 +1280,43 @@ when "record-invocation"
     role_key: require_option(options, "role_key"),
     role_title: options["role_title"].to_s,
     display_name: options["display_name"].to_s,
+    session_id: options["session_id"].to_s,
+    stage_id: options["stage_id"].to_s,
+    artifact_id: options["artifact_id"].to_s,
+    trigger_reason: options["trigger_reason"].to_s,
     runtime_agent_id: options["runtime_agent_id"].to_s,
     runtime_nickname: options["runtime_nickname"].to_s,
     context_packet_id: options["context_packet_id"].to_s,
     real: options["real"].to_s == "true",
+    invocation_status: options["invocation_status"].to_s,
+    timeout_seconds: (options["timeout_seconds"] || "0").to_i,
+    required_for_gate: options["required_for_gate"].to_s == "true",
     result: options["result"].to_s
+  )
+when "write-raw-review-record"
+  runtime.write_raw_review_record(
+    project_id: require_option(options, "project_id"),
+    session_id: require_option(options, "session_id"),
+    role_key: require_option(options, "role_key"),
+    artifact_id: options["artifact_id"].to_s,
+    context_packet_id: options["context_packet_id"].to_s,
+    invocation_id: options["invocation_id"].to_s,
+    conclusion: options["conclusion"] || "advice_only",
+    raw_review: require_option(options, "raw_review")
+  )
+when "route-intent"
+  runtime.route_intent(
+    project_id: options["project_id"].to_s,
+    user_input: require_option(options, "user_input")
+  )
+when "record-review-decision"
+  runtime.record_review_decision(
+    project_id: require_option(options, "project_id"),
+    session_id: require_option(options, "session_id"),
+    action: require_option(options, "action"),
+    item_ids: options["item_ids"].to_s,
+    user_confirmed: options["user_confirmed"].to_s == "true",
+    notes: options["notes"].to_s
   )
 when "record-turn"
   runtime.record_turn(
@@ -1144,6 +1345,6 @@ when "export-obsidian"
   )
 else
   warn "Usage: ruby runtime/pco_runtime.rb <command> [--db PATH] [--workspace PATH] ..."
-  warn "Commands: init-project, save-artifact, write-decision, write-review-item, write-agent-memory, build-context-packet, record-invocation, record-turn, export-obsidian"
+  warn "Commands: init-project, save-artifact, write-decision, write-review-item, write-agent-memory, build-context-packet, record-invocation, write-raw-review-record, route-intent, record-review-decision, record-turn, export-obsidian"
   exit 1
 end

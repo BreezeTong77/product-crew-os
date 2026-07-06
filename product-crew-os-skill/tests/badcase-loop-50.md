@@ -46,7 +46,7 @@ tests/results/product-crew-os-test-ledger.sqlite3
 | L47 | 主控只给摘要，用户看不到子 Agent 原始评审 | `raw-review-records/<role_key>.md` 保留完整原文和审计字段 | `run-sop-e2e-smoke.rb` / `run-loop-50-cases.rb` |
 | L48 | 用户提供的同事邮件、会议截图可能被误写入长期团队风格 | 团队风格反哺必须有授权、用途和存储范围 | `run-loop-50-cases.rb` |
 | L49 | 项目资料只停留在聊天框，不能回溯 | Project Asset Pack 导出 Markdown / Obsidian-compatible 项目包 | `run-runtime-smoke.rb` / `run-loop-50-cases.rb` |
-| L50 | 主控替用户采纳、拒绝或结束评审 | Structured Review Loop 明确展示全记录，由用户决定采纳、拒绝、暂缓、补证据或退出评审 | `structured-review-loop.md` / `run-loop-50-cases.rb` |
+| L50 | 主控替用户采纳、拒绝或结束评审 | Structured Review Loop 明确展示全记录，由用户决定采纳、拒绝、暂缓、补证据或退出评审；`run-review-loop-e2e.rb` 会验证用户未确认不能关闭、must-fix 未解决不能关闭、用户确认后才能关闭 | `structured-review-loop.md` / `run-loop-50-cases.rb` / `run-review-loop-e2e.rb` |
 
 ## 运行命令
 

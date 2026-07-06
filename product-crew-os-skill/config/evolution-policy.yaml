@@ -15,6 +15,7 @@ run_controls:
   max_agents_per_review_batch: 3
   max_review_batches_per_stage_gate: 3
   max_review_turns_per_agent: 1
+  max_seconds_per_agent_review_turn: 120
   max_stage_jump_without_user_confirmation: 1
   max_guardrail_retries: 2
   required_roles_must_not_be_suppressed_by_batch_limit: true
@@ -40,6 +41,18 @@ run_controls:
       - "drop required roles only because the first batch is full"
       - "summon every role for simple drafting"
       - "run repeated review batches after the same conclusion is reached"
+  timeout_policy:
+    purpose: "Make sub-agent review latency explicit and prevent silent waiting or fake completion."
+    default_seconds_per_agent_turn: 120
+    on_timeout:
+      - "write timeout status to invocation ledger with role_key, display_name, stage_id, artifact_id, and trigger_reason"
+      - "do not summarize a missing review as if it was completed"
+      - "if the role is required for the stage gate, mark the review session as blocked_by_timeout"
+      - "ask the user whether to continue waiting, proceed with partial review, or split into another batch"
+    must_not:
+      - "loop indefinitely waiting for the same role"
+      - "replace a required real review with a simulated review without labeling it"
+      - "drop the timed-out required role from the decision log"
 
 state_delta_policy:
   enabled: true
@@ -219,6 +232,10 @@ observability:
     - "prompt_regression_pass_rate"
     - "workflow_completion_rate"
     - "unresolved_risk_age"
+    - "manual_review_score_average"
+    - "human_score_pass_rate"
+    - "agent_timeout_rate"
+    - "required_agent_timeout_block_rate"
 
 evolution_cadence:
   after_each_stage:

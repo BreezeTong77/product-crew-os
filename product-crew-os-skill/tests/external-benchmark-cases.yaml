@@ -1,0 +1,124 @@
+schema_version: "0.1"
+suite: "external-routing-gold"
+purpose: "Stable external-style routing cases for Semantic Stage Router evaluation."
+cases:
+  - case_id: "E01_xhs_home_prototype"
+    prompt: "我想画个原型图，类似小红书首页的信息流，先帮我跑产品流程。"
+    expected_domain_intent: "product_work"
+    expected_stage_id: "low_fi_prototype"
+    expected_primary_skill: "pencil-design"
+    expected_roles: ["Coach", "Design", "CS", "Customer", "Tech", "Data"]
+  - case_id: "E02_jd_crm_prd_review"
+    prompt: "我写了一半 CRM 智能商机识别 PRD，按标准 SOP 帮我评审。"
+    expected_domain_intent: "product_work"
+    expected_stage_id: "formal_requirements_review"
+    expected_primary_skill: "stakeholder-alignment-checker"
+    expected_roles: ["Coach", "Biz", "Tech", "Design", "Data", "QA", "Customer"]
+  - case_id: "E03_meeting_notes_triage"
+    prompt: "我有会议纪要、客户反馈和一版 PRD，不知道先处理哪个。"
+    expected_domain_intent: "product_work"
+    expected_stage_id: "request_triage"
+    expected_primary_skill: "pm-workbench"
+    expected_roles: ["Coach", "Research", "Biz"]
+  - case_id: "E04_user_pain_authenticity"
+    prompt: "客户一直说要导出，但我怀疑不是真需求，帮我判断。"
+    expected_domain_intent: "product_work"
+    expected_stage_id: "problem_definition"
+    expected_primary_skill: "problem-statement"
+    expected_roles: ["Coach", "Research", "CS", "Customer", "Biz"]
+  - case_id: "E05_metric_tree"
+    prompt: "这个产品怎么定义北极星指标和护栏指标？"
+    expected_domain_intent: "product_work"
+    expected_stage_id: "metrics_design"
+    expected_primary_skill: "metrics-framework"
+    expected_roles: ["Coach", "Data", "Biz", "Tech", "CS"]
+  - case_id: "E06_data_contract"
+    prompt: "功能依赖推荐逻辑和客户数据，先看数据可行性。"
+    expected_domain_intent: "product_work"
+    expected_stage_id: "data_feasibility_precheck"
+    expected_primary_skill: "product-analytics"
+    expected_roles: ["Coach", "Data", "Tech", "Biz", "Legal"]
+  - case_id: "E07_tech_review"
+    prompt: "这版 PRD 涉及权限、接口和自动化，找研发看看系统边界和风险。"
+    expected_domain_intent: "product_work"
+    expected_stage_id: "technical_pre_review"
+    expected_primary_skill: "prd-critic"
+    expected_roles: ["Coach", "Tech", "Data", "Design", "QA", "Legal"]
+  - case_id: "E08_launch_go_no_go"
+    prompt: "准备上线了，检查灰度、监控、回滚和客服运营是否就绪。"
+    expected_domain_intent: "product_work"
+    expected_stage_id: "launch_readiness"
+    expected_primary_skill: "deliver-launch-checklist"
+    expected_roles: ["Coach", "QA", "Ops", "CS", "Data", "Tech", "Legal"]
+  - case_id: "E09_post_launch"
+    prompt: "上线一周后做复盘，整理结果、问题、经验和下一步。"
+    expected_domain_intent: "product_work"
+    expected_stage_id: "post_launch_review"
+    expected_primary_skill: "pm-workbench"
+    expected_roles: ["Coach", "Biz", "Data", "CS", "Tech", "Design", "QA"]
+  - case_id: "E10_prioritize"
+    prompt: "业务、客户和老板都在催需求，帮我排优先级，哪些先不做。"
+    expected_domain_intent: "product_work"
+    expected_stage_id: "prioritization"
+    expected_primary_skill: "prioritization-advisor"
+    expected_roles: ["Coach", "Biz", "Tech", "Data", "CS", "Customer"]
+  - case_id: "E11_non_product_weather"
+    prompt: "今天上海天气怎么样？"
+    expected_domain_intent: "non_product_task"
+    expected_stage_id:
+    expected_primary_skill:
+    expected_roles: []
+  - case_id: "E12_non_product_translation"
+    prompt: "帮我把这句话翻译成英文：明天见。"
+    expected_domain_intent: "non_product_task"
+    expected_stage_id:
+    expected_primary_skill:
+    expected_roles: []
+  - case_id: "E13_non_product_stock"
+    prompt: "现在美元兑人民币汇率是多少？"
+    expected_domain_intent: "non_product_task"
+    expected_stage_id:
+    expected_primary_skill:
+    expected_roles: []
+  - case_id: "E14_product_crew_os_eval"
+    prompt: "帮我评估 Product Crew OS 的 SOP 和子 Agent 调用逻辑。"
+    expected_domain_intent: "product_work"
+    expected_stage_id: "request_triage"
+    expected_primary_skill: "pm-workbench"
+    expected_roles: ["Coach", "Research", "Biz"]
+  - case_id: "E15_business_case"
+    prompt: "老板问这个方向为什么值得做，帮我整理商业论证。"
+    expected_domain_intent: "product_work"
+    expected_stage_id: "business_context"
+    expected_primary_skill: "product-strategy"
+    expected_roles: ["Coach", "Biz", "Data"]
+  - case_id: "E16_interview_synthesis"
+    prompt: "十份用户访谈记录很乱，帮我提炼共性、分歧和可决策结论。"
+    expected_domain_intent: "product_work"
+    expected_stage_id: "interview_synthesis"
+    expected_primary_skill: "research-synthesis"
+    expected_roles: ["Coach", "Research", "CS", "Biz"]
+  - case_id: "E17_acceptance"
+    prompt: "每个用户故事怎么验收？帮我写 Given/When/Then。"
+    expected_domain_intent: "product_work"
+    expected_stage_id: "acceptance_criteria"
+    expected_primary_skill: "deliver-acceptance-criteria"
+    expected_roles: ["Coach", "QA", "Tech", "Design", "Data"]
+  - case_id: "E18_grey_pilot"
+    prompt: "先做灰度试点，定试点范围、周期、指标和回滚条件。"
+    expected_domain_intent: "product_work"
+    expected_stage_id: "grey_release_pilot"
+    expected_primary_skill: "experiment-design"
+    expected_roles: ["Coach", "Biz", "Data", "CS", "Customer", "Ops", "QA", "Tech", "Legal"]
+  - case_id: "E19_team_training"
+    prompt: "功能上线前要培训一线，写 SOP、FAQ 和话术。"
+    expected_domain_intent: "product_work"
+    expected_stage_id: "training_enablement"
+    expected_primary_skill: "pm-workbench"
+    expected_roles: ["Coach", "CS", "Biz", "Design", "Tech", "Data"]
+  - case_id: "E20_iteration"
+    prompt: "基于复盘和数据，下一版该做什么，形成迭代 backlog。"
+    expected_domain_intent: "product_work"
+    expected_stage_id: "iteration_planning"
+    expected_primary_skill: "roadmap-planning"
+    expected_roles: ["Coach", "Biz", "Data", "CS", "Research", "Tech", "Design"]

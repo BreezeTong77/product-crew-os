@@ -3,6 +3,7 @@
 require "fileutils"
 require "time"
 require "yaml"
+require_relative "../runtime/stage_router"
 
 skill_root = File.expand_path("..", __dir__)
 benchmark_dir = ARGV[0] || File.join(skill_root, "third_party", "skills", "pm-workbench", "benchmark")
@@ -94,6 +95,7 @@ prompt_eval = YAML.load_file(prompt_eval_path)
 cases_by_stage = prompt_eval.fetch("cases").each_with_object({}) do |entry, index|
   index[entry.fetch("stage_id")] ||= entry
 end
+router = SemanticStageRouter.new(prompt_eval_path: prompt_eval_path)
 
 source_files = [
   File.join(benchmark_dir, "scenarios.md"),
@@ -103,7 +105,8 @@ source_files = [
 external_cases = source_files.flat_map { |path| extract_scenarios(path) }
 
 routed_cases = external_cases.map do |external_case|
-  stage_id = classify_stage(external_case.fetch("prompt"))
+  route = router.route(external_case.fetch("prompt"))
+  stage_id = route["stage_id"]
   reference = stage_id && cases_by_stage[stage_id]
 
   expected = reference ? reference.fetch("expected") : {}
@@ -119,10 +122,10 @@ routed_cases = external_cases.map do |external_case|
     "required_roles" => expected["required_roles"] || [],
     "required_artifacts" => expected["required_artifacts"] || [],
     "stage_gate" => expected["stage_gate"],
-    "route_status" => if reference
-                         "mapped"
-                       elsif stage_id.nil?
+    "route_status" => if route["route_status"] == "domain_exit"
                          "domain_exit"
+                       elsif reference
+                         "mapped"
                        else
                          "unmapped"
                        end

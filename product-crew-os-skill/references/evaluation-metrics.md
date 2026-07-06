@@ -29,6 +29,8 @@
 | Skill 命中率 | 是否选择了正确 primary/fallback skill 或模板 | correct_skill_or_template / routed_cases | skill_selected event, skill-stage-router | >= 80% | skill 不适用且未 fallback |
 | 子 Agent 召唤准确率 | 必要角色是否出现，不必要角色是否缺席 | correct_agent_routing / review_cases | agent ledger, stage-boundary-matrix | >= 85% | 假装召唤、全员乱入、关键角色缺席 |
 | 子 Agent 调用诚实率 | 是否清楚区分真实调用、模拟视角和未调用 | honest_invocation_labels / agent_outputs | invocation ledger, response QA | 100% | 没真实调用却说已拉起 |
+| 子 Agent 超时率 | 子 Agent 是否在限定时间内返回，超时是否被显式记录 | timed_out_agent_invocations / agent_invocations | invocation ledger | 观察值 | 超时后仍被当成已完成评审 |
+| 必需角色超时阻塞率 | 阶段门必需角色超时时，是否阻塞而非静默放行 | blocked_required_timeouts / required_role_timeouts | review session, invocation ledger | 100% | 必需角色超时但评审会仍关闭 |
 | 评审批次覆盖率 | 当 SOP 需要多个角色时，是否通过有序批次覆盖 required 和 gate-blocking roles | covered_required_roles / required_roles_across_batches | review batch plan, agent ledger, stage-boundary-matrix | >= 95% | 因单批次上限漏掉必要角色 |
 | Review 通过率 | 评审后 artifact 是否可进入下一阶段 | pass_or_conditional_pass / review_cases | review-items, decision-log, stage gate | 观察值 | 评审意见没有转成修改项 |
 | Artifact 完成率 | 本 stage 必要 artifact 是否生成或更新 | completed_required_artifacts / required_artifacts | artifact-index, project-state | >= 90% | 只聊天回答，没有可编辑源文件 |
@@ -47,6 +49,7 @@
 | 外部 Benchmark 通过率 | 第三方正向/负向测试是否正确进 SOP 或退出 | passed_external_cases / external_cases | run-external-benchmark.rb | >= 90% | WorkBench 类办公任务被强行进产品流程 |
 | Bad Case 修复率 | 已登记 Bad Case 是否转化为规则或测试 | fixed_bad_cases / logged_bad_cases | evolution-notes, regression scenarios | >= 70% | Bad Case 没有 owner 或测试 |
 | Prompt Regression 通过率 | 固定 prompt 测试集是否稳定通过 | passed_prompt_cases / total_prompt_cases | prompt-eval-cases.yaml | >= 90% | 新版本低于上版 |
+| 人工评分通过率 | 人工评分样本是否达到体验、追溯和人味标准 | passed_manual_cases / manual_cases | manual-score-cases.yaml | >= 80% | 自动测试通过但人工看不懂、不可信或不温暖 |
 
 ## 3. 事件埋点建议
 
@@ -84,6 +87,19 @@
   "role_key": "Design",
   "trigger_reason": "SOP requires design review for prototype artifact",
   "real_invocation_performed": true
+}
+```
+
+```json
+{
+  "event_type": "agent_invocation_timeout",
+  "turn_id": "t-001",
+  "stage_id": "prd_review",
+  "role_key": "Tech",
+  "display_name": "张工",
+  "timeout_seconds": 120,
+  "is_required_for_gate": true,
+  "review_session_status": "blocked_by_timeout"
 }
 ```
 
