@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS suite_runs (
 
 CREATE TABLE IF NOT EXISTS test_case_runs (
   run_id TEXT PRIMARY KEY,
-  suite_run_id TEXT DEFAULT '',
+  suite_run_id TEXT DEFAULT NULL,
   case_id TEXT NOT NULL,
   suite TEXT NOT NULL,
   case_type TEXT DEFAULT '',

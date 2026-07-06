@@ -13,6 +13,8 @@ product-crew-os-skill/tests/results/product-crew-os-test-ledger.sqlite3
 
 `tests/results/` 是本地运行产物，默认不提交到 Git。公开仓库提交的是 schema、runner 和 Bad Case 档案；每个用户或宿主环境会生成自己的本地测试账本。
 
+Runner 会在启动时按当前 schema 检查本地账本。旧账本如果缺少 `suite_run_id` 外键，会自动迁移 `test_case_runs` 表并保留历史流水；无法匹配到 `suite_runs` 的旧流水会将 `suite_run_id` 置空，避免覆盖原始测试记录。
+
 ## 数据表
 
 | 表 | 作用 |

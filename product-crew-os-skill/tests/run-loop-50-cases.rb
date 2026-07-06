@@ -10,7 +10,7 @@ require "time"
 require "tmpdir"
 require "yaml"
 
-RUNNER_VERSION = "loop-50-ledger-v2"
+RUNNER_VERSION = "loop-50-ledger-v3"
 
 skill_root = File.expand_path("..", __dir__)
 runtime = File.join(skill_root, "runtime", "pco_runtime.rb")
@@ -158,7 +158,8 @@ class TestLedger
     FileUtils.mkdir_p(File.dirname(@db))
     sqlite(File.read(schema_path))
     ensure_column("test_cases", "last_checked_at", "TEXT DEFAULT ''")
-    ensure_column("test_case_runs", "suite_run_id", "TEXT DEFAULT ''")
+    ensure_column("test_case_runs", "suite_run_id", "TEXT DEFAULT NULL")
+    ensure_test_case_runs_suite_fk
   end
 
   def disabled?
@@ -275,6 +276,58 @@ class TestLedger
     return if columns.include?(column)
 
     sqlite("ALTER TABLE #{table} ADD COLUMN #{column} #{definition};")
+  end
+
+  def ensure_test_case_runs_suite_fk
+    refs = query("PRAGMA foreign_key_list(test_case_runs);").map { |row| row.fetch("table") }
+    return if refs.include?("suite_runs")
+
+    sqlite(<<~SQL)
+      PRAGMA foreign_keys = OFF;
+      DROP TABLE IF EXISTS test_case_runs_new;
+      CREATE TABLE test_case_runs_new (
+        run_id TEXT PRIMARY KEY,
+        suite_run_id TEXT DEFAULT NULL,
+        case_id TEXT NOT NULL,
+        suite TEXT NOT NULL,
+        case_type TEXT DEFAULT '',
+        case_hash TEXT DEFAULT '',
+        status TEXT DEFAULT '',
+        evidence TEXT DEFAULT '',
+        badcase TEXT DEFAULT '',
+        source_ref TEXT DEFAULT '',
+        started_at TEXT NOT NULL,
+        finished_at TEXT NOT NULL,
+        FOREIGN KEY(case_id) REFERENCES test_cases(case_id),
+        FOREIGN KEY(suite_run_id) REFERENCES suite_runs(suite_run_id)
+      );
+      INSERT INTO test_case_runs_new
+        (run_id, suite_run_id, case_id, suite, case_type, case_hash, status, evidence, badcase, source_ref, started_at, finished_at)
+      SELECT
+        run_id,
+        CASE
+          WHEN suite_run_id IN (SELECT suite_run_id FROM suite_runs) THEN suite_run_id
+          ELSE NULL
+        END,
+        case_id,
+        suite,
+        case_type,
+        case_hash,
+        status,
+        evidence,
+        badcase,
+        source_ref,
+        started_at,
+        finished_at
+      FROM test_case_runs;
+      DROP TABLE test_case_runs;
+      ALTER TABLE test_case_runs_new RENAME TO test_case_runs;
+      CREATE INDEX IF NOT EXISTS idx_test_case_runs_case_id
+        ON test_case_runs(case_id);
+      CREATE INDEX IF NOT EXISTS idx_test_case_runs_status
+        ON test_case_runs(status);
+      PRAGMA foreign_keys = ON;
+    SQL
   end
 
   def sqlite(sql)
