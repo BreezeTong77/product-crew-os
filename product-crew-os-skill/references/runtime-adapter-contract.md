@@ -57,9 +57,21 @@ record-turn
 - `route-intent` 判断为非产品任务。
 - route 结果仍为 `needs_clarification`。
 - route `stage_id` 与 `record-turn` 传入 stage 不一致。
+- 标准用户运行要求真实 embedding，但 route decision 中 `real_embedding_performed != true`。
+- 标准 SOP 要求真实子 Agent，但 Required / Triggered roles 没有真实 invocation。
 - skill 执行状态为 `template_degraded`。
 
 这条规则专门防止“Coze / 普通 Agent 生成了文档，但 SOP、skill、embedding、子 Agent 和 runtime 都没接上”的假通过。
+
+本地 runtime 可用以下环境变量开启硬门禁：
+
+```bash
+PCO_STAGE_ROUTER_EMBEDDING=real
+PCO_REQUIRE_REAL_EMBEDDING=1
+PCO_REQUIRE_REAL_SUBAGENTS=1
+```
+
+`PCO_STAGE_ROUTER_EMBEDDING=real` 会调用本地开源 BGE provider 对 44 SOP prompt-eval set 建立实时 embedding top-K 召回。TF-IDF、关键词、local hash dry-run 只能作为 smoke，不得写成 real embedding。
 
 本地命令入口是：
 

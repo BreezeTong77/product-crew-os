@@ -50,6 +50,7 @@ required_files = [
   "references/semantic-stage-router.md",
   "references/embedding-rag-adapter.md",
   "references/evaluation-metrics.md",
+  "references/host-runtime-compliance.md",
   "references/runtime-adapter-contract.md",
   "references/coze-runtime-blueprint.md",
   "references/workflow-implementation-coverage-v0.md",
@@ -61,6 +62,7 @@ required_files = [
   "runtime/db/schema.sql",
   "runtime/pco_runtime.rb",
   "runtime/embedding_provider.rb",
+  "runtime/sop_embedding_index.rb",
   "runtime/stage_router.rb",
   "templates/agent-context-packet.yaml",
   "templates/project-state.json",
@@ -110,14 +112,26 @@ skill_entry = File.read(File.join(skill_root, "SKILL.md"))
 errors << "SKILL.md missing Runtime Preflight section" unless skill_entry.include?("## Runtime Preflight")
 errors << "SKILL.md missing runtime_not_connected guard" unless skill_entry.include?("runtime_not_connected")
 errors << "SKILL.md missing blocked_runtime_preflight guard" unless skill_entry.include?("blocked_runtime_preflight")
+errors << "SKILL.md missing host runtime compliance reference" unless skill_entry.include?("host-runtime-compliance.md")
 
 runtime_contract = File.read(File.join(skill_root, "references", "runtime-adapter-contract.md"))
 errors << "runtime adapter contract missing route trace requirement" unless runtime_contract.include?("routing/stage-route-decision.jsonl")
 errors << "runtime adapter contract missing runtime preflight downgrade" unless runtime_contract.include?("blocked_runtime_preflight")
+errors << "runtime adapter contract missing real embedding env gate" unless runtime_contract.include?("PCO_REQUIRE_REAL_EMBEDDING")
 
 coze_blueprint = File.read(File.join(skill_root, "references", "coze-runtime-blueprint.md"))
 errors << "coze blueprint missing runtime_not_connected guard" unless coze_blueprint.include?("runtime_not_connected")
 errors << "coze blueprint missing Runtime Preflight node" unless coze_blueprint.include?("Runtime Preflight")
+
+host_compliance = File.read(File.join(skill_root, "references", "host-runtime-compliance.md"))
+%w[real_embedding_provider subagent_delegate runtime_not_connected invalid_for_gate TF-IDF].each do |phrase|
+  errors << "host runtime compliance missing #{phrase}" unless host_compliance.include?(phrase)
+end
+
+coze_yaml = YAML.load_file(File.join(skill_root, "integrations", "coze", "workflow-blueprint.yaml"))
+errors << "coze workflow missing capability_handshake" unless coze_yaml.key?("capability_handshake")
+errors << "coze workflow missing embedding_recall node" unless Array(coze_yaml["workflow_nodes"]).any? { |node| node["key"] == "embedding_recall" }
+errors << "coze workflow missing runtime_preflight node" unless Array(coze_yaml["workflow_nodes"]).any? { |node| node["key"] == "runtime_preflight" }
 
 bundled_skill_dir = File.join(skill_root, "third_party", "skills")
 bundled_skill_files = Dir[File.join(bundled_skill_dir, "*", "SKILL.md")]

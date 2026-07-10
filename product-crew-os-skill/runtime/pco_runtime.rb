@@ -499,7 +499,8 @@ class ProductCrewRuntime
       stage_id: stage_id,
       route_decision: route_decision,
       route_decision_id: route_decision_id,
-      skill_status: skill_status
+      skill_status: skill_status,
+      review_roles: review_roles
     )
     effective_gate_status = gate_status
     effective_gate_result = gate_result
@@ -628,7 +629,7 @@ class ProductCrewRuntime
         real: false,
         invocation_status: "completed",
         required_for_gate: requested_roles.include?(role_key),
-        result: "runtime_adapter_recorded_context",
+        result: requested_roles.include?(role_key) ? "invalid_for_gate" : "advice_only",
         emit: false
       )
       review_item = write_review_item(
@@ -944,7 +945,7 @@ class ProductCrewRuntime
     nil
   end
 
-  def runtime_preflight_result(stage_id:, route_decision:, route_decision_id:, skill_status:)
+  def runtime_preflight_result(stage_id:, route_decision:, route_decision_id:, skill_status:, review_roles: "")
     issues = []
     if route_decision.nil?
       issues << "route_trace_missing"
@@ -955,6 +956,13 @@ class ProductCrewRuntime
     elsif route_decision["stage_id"].to_s != stage_id.to_s
       issues << "route_mismatch expected=#{route_decision["stage_id"]} actual=#{stage_id}"
     end
+    if require_real_embedding? && (!route_decision || route_decision["real_embedding_performed"] != true)
+      issues << "real_embedding_missing"
+    end
+    required_review_roles = split_roles(review_roles).reject { |role| role == "Coach" }
+    if require_real_subagents? && !required_review_roles.empty?
+      issues << "real_subagent_invocation_missing roles=#{required_review_roles.join(",")}"
+    end
     issues << "template_degraded_skill_not_gate_valid" if skill_status.to_s == "template_degraded"
     {
       "status" => issues.empty? ? "passed" : "blocked",
@@ -962,12 +970,25 @@ class ProductCrewRuntime
       "route_decision_id" => route_decision_id.to_s,
       "route_status" => route_decision ? route_decision["route_status"].to_s : "",
       "retrieval_mode" => route_decision ? route_decision["retrieval_mode"].to_s : "",
+      "embedding_status" => route_decision ? route_decision["embedding_status"].to_s : "",
+      "real_embedding_required" => require_real_embedding?,
+      "real_embedding_performed" => route_decision ? route_decision["real_embedding_performed"] == true : false,
+      "real_subagents_required" => require_real_subagents?,
+      "required_review_roles" => required_review_roles,
       "confidence" => route_decision ? route_decision["confidence"] : nil
     }
   end
 
   def passing_gate_status?(gate_status)
     PASSING_GATE_STATUSES.include?(gate_status.to_s)
+  end
+
+  def require_real_embedding?
+    %w[1 true yes required].include?(ENV["PCO_REQUIRE_REAL_EMBEDDING"].to_s.downcase)
+  end
+
+  def require_real_subagents?
+    %w[1 true yes required].include?(ENV["PCO_REQUIRE_REAL_SUBAGENTS"].to_s.downcase)
   end
 
   def upsert_fts(project_id, doc_type, doc_id, title, body, source_ref)

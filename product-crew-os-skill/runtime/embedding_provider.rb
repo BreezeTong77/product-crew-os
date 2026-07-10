@@ -38,6 +38,10 @@ module ProductCrewOS
         }
       end
 
+      def embed_batch(texts)
+        Array(texts).map { |text| embed(text) }
+      end
+
       private
 
       def tokenize(text)
@@ -77,30 +81,36 @@ module ProductCrewOS
       end
 
       def embed(text)
+        embed_batch([text]).first
+      end
+
+      def embed_batch(texts)
         unless available?
           raise ProviderError, "runtime_blocked_missing_local_model: install sentence-transformers or FlagEmbedding, then ensure #{model} is available locally"
         end
 
-timeout_seconds = (ENV["PCO_BGE_TIMEOUT_SECONDS"] || "120").to_i
-timeout_seconds = 120 unless timeout_seconds.positive?
-stdout, stderr, status = capture_python_embedding(
-  JSON.generate({ "model" => model, "text" => text.to_s }),
-  timeout_seconds
-)
-raise ProviderError, "local BGE embedding failed: #{stderr.to_s.strip}" unless status.success?
+        timeout_seconds = (ENV["PCO_BGE_TIMEOUT_SECONDS"] || "120").to_i
+        timeout_seconds = 120 unless timeout_seconds.positive?
+        stdout, stderr, status = capture_python_embedding(
+          JSON.generate({ "model" => model, "texts" => Array(texts).map(&:to_s) }),
+          timeout_seconds
+        )
+        raise ProviderError, "local BGE embedding failed: #{stderr.to_s.strip}" unless status.success?
 
         payload = JSON.parse(stdout)
-        vector = payload.fetch("vector")
-        raise ProviderError, "local BGE embedding returned empty vector" unless vector.is_a?(Array) && !vector.empty?
+        vectors = payload["vectors"] || [payload["vector"]]
+        raise ProviderError, "local BGE embedding returned empty vectors" unless vectors.is_a?(Array) && vectors.all? { |vector| vector.is_a?(Array) && !vector.empty? }
 
-        {
-          "provider" => "local_open_source_bge_small_zh",
-          "model" => payload["model"] || model,
-          "embedding_dim" => vector.length,
-          "real_embedding_performed" => true,
-          "provider_runtime" => payload["provider_runtime"],
-          "vector" => vector
-        }
+        vectors.map do |vector|
+          {
+            "provider" => "local_open_source_bge_small_zh",
+            "model" => payload["model"] || model,
+            "embedding_dim" => vector.length,
+            "real_embedding_performed" => true,
+            "provider_runtime" => payload["provider_runtime"],
+            "vector" => vector
+          }
+        end
       rescue JSON::ParserError => e
         raise ProviderError, "local BGE embedding response was not valid JSON: #{e.message}"
       end
@@ -116,58 +126,60 @@ raise ProviderError, "local BGE embedding failed: #{stderr.to_s.strip}" unless s
       end
 
       def capture_python_embedding(stdin_payload, timeout_seconds)
-  stdout = stderr = status = nil
-  Open3.popen3(@python_bin, "-c", embedding_script) do |stdin, out, err, wait_thr|
-    stdin.write(stdin_payload)
-    stdin.close
-    stdout_reader = Thread.new { out.read }
-    stderr_reader = Thread.new { err.read }
+        stdout = stderr = status = nil
+        Open3.popen3(@python_bin, "-c", embedding_script) do |stdin, out, err, wait_thr|
+          stdin.write(stdin_payload)
+          stdin.close
+          stdout_reader = Thread.new { out.read }
+          stderr_reader = Thread.new { err.read }
 
-    unless wait_thr.join(timeout_seconds)
-      begin
-        Process.kill("TERM", wait_thr.pid)
-        sleep 1
-        Process.kill("KILL", wait_thr.pid) if wait_thr.alive?
-      rescue Errno::ESRCH
-        # Process already exited.
+          unless wait_thr.join(timeout_seconds)
+            begin
+              Process.kill("TERM", wait_thr.pid)
+              sleep 1
+              Process.kill("KILL", wait_thr.pid) if wait_thr.alive?
+            rescue Errno::ESRCH
+              # Process already exited.
+            end
+            raise ProviderError, "runtime_blocked_timeout: local BGE embedding did not finish within #{timeout_seconds}s"
+          end
+
+          stdout = stdout_reader.value
+          stderr = stderr_reader.value
+          status = wait_thr.value
+        end
+        [stdout, stderr, status]
       end
-      raise ProviderError, "runtime_blocked_timeout: local BGE embedding did not finish within #{timeout_seconds}s"
-    end
 
-    stdout = stdout_reader.value
-    stderr = stderr_reader.value
-    status = wait_thr.value
-  end
-  [stdout, stderr, status]
-end
-
-def embedding_script
+      def embedding_script
         <<~'PY'
           import json
           import sys
 
           payload = json.load(sys.stdin)
           model_name = payload.get("model") or "BAAI/bge-small-zh-v1.5"
-          text = payload.get("text") or ""
+          texts = payload.get("texts")
+          if texts is None:
+              texts = [payload.get("text") or ""]
 
           try:
               from sentence_transformers import SentenceTransformer
               model = SentenceTransformer(model_name)
-              vector = model.encode([text], normalize_embeddings=True)[0].tolist()
+              vectors = model.encode(texts, normalize_embeddings=True).tolist()
               print(json.dumps({
                   "model": model_name,
                   "provider_runtime": "sentence_transformers",
-                  "vector": vector
+                  "vectors": vectors
               }))
           except Exception as first_error:
               try:
                   from FlagEmbedding import FlagModel
                   model = FlagModel(model_name, use_fp16=False)
-                  vector = model.encode([text], normalize_embeddings=True)[0].tolist()
+                  vectors = model.encode(texts, normalize_embeddings=True).tolist()
                   print(json.dumps({
                       "model": model_name,
                       "provider_runtime": "FlagEmbedding",
-                      "vector": vector
+                      "vectors": vectors
                   }))
               except Exception as second_error:
                   print(

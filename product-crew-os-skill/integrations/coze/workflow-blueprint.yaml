@@ -16,6 +16,22 @@ entry_bot:
     - stage_gate
     - next_action_summary
 
+capability_handshake:
+  required_for_minimum_runtime:
+    route_trace_writer: connected
+    sop_router: connected
+    skill_router: connected
+    project_database: connected
+    artifact_writer: connected
+  required_for_standard_sop:
+    real_embedding_provider: connected
+    vector_index: connected
+    subagent_delegate: connected
+    invocation_ledger: connected
+    raw_review_writer: connected
+  missing_capability_status: runtime_not_connected
+  gate_when_missing: blocked_runtime_preflight
+
 sub_bots:
   - key: Biz
     display_name: "业务负责人"
@@ -57,7 +73,13 @@ workflow_nodes:
     output: [project_state, latest_artifacts, open_review_items]
   - key: stage_router
     input: [user_message, project_state]
-    output: [stage_id, macro_stage, route_confidence]
+    output: [stage_id, macro_stage, route_confidence, candidate_routes, retrieval_mode, real_embedding_performed, source_refs]
+  - key: route_trace_writer
+    input: [stage_id, macro_stage, route_confidence, candidate_routes, retrieval_mode, real_embedding_performed, source_refs]
+    output: [route_decision_id, stage_route_decision_path]
+  - key: embedding_recall
+    input: [user_message, prompt_eval_44_sop_index]
+    output: [top_k_sop_candidates, real_embedding_performed, embedding_provider, embedding_model, source_refs]
   - key: sop_loader
     input: [stage_id]
     output: [sop_id, required_input, required_artifacts, required_roles, stage_gate]
@@ -82,6 +104,9 @@ workflow_nodes:
   - key: sub_bot_invoker
     input: [role_key, context_packet]
     output: [invocation_id, real_invocation_performed, review_output]
+  - key: runtime_preflight
+    input: [route_decision_id, real_embedding_performed, selected_skill, required_roles, agent_invocations]
+    output: [preflight_status, blocking_reason, gate_status]
   - key: raw_review_record_writer
     input: [review_session_id, role_key, invocation_id, context_packet_id, review_output]
     output: [raw_review_record_id, record_path]
@@ -109,6 +134,7 @@ workflow_nodes:
 
 runtime_actions:
   runtime_init_project: init-project
+  runtime_route_intent: route-intent
   runtime_record_turn: record-turn
   runtime_save_artifact: save-artifact
   runtime_open_review_session: record-turn.review_session_writer
@@ -143,11 +169,15 @@ database_tables:
   - fts_documents
 
 fallback_policy:
+  if_real_embedding_unavailable:
+    action: "set runtime_degraded and block standard SOP gate"
+    must_not_claim: "real_embedding_performed"
   if_real_sub_bot_unavailable:
-    action: "emit simulated role perspective"
+    action: "emit simulated role perspective as advice_only"
     required_ledger:
       real_invocation_performed: false
       simulation_label_used: true
+      result: invalid_for_gate
   if_database_unavailable:
     action: "write Project Workspace files and append event-log.jsonl"
   if_obsidian_unavailable:

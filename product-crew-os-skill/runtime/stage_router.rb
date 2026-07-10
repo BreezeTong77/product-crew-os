@@ -1,5 +1,6 @@
 require "json"
 require "yaml"
+require_relative "sop_embedding_index"
 
 class SemanticStageRouter
   DOMAIN_EXIT_PATTERNS = [
@@ -74,8 +75,10 @@ class SemanticStageRouter
 
   attr_reader :prompt_eval_path
 
-  def initialize(prompt_eval_path:)
+  def initialize(prompt_eval_path:, embedding_mode: ENV["PCO_STAGE_ROUTER_EMBEDDING"].to_s)
     @prompt_eval_path = prompt_eval_path
+    @embedding_mode = embedding_mode.to_s
+    @last_retrieval_metadata = default_retrieval_metadata
     @cases = load_cases(prompt_eval_path)
     @cases_by_stage = @cases.each_with_object({}) do |entry, memo|
       memo[entry.fetch("stage_id")] ||= entry
@@ -84,6 +87,7 @@ class SemanticStageRouter
 
   def route(user_input)
     text = user_input.to_s.strip
+    @last_retrieval_metadata = default_retrieval_metadata
     product_like = product_signal?(text)
     if !product_like && DOMAIN_EXIT_PATTERNS.any? { |pattern| text.match?(pattern) }
       return non_product_route(text, "matched_non_product_pattern")
@@ -169,10 +173,16 @@ class SemanticStageRouter
   end
 
   def retrieve_candidates(text)
+    return retrieve_embedding_candidates(text) if embedding_enabled?
+
+    retrieve_lexical_candidates(text)
+  end
+
+  def retrieve_lexical_candidates(text)
     query_terms = tokenize(text)
     return [] if query_terms.empty? || @cases.empty?
 
-    @cases.map do |entry|
+    candidates = @cases.map do |entry|
       case_terms = tokenize(case_search_text(entry))
       matched_terms = query_terms & case_terms
       next if matched_terms.empty?
@@ -185,6 +195,52 @@ class SemanticStageRouter
         "matched_terms" => matched_terms.first(8)
       }
     end.compact.sort_by { |candidate| [-candidate.fetch("score"), candidate.fetch("stage_id")] }.first(3)
+    @last_retrieval_metadata = {
+      "retrieval_mode" => candidates.empty? ? "rules_only" : "local_sop_rag",
+      "embedding_status" => "not_requested",
+      "real_embedding_performed" => false,
+      "embedding_provider" => "",
+      "embedding_model" => "",
+      "source_refs" => candidates.flat_map { |candidate| candidate.fetch("source_refs", []) }.uniq
+    }
+    candidates
+  end
+
+  def retrieve_embedding_candidates(text)
+    index = ProductCrewOS::SopEmbeddingIndex.new(prompt_eval_path: @prompt_eval_path)
+    payload = index.retrieve(text, top_k: 3)
+    candidates = payload.fetch("candidates")
+    @last_retrieval_metadata = {
+      "retrieval_mode" => payload.fetch("real_embedding_performed") ? "real_embedding_sop_rag" : "local_hash_dry_run_sop_rag",
+      "embedding_status" => payload.fetch("real_embedding_performed") ? "real_embedding_performed" : "smoke_only_not_user_runtime",
+      "real_embedding_performed" => payload.fetch("real_embedding_performed"),
+      "embedding_provider" => payload.fetch("provider"),
+      "embedding_model" => payload.fetch("model"),
+      "source_refs" => candidates.flat_map { |candidate| candidate.fetch("source_refs", []) }.uniq
+    }
+    candidates
+  rescue ProductCrewOS::EmbeddingProviders::ProviderError => e
+    candidates = retrieve_lexical_candidates(text)
+    @last_retrieval_metadata = @last_retrieval_metadata.merge(
+      "embedding_status" => "runtime_blocked: #{e.message}",
+      "real_embedding_performed" => false
+    )
+    candidates
+  end
+
+  def embedding_enabled?
+    %w[1 true real required].include?(@embedding_mode.downcase)
+  end
+
+  def default_retrieval_metadata
+    {
+      "retrieval_mode" => "rules_only",
+      "embedding_status" => "not_requested",
+      "real_embedding_performed" => false,
+      "embedding_provider" => "",
+      "embedding_model" => "",
+      "source_refs" => []
+    }
   end
 
   def candidate_confidence_gap(candidates)
@@ -216,6 +272,11 @@ class SemanticStageRouter
       "stage_gate" => nil,
       "candidate_routes" => [],
       "retrieval_mode" => "off",
+      "embedding_status" => "not_applicable",
+      "real_embedding_performed" => false,
+      "embedding_provider" => "",
+      "embedding_model" => "",
+      "source_refs" => [],
       "confidence_gap" => nil,
       "scope_gate" => "hard_exit_or_no_confident_product_route",
       "routing_model" => "input_scope_gate_parallel_rule_embedding",
@@ -229,6 +290,7 @@ class SemanticStageRouter
     reference = @cases_by_stage.fetch(stage_id, {})
     expected = reference.fetch("expected", {})
     confidence_gap = candidate_confidence_gap(candidate_routes)
+    retrieval_metadata = @last_retrieval_metadata || default_retrieval_metadata
     {
       "product_crew_os_applies" => true,
       "domain_intent" => "product_work",
@@ -245,7 +307,12 @@ class SemanticStageRouter
       "required_artifacts" => expected["required_artifacts"] || [],
       "stage_gate" => expected["stage_gate"],
       "candidate_routes" => candidate_routes,
-      "retrieval_mode" => candidate_routes.empty? ? "rules_only" : "local_sop_rag",
+      "retrieval_mode" => candidate_routes.empty? ? "rules_only" : retrieval_metadata.fetch("retrieval_mode"),
+      "embedding_status" => retrieval_metadata.fetch("embedding_status"),
+      "real_embedding_performed" => retrieval_metadata.fetch("real_embedding_performed"),
+      "embedding_provider" => retrieval_metadata.fetch("embedding_provider"),
+      "embedding_model" => retrieval_metadata.fetch("embedding_model"),
+      "source_refs" => retrieval_metadata.fetch("source_refs"),
       "confidence_gap" => confidence_gap,
       "scope_gate" => "hard_exit_checked",
       "routing_model" => "input_scope_gate_parallel_rule_embedding",

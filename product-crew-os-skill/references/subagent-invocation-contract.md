@@ -87,6 +87,16 @@ result: "invalid_for_gate"
 
 禁止用“已拉起”“已召唤”“团队成员说”这类说法包装模拟文本。
 
+同线程内“正式创建角色上下文”“让张工进场发言”“我来扮演 Data”仍然是模拟视角，不是独立子 Agent 调用。即使它加载了 persona、context packet 和项目记忆，也只能标记为：
+
+```yaml
+real_invocation_performed: false
+simulation_label_used: true
+result: "invalid_for_gate"
+```
+
+这种输出可作为 `advice_only` 草稿意见进入 review items，但不能满足 Required Role 的 Stage Gate。
+
 ## 3. 即时召唤规则
 
 SOP 和边界矩阵是最低要求，不是唯一来源。

@@ -37,7 +37,7 @@ Product Crew OS must not treat a polished artifact as proof that the workflow ra
 - review evidence when roles are required: context packet, invocation ledger, raw review record, and review item
 - gate decision: gate status, conditions, and the user decision owner
 
-If the host has not connected `runtime/pco_runtime.rb`, Coze workflow nodes, database tables, or an equivalent adapter, the coach must say `runtime_not_connected` and continue only as advice or draft generation. Missing route trace, route mismatch, `needs_clarification`, domain exit, or `template_degraded` skill execution must block or degrade the Stage Gate; it cannot be reported as `conditional_pass`.
+If the host has not connected `runtime/pco_runtime.rb`, Coze workflow nodes, database tables, or an equivalent adapter, the coach must say `runtime_not_connected` and continue only as advice or draft generation. Missing route trace, missing real embedding when standard user runtime requires it, route mismatch, `needs_clarification`, domain exit, required sub-agent not truly invoked, or `template_degraded` skill execution must block or degrade the Stage Gate; it cannot be reported as `conditional_pass`.
 
 ## Default Workflow
 
@@ -71,6 +71,7 @@ Use `references/subagent-context-packet.md` before summoning a sub-agent.
 Use `references/subagent-invocation-contract.md` before claiming a sub-agent has been summoned. If the runtime has a real sub-agent/delegation tool and the role is needed, actually call it. If no real call occurred, label the output as a simulated role perspective.
 Use `references/subagent-memory-runtime-contract.md` when a sub-agent needs role memory, project memory, team-style overlay, or when the user asks whether sub-agents remember prior work. Sub-agent chat windows are not the long-term memory container; the coach must read, compress, inject, and write back memory through the Project Workspace.
 Use `references/runtime-adapter-contract.md` when the user asks whether Product Crew OS is truly runnable, how Project Workspace / SQLite / Obsidian writes happen, or how a host should connect the workflow to durable memory and evaluation events.
+Use `references/host-runtime-compliance.md` before claiming any host environment has deployed Product Crew OS. This file defines the capability handshake and forbids TF-IDF/local hash from being counted as real embedding or in-thread roleplay from being counted as real sub-agent invocation.
 Use `references/structured-review-loop.md` whenever the user asks for a review, a SOP or Stage Gate requires stakeholder review, a blocker/conflict is present, or an artifact changed and needs re-review. This file controls review session state, visible review records, user decisions, artifact revision, and review exit.
 Use `references/coze-runtime-blueprint.md` when the user asks how to implement Product Crew OS in Coze or another Bot + Workflow + Database platform.
 Use `references/subagent-natural-language.md` whenever a sub-agent speaks.

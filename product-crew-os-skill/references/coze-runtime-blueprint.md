@@ -17,6 +17,8 @@ Coze 版本不是把 README 复制进去，而是拆成：
 
 主控 Bot 仍然是用户唯一主要对话入口。子 Bot 不常驻前台，只在 Stage Gate、Review Loop 或 SOP 要求时被 workflow 节点调用。
 
+启动时必须先按 `host-runtime-compliance.md` 做 capability handshake。没有真实 embedding 节点、向量索引、数据库写入或子 Bot 调用节点时，Coze 只能输出 `runtime_not_connected` / `runtime_degraded`，不能说已经按 Product Crew OS 标准 SOP 运行。
+
 ## 2. Bot 设计
 
 | Bot | 职责 | 是否直接面向用户 |
@@ -75,6 +77,7 @@ Coze 如果没有把这些节点接成实际 Workflow，只把本文件或 READM
 | Project State Loader | project_id | project_state、latest_artifacts、open_reviews |
 | Stage Router | user_message、project_state | stage_id、macro_stage、confidence |
 | Route Trace Writer | route decision | `stage-route-decision` 事件、`route_decision_id`、candidate routes |
+| Embedding Recall Node | user_message、44 SOP prompt-eval set | top-K SOP candidates、real_embedding_performed、source_refs |
 | SOP Loader | stage_id | sop_id、required_input、required_artifact、stakeholders、gate |
 | Skill Router | stage_id、sop_id、user_overlay | primary_skill、fallback_skill、selected_skill |
 | Skill Execution Node | selected_skill、user_message、context | draft_output、source_refs |
@@ -164,6 +167,8 @@ agent_invocation:
 ```
 
 可降级为模拟角色视角，但必须在用户可见回复里说明。
+
+同线程角色扮演、Prompt 内部切换人格、或主控自己写“张工说”，都不是 `real_invocation_performed=true`。这些内容必须写成 `advice_only / invalid_for_gate`，不能满足 Required Role。
 
 ## 8. 最小可上线版本
 

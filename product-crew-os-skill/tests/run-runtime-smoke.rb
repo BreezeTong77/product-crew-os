@@ -26,6 +26,18 @@ rescue JSON::ParserError => e
   {}
 end
 
+def run_cmd_env(errors, env, *args)
+  stdout, stderr, status = Open3.capture3(env, *args)
+  unless status.success?
+    errors << "command failed: #{args.join(" ")}\n#{stderr}\n#{stdout}"
+    return {}
+  end
+  JSON.parse(stdout)
+rescue JSON::ParserError => e
+  errors << "invalid JSON from #{args.join(" ")}: #{e.message}\n#{stdout}"
+  {}
+end
+
 Dir.mktmpdir("pco-runtime-smoke") do |dir|
   db = File.join(dir, "pco.sqlite3")
   workspace = File.join(dir, "workspace")
@@ -119,6 +131,55 @@ Dir.mktmpdir("pco-runtime-smoke") do |dir|
     "--gate-result", "This should be blocked by runtime preflight."
   )
   assert(errors, blocked_turn["gate_status"] == "blocked_runtime_preflight", "runtime did not downgrade conditional_pass when route preflight failed")
+
+  blocked_embedding_turn = run_cmd_env(
+    errors,
+    { "PCO_REQUIRE_REAL_EMBEDDING" => "1" },
+    ruby,
+    runtime,
+    "record-turn",
+    "--workspace", workspace,
+    "--db", db,
+    "--project-id", project_id,
+    "--stage-id", "mvp_scope",
+    "--macro-stage", "requirement_analysis",
+    "--sop-id", "mvp_scope",
+    "--user-input", "我来定：第一阶段就做审核工作台 AI 辅助判定 + 知识库 RAG 联动。",
+    "--primary-skill", "scope-cutting",
+    "--fallback-skill", "shape-up",
+    "--artifact-name", "Embedding Required Smoke",
+    "--artifact-content", "This artifact should not pass without real embedding.",
+    "--gate-status", "conditional_pass",
+    "--gate-result", "This should be blocked by missing real embedding."
+  )
+  embedding_issues = blocked_embedding_turn.dig("runtime_preflight", "issues") || []
+  assert(errors, blocked_embedding_turn["gate_status"] == "blocked_runtime_preflight", "runtime did not block when real embedding was required")
+  assert(errors, embedding_issues.include?("real_embedding_missing"), "runtime preflight did not report real_embedding_missing")
+
+  blocked_subagent_turn = run_cmd_env(
+    errors,
+    { "PCO_REQUIRE_REAL_SUBAGENTS" => "1" },
+    ruby,
+    runtime,
+    "record-turn",
+    "--workspace", workspace,
+    "--db", db,
+    "--project-id", project_id,
+    "--stage-id", "formal_requirements_review",
+    "--macro-stage", "cross_functional_review",
+    "--sop-id", "formal_requirements_review",
+    "--user-input", "正式需求评审，验证必需角色不能用模拟冒充。",
+    "--primary-skill", "stakeholder-alignment-checker",
+    "--fallback-skill", "prd-critic",
+    "--artifact-name", "Subagent Required Smoke",
+    "--artifact-content", "This artifact should not pass without real sub-agent invocation.",
+    "--review-roles", "Tech",
+    "--gate-status", "conditional_pass",
+    "--gate-result", "This should be blocked by missing real sub-agent."
+  )
+  subagent_issues = blocked_subagent_turn.dig("runtime_preflight", "issues") || []
+  assert(errors, blocked_subagent_turn["gate_status"] == "blocked_runtime_preflight", "runtime did not block when real sub-agents were required")
+  assert(errors, subagent_issues.any? { |issue| issue.include?("real_subagent_invocation_missing") }, "runtime preflight did not report real_subagent_invocation_missing")
 
   export = run_cmd(errors, ruby, runtime, "export-obsidian", "--workspace", workspace, "--db", db, "--project-id", project_id, "--output-dir", vault)
   project_path = export["project_path"].to_s

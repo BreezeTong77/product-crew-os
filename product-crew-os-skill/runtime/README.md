@@ -43,6 +43,10 @@ Domain Gate
 
 - 如果已经进入产品项目，主控回合结束时必须调用 `record-turn`。`record-turn` 会自动执行 `route-intent` 并写 route trace。
 - 如果 route 结果为非产品任务、需要澄清、stage 不一致，或 skill 状态为 `template_degraded`，runtime 会把 `pass / conditional_pass` 降级为 `blocked_runtime_preflight`。
+- 标准 SOP 用户运行建议开启：
+  - `PCO_STAGE_ROUTER_EMBEDDING=real`
+  - `PCO_REQUIRE_REAL_EMBEDDING=1`
+  - `PCO_REQUIRE_REAL_SUBAGENTS=1`
 - 如果召唤角色，必须调用 `build-context-packet` 和 `record-invocation`。
 - 如果进入正式评审，必须能找到 Review Session、raw review record、review item、decision log 和 artifact diff 的写入位置。
 - 如果宿主没有真实子 Agent 能力，必须把 `real_invocation_performed` 写为 `false`，并在用户可见回复里标注“模拟角色视角”。
@@ -96,6 +100,23 @@ runtime-workspace/memory/projects/demo/routing/stage-route-decision.jsonl
 ```
 
 如果这个文件不存在，说明宿主只生成了文档，没有部署 Product Crew OS 的路由和运行时链路。
+
+真实 embedding 路由示例：
+
+```bash
+PCO_STAGE_ROUTER_EMBEDDING=real \
+PCO_REQUIRE_REAL_EMBEDDING=1 \
+ruby product-crew-os-skill/runtime/pco_runtime.rb record-turn \
+  --workspace ./runtime-workspace \
+  --db ./runtime-workspace/product-crew-os.sqlite3 \
+  --project-id demo \
+  --stage-id mvp_scope \
+  --user-input "我来定：第一阶段就做审核工作台 AI 辅助判定 + 知识库 RAG 联动。" \
+  --primary-skill scope-cutting \
+  --fallback-skill shape-up \
+  --artifact-name "mvp-scope.md" \
+  --artifact-content "MVP scope draft"
+```
 
 ## 4. 生成持久 Demo Vault
 

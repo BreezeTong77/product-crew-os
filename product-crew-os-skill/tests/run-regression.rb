@@ -216,6 +216,7 @@ assert(errors, embedding_policy.dig("input_scope_gate", "ambiguous_task", "pco_r
 assert(errors, embedding_policy.dig("input_scope_gate", "ambiguous_task", "private_namespace_retrieval_enabled") == false, "embedding policy must block private retrieval during ambiguous scope gate")
 assert(errors, embedding_policy.dig("domain_gate", "legacy_alias_for") == "input_scope_gate", "embedding policy must keep domain gate as legacy alias")
 assert(errors, embedding_policy.dig("release_gate", "ingestion_contract_required") == true, "embedding policy must require ingestion contract")
+assert(errors, embedding_policy.dig("release_gate", "real_embedding_required_for_standard_sop") == true, "embedding policy must require real embedding for standard SOP")
 assert(errors, embedding_policy.dig("source_ingestion", "ocr", "primary_engine") == "PaddleOCR", "embedding policy must set PaddleOCR as primary OCR")
 assert(errors, embedding_policy.dig("chunking", "strategy") == "semantic_structured_overlap", "embedding policy must use semantic structured overlap chunking")
 assert(errors, embedding_policy.dig("providers", "local_open_source_bge_small_zh", "model_name") == "BAAI/bge-small-zh-v1.5", "embedding policy must choose BAAI/bge-small-zh-v1.5")
@@ -240,12 +241,21 @@ rag_ingestion_contract = File.read(File.join(skill_root, "tests", "run-rag-inges
   assert(errors, rag_ingestion_contract.include?(phrase), "RAG ingestion contract missing #{phrase}")
 end
 embedding_provider = File.read(File.join(skill_root, "runtime", "embedding_provider.rb"))
-%w[LocalOpenSourceBGESmallZH BAAI/bge-small-zh-v1.5 real_embedding_performed local_hash_dry_run runtime_blocked_missing_local_model].each do |phrase|
+%w[LocalOpenSourceBGESmallZH BAAI/bge-small-zh-v1.5 real_embedding_performed local_hash_dry_run runtime_blocked_missing_local_model embed_batch].each do |phrase|
   assert(errors, embedding_provider.include?(phrase), "embedding provider missing #{phrase}")
 end
+sop_embedding_index = File.read(File.join(skill_root, "runtime", "sop_embedding_index.rb"))
+%w[SopEmbeddingIndex embed_batch vector_score source_refs].each do |phrase|
+  assert(errors, sop_embedding_index.include?(phrase), "SOP embedding index missing #{phrase}")
+end
 local_embedding_contract = File.read(File.join(skill_root, "tests", "run-local-open-source-embedding-provider-contract.rb"))
-%w[local_open_source_bge_small_zh real_local_call_passed runtime_blocked_missing_local_model].each do |phrase|
+%w[local_open_source_bge_small_zh real_local_call_passed runtime_blocked_missing_local_model SopEmbeddingIndex].each do |phrase|
   assert(errors, local_embedding_contract.include?(phrase), "local open-source embedding contract missing #{phrase}")
+end
+
+host_runtime_compliance = File.read(File.join(skill_root, "references", "host-runtime-compliance.md"))
+%w[Capability Handshake real_embedding_provider subagent_delegate runtime_not_connected invalid_for_gate].each do |phrase|
+  assert(errors, host_runtime_compliance.include?(phrase), "host runtime compliance missing #{phrase}")
 end
 
 assert(errors, prompt_eval_cases.length == 44, "prompt eval should cover 44 SOP cases, found #{prompt_eval_cases.length}")
