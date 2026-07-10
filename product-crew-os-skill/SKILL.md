@@ -27,6 +27,18 @@ For every user message:
 14. End meaningful product-work turns with a compact project status bar, unless the user asked only for a tiny factual answer.
 15. Use stage rituals when opening a project room, entering a stage, passing a gate, blocking premature movement, opening a review, or closing a review.
 
+## Runtime Preflight
+
+Product Crew OS must not treat a polished artifact as proof that the workflow ran. Before any `pass` or `conditional_pass` Stage Gate, the host must have durable evidence for:
+
+- route trace: `route_decision_id`, `stage_id`, `candidate_routes`, `retrieval_mode`, `confidence`, and `route_status`
+- SOP and skill run: expected primary skill, selected skill, `skill_status`, and degradation reason when applicable
+- artifact write: artifact id, version, path, and source ref
+- review evidence when roles are required: context packet, invocation ledger, raw review record, and review item
+- gate decision: gate status, conditions, and the user decision owner
+
+If the host has not connected `runtime/pco_runtime.rb`, Coze workflow nodes, database tables, or an equivalent adapter, the coach must say `runtime_not_connected` and continue only as advice or draft generation. Missing route trace, route mismatch, `needs_clarification`, domain exit, or `template_degraded` skill execution must block or degrade the Stage Gate; it cannot be reported as `conditional_pass`.
+
 ## Default Workflow
 
 Use `references/product-mission-vision-values.md` when explaining what Product Crew OS is, why it exists, or how it should evolve.
@@ -65,7 +77,7 @@ Use `references/subagent-natural-language.md` whenever a sub-agent speaks.
 Use `references/project-asset-pack.md` when creating, updating, exporting, or explaining project memory, project artifacts, Obsidian-compatible exports, Markdown project packages, decision logs, review items, timelines, or project knowledge retrieval.
 Use `references/project-memory-index-architecture.md` when discussing Obsidian sync, SQLite, FTS, vector search, RAG, database CRUD, long-term memory updates, or how to prevent project memory from being overwritten.
 Use `runtime/db/embedding-rag-schema.sql` when implementing persistent embedding document/chunk/retrieval-event storage.
-Use `runtime/pco_runtime.rb` when the user wants project memory to be executable, asks to create/update/export a real project workspace, or needs SQLite-backed project state, artifact versions, decisions, review items, agent memory, context packets, invocation logs, or Obsidian-compatible Vault output. Use its `record-turn` adapter after a meaningful coach turn has completed Stage -> SOP -> Skill -> Review -> Artifact, so runtime tables receive `sop_runs`, `skill_runs`, artifact versions, context packets, invocation ledger entries, review items, and gate results instead of leaving the result only in chat.
+Use `runtime/pco_runtime.rb` when the user wants project memory to be executable, asks to create/update/export a real project workspace, or needs SQLite-backed project state, artifact versions, decisions, review items, agent memory, context packets, invocation logs, route trace, or Obsidian-compatible Vault output. Use its `record-turn` adapter for meaningful coach turns. `record-turn` runs or validates `route-intent` first and writes `routing/stage-route-decision.jsonl`; if the runtime preflight fails, the gate is downgraded to `blocked_runtime_preflight` rather than falsely reporting `conditional_pass`.
 Use `references/skill-stage-router.md` to pick a stage-specific primary skill and fallback.
 Use `references/skill-dependency-registry.md` when explaining primary vs fallback, checking whether a routed skill is built-in, external, plugin-based, user-provided, or unavailable, and deciding how to continue when a skill is missing.
 Use `references/bundled-skill-index.md` after selecting a routed skill. If a matching bundled implementation exists under `third_party/skills/`, read that bundled skill's `SKILL.md` and relevant resources as the default implementation before falling back to templates.

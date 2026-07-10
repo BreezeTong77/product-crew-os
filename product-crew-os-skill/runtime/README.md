@@ -13,7 +13,8 @@
 - 写入角色记忆：写入 `agent_memories`、`memory_deltas` 和 `agent-memory/{role}.md`。
 - 构建 Context Packet：从 artifact、决策、评审、风险、角色记忆中生成子 Agent 上下文包。
 - 记录真实/模拟子 Agent 调用：写入 `agent_invocations`。
-- 记录主控回合：通过 `record-turn` 一次性写入 `sop_runs`、`skill_runs`、artifact、Review Session、Context Packet、调用 ledger、raw review record、review item 和 Stage Gate。
+- 路由留痕：通过 `route-intent` 写入 `routing/stage-route-decision.jsonl` 和 `stage_route_decision` 事件。
+- 记录主控回合：通过 `record-turn` 先执行/验证 route trace，再一次性写入 `sop_runs`、`skill_runs`、artifact、Review Session、Context Packet、调用 ledger、raw review record、review item 和 Stage Gate。
 - 记录评估事件：写入 `stage_detected`、`skill_selected`、`memory_snapshot_built`、`agent_summoned`、`stage_gate_decision` 等事件。
 - 导出 Obsidian Vault：按 10 大产品流程 + `_项目账本` + `_团队记忆` 生成可读 Markdown 项目包，其中 `_项目账本/review-sessions` 与 `_项目账本/raw-review-records` 用于查看评审全记录。
 
@@ -40,7 +41,8 @@ Domain Gate
 
 最低接入要求：
 
-- 如果已经进入产品项目，主控回合结束时必须调用 `record-turn`。
+- 如果已经进入产品项目，主控回合结束时必须调用 `record-turn`。`record-turn` 会自动执行 `route-intent` 并写 route trace。
+- 如果 route 结果为非产品任务、需要澄清、stage 不一致，或 skill 状态为 `template_degraded`，runtime 会把 `pass / conditional_pass` 降级为 `blocked_runtime_preflight`。
 - 如果召唤角色，必须调用 `build-context-packet` 和 `record-invocation`。
 - 如果进入正式评审，必须能找到 Review Session、raw review record、review item、decision log 和 artifact diff 的写入位置。
 - 如果宿主没有真实子 Agent 能力，必须把 `real_invocation_performed` 写为 `false`，并在用户可见回复里标注“模拟角色视角”。
@@ -87,6 +89,14 @@ ruby product-crew-os-skill/runtime/pco_runtime.rb export-obsidian \
   --output-dir ./runtime-workspace/obsidian-vault
 ```
 
+执行后应能看到：
+
+```text
+runtime-workspace/memory/projects/demo/routing/stage-route-decision.jsonl
+```
+
+如果这个文件不存在，说明宿主只生成了文档，没有部署 Product Crew OS 的路由和运行时链路。
+
 ## 4. 生成持久 Demo Vault
 
 这条命令会生成可长期查看的 SQLite 数据库、Project Workspace 和 Obsidian-compatible Vault，不会像测试用例一样自动删除。
@@ -125,8 +135,9 @@ ruby product-crew-os-skill/tests/run-sop-e2e-smoke.rb
 - SQLite 数据库被创建。
 - `projects`、`artifacts`、`decisions`、`review_sessions`、`raw_review_records`、`review_items`、`agent_memories`、`context_packets` 至少各有一条记录。
 - Project Workspace 中存在 artifact、decision log、review items、agent memory 和 context packet。
+- Project Workspace 中存在 `routing/stage-route-decision.jsonl`。
 - Obsidian Vault 中存在 `00_项目首页.md`、`_项目账本/`、`_项目账本/review-sessions`、`_项目账本/raw-review-records` 和 `_团队记忆/`。
-- 44 个 SOP prompt case 都能通过 `record-turn` 写入 `sop_runs`、`skill_runs`、artifact、Review Session、Context Packet、调用 ledger、raw review record 和 Obsidian 导出。
+- 44 个 SOP prompt case 都能通过 `record-turn` 写入 route trace、`sop_runs`、`skill_runs`、artifact、Review Session、Context Packet、调用 ledger、raw review record 和 Obsidian 导出。
 - 事件表中存在 `stage_detected`、`skill_selected`、`memory_snapshot_built`、`agent_summoned`、`stage_gate_decision`。
 
 ## 6. 事实源边界

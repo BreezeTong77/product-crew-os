@@ -106,6 +106,19 @@ required_files.each do |relative_path|
   errors << "Missing required file: #{relative_path}" unless File.exist?(path)
 end
 
+skill_entry = File.read(File.join(skill_root, "SKILL.md"))
+errors << "SKILL.md missing Runtime Preflight section" unless skill_entry.include?("## Runtime Preflight")
+errors << "SKILL.md missing runtime_not_connected guard" unless skill_entry.include?("runtime_not_connected")
+errors << "SKILL.md missing blocked_runtime_preflight guard" unless skill_entry.include?("blocked_runtime_preflight")
+
+runtime_contract = File.read(File.join(skill_root, "references", "runtime-adapter-contract.md"))
+errors << "runtime adapter contract missing route trace requirement" unless runtime_contract.include?("routing/stage-route-decision.jsonl")
+errors << "runtime adapter contract missing runtime preflight downgrade" unless runtime_contract.include?("blocked_runtime_preflight")
+
+coze_blueprint = File.read(File.join(skill_root, "references", "coze-runtime-blueprint.md"))
+errors << "coze blueprint missing runtime_not_connected guard" unless coze_blueprint.include?("runtime_not_connected")
+errors << "coze blueprint missing Runtime Preflight node" unless coze_blueprint.include?("Runtime Preflight")
+
 bundled_skill_dir = File.join(skill_root, "third_party", "skills")
 bundled_skill_files = Dir[File.join(bundled_skill_dir, "*", "SKILL.md")]
 errors << "Missing bundled third-party skill directory: third_party/skills" unless Dir.exist?(bundled_skill_dir)

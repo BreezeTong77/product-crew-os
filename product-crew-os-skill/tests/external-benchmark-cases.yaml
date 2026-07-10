@@ -146,3 +146,15 @@ cases:
     expected_stage_id:
     expected_primary_skill:
     expected_roles: []
+  - case_id: "E25_content_audit_workbench_mvp"
+    prompt: "我来定：第一阶段就做审核工作台 AI 辅助判定 + 知识库 RAG 联动。"
+    expected_domain_intent: "product_work"
+    expected_stage_id: "mvp_scope"
+    expected_primary_skill: "scope-cutting"
+    expected_roles: ["Coach", "Biz", "Tech", "Design", "Data", "Customer"]
+  - case_id: "E26_content_audit_core_flow"
+    prompt: "继续画 core-flow.md：内容进入待审队列、AI 判定、人工采纳或修正、RAG 查询、质检回流。"
+    expected_domain_intent: "product_work"
+    expected_stage_id: "core_flow_diagram"
+    expected_primary_skill: "user-story-mapping"
+    expected_roles: ["Coach", "Design", "Tech", "Data", "CS"]

@@ -65,6 +65,8 @@ flowchart TD
   P --> R["Next Action Composer"]
 ```
 
+Coze 如果没有把这些节点接成实际 Workflow，只把本文件或 README 放进 Bot Prompt，则不算已部署 Product Crew OS。主控 Bot 必须返回 `runtime_not_connected` 或 `runtime_degraded`，不能声称已经调用 SOP、skill、embedding 或子 Bot。
+
 ## 4. 节点输入输出
 
 | 节点 | 输入 | 输出 |
@@ -72,6 +74,7 @@ flowchart TD
 | Domain Gate | user_message | `product_work | product_config | general_task | unknown` |
 | Project State Loader | project_id | project_state、latest_artifacts、open_reviews |
 | Stage Router | user_message、project_state | stage_id、macro_stage、confidence |
+| Route Trace Writer | route decision | `stage-route-decision` 事件、`route_decision_id`、candidate routes |
 | SOP Loader | stage_id | sop_id、required_input、required_artifact、stakeholders、gate |
 | Skill Router | stage_id、sop_id、user_overlay | primary_skill、fallback_skill、selected_skill |
 | Skill Execution Node | selected_skill、user_message、context | draft_output、source_refs |
@@ -86,7 +89,8 @@ flowchart TD
 | Artifact Revision and Diff Writer | accepted_items、artifact | new_artifact_version、artifact_diff |
 | Re-review Router | artifact_diff、affected_roles | re_review_roles |
 | Decision and Memory Writer | review_items、user_decisions、memory_candidates | decisions、memory_deltas |
-| Stage Gate | artifact、review_items、gate | gate_status、conditions、next_stage |
+| Runtime Preflight | route trace、selected skill、artifact、review evidence | preflight_status、blocking_reason |
+| Stage Gate | artifact、review_items、gate、runtime_preflight | gate_status、conditions、next_stage |
 | Project Memory Writer | all outputs | database rows、event-log、project files |
 | Obsidian Export Node | project_id | markdown vault path |
 | Next Action Composer | gate_status、next_stage | visible coach response |
@@ -114,6 +118,7 @@ Coze 数据库或外部数据库至少需要这些表。字段可直接参考 `r
 | `context_packets` | 子 Bot 调用上下文 |
 | `agent_invocations` | 子 Bot 调用账本 |
 | `events` | 指标事件 |
+| `route_traces` 或 `events(stage_route_decision)` | 每轮 route decision、candidate routes、retrieval mode、confidence |
 | `fts_documents` | 全文检索 |
 | `routing_feedback` | Stage / SOP 纠偏 |
 
@@ -124,6 +129,7 @@ Coze 数据库或外部数据库至少需要这些表。字段可直接参考 `r
 | Action | 对应本地命令 |
 | --- | --- |
 | `runtime_init_project` | `init-project` |
+| `runtime_route_intent` | `route-intent` |
 | `runtime_record_turn` | `record-turn` |
 | `runtime_save_artifact` | `save-artifact` |
 | `runtime_open_review_session` | `record-turn` 中的 Review Session Writer |
@@ -164,16 +170,18 @@ agent_invocation:
 Coze M1 最小闭环：
 
 1. 主控 Bot 接收用户输入。
-2. Workflow 命中 Stage 和 SOP。
-3. 调用一个 selected skill 或模板。
-4. 写 artifact。
-5. 对需要评审的 stage 创建 Review Session，并按批次调用必要子 Bot。
-6. 写 raw_review_records、review_items、conflict_matrix、open_questions。
-7. 让用户决定采纳、拒绝、暂缓或补证据。
-8. 修改 artifact 后生成 artifact_diff，并只让相关角色复评。
-9. 写 decisions、agent_memories。
-10. 给用户返回下一步。
-11. 支持导出 Obsidian-compatible 项目包。
+2. Workflow 调用 `runtime_route_intent` 或等价节点，并保存 route trace。
+3. Workflow 命中 Stage、SOP 和 selected skill。
+4. Skill Execution Node 执行真实 skill；如果只能走模板，标记 `template_degraded`。
+5. 写 artifact。
+6. Runtime Preflight 校验 route trace、stage、skill 和 review evidence；失败时 gate 降级为 `blocked_runtime_preflight`。
+7. 对需要评审的 stage 创建 Review Session，并按批次调用必要子 Bot。
+8. 写 raw_review_records、review_items、conflict_matrix、open_questions。
+9. 让用户决定采纳、拒绝、暂缓或补证据。
+10. 修改 artifact 后生成 artifact_diff，并只让相关角色复评。
+11. 写 decisions、agent_memories。
+12. 给用户返回下一步。
+13. 支持导出 Obsidian-compatible 项目包。
 
 ## 9. 不建议做的事
 

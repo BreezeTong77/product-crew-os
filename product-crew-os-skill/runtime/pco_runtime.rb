@@ -10,6 +10,8 @@ require "yaml"
 require_relative "stage_router"
 
 class ProductCrewRuntime
+  PASSING_GATE_STATUSES = %w[pass conditional_pass].freeze
+
   FLOW_DIRS = {
     "project_intake" => "01_机会发现",
     "opportunity_discovery" => "01_机会发现",
@@ -381,9 +383,17 @@ class ProductCrewRuntime
   def route_intent(user_input:, project_id: "", emit: true)
     router = SemanticStageRouter.new(prompt_eval_path: File.expand_path("../tests/prompt-eval-cases.yaml", __dir__))
     decision = router.route(user_input)
+    route_decision_id = id("route")
+    decision = decision.merge(
+      "route_decision_id" => route_decision_id,
+      "trace_status" => project_id.to_s.empty? ? "not_recorded_project_id_missing" : "recorded"
+    )
     if !project_id.to_s.empty?
       ensure_project!(project_id)
-      record_event(project_id, "stage_route_decision", decision.merge("user_input" => user_input))
+      payload = decision.merge("user_input" => user_input)
+      write_route_trace(project_id, payload)
+      record_event(project_id, "stage_route_decision", payload)
+      refresh_all_ledgers(project_id)
     end
     puts_json(decision) if emit
     decision
@@ -461,7 +471,7 @@ class ProductCrewRuntime
     root = File.expand_path(output_dir)
     project_root = File.join(root, "Projects", safe_slug(project.fetch("name")))
     flow_dirs = FLOW_DIRS.values.uniq
-    (flow_dirs + ["_项目账本", File.join("_项目账本", "review-sessions"), File.join("_项目账本", "raw-review-records"), "_团队记忆", "_导出", File.join("_导出", "word"), File.join("_导出", "pdf"), File.join("_导出", "release-notes")]).each do |dir|
+    (flow_dirs + ["_项目账本", File.join("_项目账本", "review-sessions"), File.join("_项目账本", "raw-review-records"), File.join("_项目账本", "routing"), "_团队记忆", "_导出", File.join("_导出", "word"), File.join("_导出", "pdf"), File.join("_导出", "release-notes")]).each do |dir|
       FileUtils.mkdir_p(File.join(project_root, dir))
     end
     write_obsidian_home(project_id, project_root)
@@ -472,12 +482,31 @@ class ProductCrewRuntime
     puts_json(project_id: project_id, obsidian_vault: root, project_path: project_root)
   end
 
-  def record_turn(project_id:, stage_id:, macro_stage: "", sop_id: "", user_input: "", route_confidence: "smoke", primary_skill:, fallback_skill: "", skill_status: "completed", artifact_name:, artifact_content_file: nil, artifact_content: nil, artifact_status: "draft", gate_status: "conditional_pass", gate_result: "", review_roles: "", source_ref: "")
+  def record_turn(project_id:, stage_id:, macro_stage: "", sop_id: "", user_input: "", route_confidence: "runtime", route_decision_id: "", primary_skill:, fallback_skill: "", skill_status: "completed", artifact_name:, artifact_content_file: nil, artifact_content: nil, artifact_status: "draft", gate_status: "conditional_pass", gate_result: "", review_roles: "", source_ref: "")
     ensure_project!(project_id)
     now = timestamp
     sop_run_id = id("sop")
     sop_id = stage_id if sop_id.empty?
     macro_stage = infer_macro_stage(stage_id) if macro_stage.empty?
+    route_decision =
+      if route_decision_id.to_s.empty? && !user_input.to_s.strip.empty?
+        route_intent(user_input: user_input, project_id: project_id, emit: false)
+      elsif !route_decision_id.to_s.empty?
+        find_route_decision(project_id, route_decision_id)
+      end
+    route_decision_id = route_decision["route_decision_id"].to_s if route_decision && route_decision_id.to_s.empty?
+    runtime_preflight = runtime_preflight_result(
+      stage_id: stage_id,
+      route_decision: route_decision,
+      route_decision_id: route_decision_id,
+      skill_status: skill_status
+    )
+    effective_gate_status = gate_status
+    effective_gate_result = gate_result
+    if passing_gate_status?(gate_status) && runtime_preflight.fetch("status") != "passed"
+      effective_gate_status = "blocked_runtime_preflight"
+      effective_gate_result = [gate_result, "Runtime preflight blocked stage gate: #{runtime_preflight.fetch("issues").join(", ")}"].reject { |value| value.to_s.strip.empty? }.join("\n")
+    end
 
     exec_sql(<<~SQL)
       UPDATE projects
@@ -489,12 +518,12 @@ class ProductCrewRuntime
       INSERT INTO stages
         (project_id, stage_id, macro_stage, status, gate_status, started_at, completed_at)
       VALUES
-        (#{q(project_id)}, #{q(stage_id)}, #{q(macro_stage)}, 'completed', #{q(gate_status)}, #{q(now)}, #{q(now)});
+        (#{q(project_id)}, #{q(stage_id)}, #{q(macro_stage)}, 'completed', #{q(effective_gate_status)}, #{q(now)}, #{q(now)});
 
       INSERT INTO sop_runs
         (run_id, project_id, stage_id, sop_id, user_input, route_confidence, result, created_at)
       VALUES
-        (#{q(sop_run_id)}, #{q(project_id)}, #{q(stage_id)}, #{q(sop_id)}, #{q(user_input)}, #{q(route_confidence)}, #{q(gate_result)}, #{q(now)});
+        (#{q(sop_run_id)}, #{q(project_id)}, #{q(stage_id)}, #{q(sop_id)}, #{q(user_input)}, #{q(route_confidence)}, #{q(effective_gate_result)}, #{q(now)});
     SQL
     record_event(
       project_id,
@@ -504,9 +533,12 @@ class ProductCrewRuntime
         stage_id: stage_id,
         macro_stage: macro_stage,
         sop_id: sop_id,
-        route_confidence: route_confidence
+        route_confidence: route_confidence,
+        route_decision_id: route_decision_id,
+        runtime_preflight: runtime_preflight
       }
     )
+    record_event(project_id, "runtime_preflight_blocked", runtime_preflight) if runtime_preflight.fetch("status") != "passed"
 
     artifact_body = artifact_content || (artifact_content_file ? File.read(artifact_content_file) : "")
     if artifact_body.strip.empty?
@@ -517,7 +549,7 @@ class ProductCrewRuntime
         - SOP: `#{sop_id}`
         - Primary skill: `#{primary_skill}`
         - Fallback skill: `#{fallback_skill}`
-        - Gate: `#{gate_status}`
+        - Gate: `#{effective_gate_status}`
 
         User input:
 
@@ -651,7 +683,9 @@ class ProductCrewRuntime
         primary_skill: primary_skill,
         fallback_skill: fallback_skill,
         artifact_id: artifact[:artifact_id],
-        gate_status: gate_status
+        gate_status: effective_gate_status,
+        route_decision_id: route_decision_id,
+        runtime_preflight: runtime_preflight
       }
     )
     record_event(
@@ -660,9 +694,11 @@ class ProductCrewRuntime
       {
         sop_run_id: sop_run_id,
         stage_id: stage_id,
-        gate_status: gate_status,
-        gate_result: gate_result,
-        artifact_id: artifact[:artifact_id]
+        gate_status: effective_gate_status,
+        gate_result: effective_gate_result,
+        artifact_id: artifact[:artifact_id],
+        route_decision_id: route_decision_id,
+        runtime_preflight: runtime_preflight
       }
     )
     refresh_all_ledgers(project_id)
@@ -673,7 +709,10 @@ class ProductCrewRuntime
       artifact_id: artifact[:artifact_id],
       review_session_id: review_session ? review_session[:session_id] : "",
       stage_id: stage_id,
-      gate_status: gate_status,
+      gate_status: effective_gate_status,
+      route_decision_id: route_decision_id,
+      trace_status: route_decision ? route_decision.fetch("trace_status", "") : "missing",
+      runtime_preflight: runtime_preflight,
       roles: role_outputs
     )
   end
@@ -764,7 +803,7 @@ class ProductCrewRuntime
 
   def create_project_workspace(project_id, name)
     root = project_dir(project_id)
-    dirs = %w[artifacts context-packets review-sessions raw-review-records agent-memory checkpoints exports]
+    dirs = %w[artifacts context-packets review-sessions raw-review-records routing agent-memory checkpoints exports]
     dirs.each { |dir| FileUtils.mkdir_p(File.join(root, dir)) }
     write_if_missing(File.join(root, "project-home.md"), "# #{name}\n\n- Project ID: `#{project_id}`\n- Source of truth: Product Crew OS Runtime\n")
     write_if_missing(File.join(root, "timeline.md"), "# Timeline\n")
@@ -776,6 +815,7 @@ class ProductCrewRuntime
     write_if_missing(File.join(root, "open-questions.md"), "# Open Questions\n")
     write_if_missing(File.join(root, "artifact-diff.md"), "# Artifact Diff\n")
     write_if_missing(File.join(root, "event-log.jsonl"), "")
+    write_if_missing(File.join(root, "routing", "stage-route-decision.jsonl"), "")
     write_if_missing(File.join(root, "review-items.yaml"), { "review_items" => [] }.to_yaml)
     write_if_missing(File.join(root, "artifact-index.yaml"), { "artifacts" => [] }.to_yaml)
     write_if_missing(File.join(root, "exports", "export-manifest.yaml"), { "exports" => [] }.to_yaml)
@@ -881,6 +921,53 @@ class ProductCrewRuntime
     File.open(event_path, "a") do |file|
       file.puts(JSON.generate("event_id" => event_id, "project_id" => project_id, "event_type" => event_type, "payload" => payload, "created_at" => now))
     end
+    event_id
+  end
+
+  def write_route_trace(project_id, payload)
+    trace_path = File.join(project_dir(project_id), "routing", "stage-route-decision.jsonl")
+    FileUtils.mkdir_p(File.dirname(trace_path))
+    File.open(trace_path, "a") do |file|
+      file.puts(JSON.generate(payload.merge("project_id" => project_id, "created_at" => timestamp)))
+    end
+  end
+
+  def find_route_decision(project_id, route_decision_id)
+    return nil if route_decision_id.to_s.empty?
+
+    query("SELECT payload_json FROM events WHERE project_id = #{q(project_id)} AND event_type = 'stage_route_decision' ORDER BY created_at DESC;").each do |event|
+      payload = JSON.parse(event.fetch("payload_json"))
+      return payload if payload["route_decision_id"].to_s == route_decision_id.to_s
+    rescue JSON::ParserError
+      next
+    end
+    nil
+  end
+
+  def runtime_preflight_result(stage_id:, route_decision:, route_decision_id:, skill_status:)
+    issues = []
+    if route_decision.nil?
+      issues << "route_trace_missing"
+    elsif route_decision.fetch("product_crew_os_applies", false) != true
+      issues << "route_domain_exit"
+    elsif route_decision["route_status"].to_s == "needs_clarification"
+      issues << "route_needs_clarification"
+    elsif route_decision["stage_id"].to_s != stage_id.to_s
+      issues << "route_mismatch expected=#{route_decision["stage_id"]} actual=#{stage_id}"
+    end
+    issues << "template_degraded_skill_not_gate_valid" if skill_status.to_s == "template_degraded"
+    {
+      "status" => issues.empty? ? "passed" : "blocked",
+      "issues" => issues,
+      "route_decision_id" => route_decision_id.to_s,
+      "route_status" => route_decision ? route_decision["route_status"].to_s : "",
+      "retrieval_mode" => route_decision ? route_decision["retrieval_mode"].to_s : "",
+      "confidence" => route_decision ? route_decision["confidence"] : nil
+    }
+  end
+
+  def passing_gate_status?(gate_status)
+    PASSING_GATE_STATUSES.include?(gate_status.to_s)
   end
 
   def upsert_fts(project_id, doc_type, doc_id, title, body, source_ref)
@@ -1155,6 +1242,7 @@ class ProductCrewRuntime
     end
     copy_directory(File.join(project_dir(project_id), "review-sessions"), File.join(project_root, "_项目账本", "review-sessions"))
     copy_directory(File.join(project_dir(project_id), "raw-review-records"), File.join(project_root, "_项目账本", "raw-review-records"))
+    copy_directory(File.join(project_dir(project_id), "routing"), File.join(project_root, "_项目账本", "routing"))
   end
 
   def export_team_memory(project_id, project_root)
@@ -1325,7 +1413,8 @@ when "record-turn"
     macro_stage: options["macro_stage"].to_s,
     sop_id: options["sop_id"].to_s,
     user_input: options["user_input"].to_s,
-    route_confidence: options["route_confidence"] || "smoke",
+    route_confidence: options["route_confidence"] || "runtime",
+    route_decision_id: options["route_decision_id"].to_s,
     primary_skill: require_option(options, "primary_skill"),
     fallback_skill: options["fallback_skill"].to_s,
     skill_status: options["skill_status"] || "completed",

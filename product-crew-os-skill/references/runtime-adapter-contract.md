@@ -39,6 +39,28 @@ Product Crew OS 不能单靠 Markdown 规则包强制任意宿主自动调用子
 -> Obsidian / Markdown Export
 ```
 
+### 2.1 Runtime Preflight / 运行时预检
+
+`record-turn` 不能只相信主控传入的 `stage_id`。在写入 SOP、Skill、Artifact 和 Stage Gate 前，runtime 必须先执行或验证 `route-intent`：
+
+```text
+record-turn
+-> route-intent
+-> 写 routing/stage-route-decision.jsonl
+-> 校验 product_crew_os_applies / stage_id / route_status / skill_status
+-> 预检通过才允许 pass / conditional_pass
+```
+
+如果出现下列任一情况，runtime 可以继续保存草稿 artifact 和审阅痕迹，但 Stage Gate 必须降级为 `blocked_runtime_preflight`：
+
+- 没有 route trace。
+- `route-intent` 判断为非产品任务。
+- route 结果仍为 `needs_clarification`。
+- route `stage_id` 与 `record-turn` 传入 stage 不一致。
+- skill 执行状态为 `template_degraded`。
+
+这条规则专门防止“Coze / 普通 Agent 生成了文档，但 SOP、skill、embedding、子 Agent 和 runtime 都没接上”的假通过。
+
 本地命令入口是：
 
 ```bash
@@ -63,6 +85,7 @@ ruby product-crew-os-skill/runtime/pco_runtime.rb record-turn \
 
 | 模块 | 写入内容 |
 | --- | --- |
+| `routing/stage-route-decision.jsonl` | route decision id、stage、candidate routes、retrieval mode、confidence |
 | `sop_runs` | stage、sop、用户输入、路由置信度 |
 | `skill_runs` | selected skill、fallback、执行状态、输出引用 |
 | `artifacts` / `artifact_versions` | 可编辑产物与版本 |
@@ -115,6 +138,8 @@ Runtime 必须记录以下核心事件，便于回归和评估：
 | `decision_written` | 检查决策是否沉淀 |
 | `stage_gate_decision` | 检查阶段门是否明确 |
 | `obsidian_exported` | 检查可视化项目包是否导出 |
+
+如果没有 `stage_route_decision` 和 `routing/stage-route-decision.jsonl`，任何 `conditional_pass` 都应视为无效。
 
 ## 5. Note Adapter / 笔记工具适配
 

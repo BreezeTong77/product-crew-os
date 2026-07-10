@@ -9,7 +9,8 @@ class SemanticStageRouter
 
   PRODUCT_SIGNALS = [
     /产品|需求|用户|客户|PRD|prd|MVP|mvp|原型|评审|上线|复盘|指标|埋点|灰度|验收|研发|设计|业务|项目|流程|痛点|访谈|调研|路线图|backlog|roadmap|feature|launch|postmortem/,
-    /Product Crew OS|SOP|skill|Stage|Agent|artifact|workflow|router|product|founder|investor|runway|retention|activation|enterprise|workspace|assistant/i
+    /审核工作台|内容审核|内容安全|质量管控|质检|复核|待审队列|知识库|RAG|AI\s*辅助|辅助判定|人工修正|采纳率|审核员|政策依据|相似案例|模型迭代/,
+    /Product Crew OS|SOP|skill|Stage|Agent|artifact|workflow|router|product|founder|investor|runway|retention|activation|enterprise|workspace|assistant|content moderation|review workbench|knowledge base/i
   ].freeze
 
   RETRIEVAL_STOP_TERMS = %w[
@@ -40,12 +41,12 @@ class SemanticStageRouter
     ["value_sizing", [/值不值得做|估算收益|成本和不确定性|价值评估|收益.*成本|value sizing|ROI/], 0.88],
     ["prioritization", [/先做哪个|哪些先不做|优先级|排序|prioritization|RICE|ICE|MoSCoW|都有人催|above.*line|below.*line/], 0.9],
     ["solution_exploration", [/几种解法|列方案|比较取舍|方案比较|solution options|option a|option b|credible ways/], 0.88],
-    ["mvp_scope", [/先做 MVP|砍范围|not-do|不要做大|scope cutting|MVP 范围|最小可行/], 0.92],
+    ["mvp_scope", [/先做 MVP|砍范围|not-do|不要做大|scope cutting|MVP 范围|最小可行|第一阶段.*(主打|做|范围|切入|先做)|阶段.*切入点/], 0.92],
     ["one_page_proposal", [/一页方案|一页纸|拿给业务方|过一下方向|one[-\s]?page|one\s*pager|exec summary|资源申请|方向说明/], 0.88],
     ["data_feasibility_precheck", [/数据可不可行|客户数据|推荐逻辑|数据可行性|data feasibility/], 0.9],
     ["technical_feasibility_precheck", [/技术可行|自动化.*权限.*接口|研发视角|能不能做|technical feasibility|架构风险/], 0.9],
     ["compliance_precheck", [/合规|隐私|外部消息触达|法务|compliance|personal data|敏感数据/], 0.9],
-    ["core_flow_diagram", [/核心流程|流程图|异常分支|用户.*系统|flow diagram|泳道|状态流转/], 0.88],
+    ["core_flow_diagram", [/核心流程|流程图|异常分支|用户.*系统|flow diagram|core[-_\s]?flow|泳道|状态流转|待审队列.*AI.*(质检|回流)/], 0.88],
     ["low_fi_prototype", [/原型图|低保真|画个原型|类似.*首页|信息流首页|prototype|wireframe|mockup|UI草图/], 0.94],
     ["metrics_design", [/北极星指标|输入指标|护栏指标|指标树|metrics design|north star|KPI/], 0.9],
     ["instrumentation_plan", [/埋点|事件属性|触发时机|instrumentation|tracking plan|数据采集/], 0.9],
