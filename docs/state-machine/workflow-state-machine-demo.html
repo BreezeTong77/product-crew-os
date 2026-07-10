@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Product Crew OS 工作流状态机 Demo</title>
+  <style>
+    :root {
+      --bg: #f7f7f4;
+      --panel: #ffffff;
+      --text: #202124;
+      --muted: #667085;
+      --line: #d8d8d0;
+      --accent: #0f766e;
+      --warn: #b45309;
+      --block: #b42318;
+      --ok: #047857;
+      --shadow: 0 10px 24px rgba(15, 23, 42, .08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    header {
+      padding: 28px 32px 16px;
+      border-bottom: 1px solid var(--line);
+      background: #fff;
+    }
+    h1 { margin: 0 0 8px; font-size: 28px; letter-spacing: 0; }
+    p { margin: 0; color: var(--muted); line-height: 1.6; }
+    main {
+      display: grid;
+      grid-template-columns: minmax(300px, 420px) 1fr;
+      gap: 20px;
+      padding: 20px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+    .frontstage { padding: 18px; margin-bottom: 20px; }
+    .frontstage h2, .detail h2 { margin: 0 0 12px; font-size: 18px; }
+    .status-card {
+      display: grid;
+      gap: 10px;
+    }
+    .status-row {
+      display: grid;
+      grid-template-columns: 96px 1fr;
+      gap: 10px;
+      padding: 10px 0;
+      border-top: 1px solid #ecece6;
+    }
+    .status-row:first-child { border-top: 0; }
+    .label { color: var(--muted); font-size: 13px; }
+    .value { font-size: 14px; line-height: 1.5; }
+    .machine { padding: 16px; }
+    .node-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    button.node {
+      width: 100%;
+      text-align: left;
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 8px;
+      padding: 12px;
+      cursor: pointer;
+      font: inherit;
+    }
+    button.node:hover, button.node.active {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(15, 118, 110, .12);
+    }
+    .node-title { display: flex; justify-content: space-between; gap: 8px; font-weight: 650; }
+    .node-meta { margin-top: 6px; color: var(--muted); font-size: 12px; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-width: 64px;
+      justify-content: center;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      color: #fff;
+      background: var(--accent);
+      white-space: nowrap;
+    }
+    .badge.waiting { background: var(--muted); }
+    .badge.blocked { background: var(--block); }
+    .detail {
+      padding: 20px;
+      min-height: 620px;
+    }
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 14px;
+    }
+    .box {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: #fff;
+    }
+    .box h3 { margin: 0 0 8px; font-size: 15px; }
+    pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #f4f4ef;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      overflow: auto;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .flow {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+    .chip {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 7px 10px;
+      background: #fff;
+      font-size: 13px;
+    }
+    .chip.active { border-color: var(--accent); color: var(--accent); font-weight: 650; }
+    @media (max-width: 860px) {
+      main { grid-template-columns: 1fr; }
+      .detail-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Product Crew OS 工作流状态机 Demo</h1>
+    <p>普通用户看前台状态卡；开发、测试和审计看后台状态机与 Trace。这个 demo 使用 flow_01 Golden Case。</p>
+  </header>
+  <main>
+    <section>
+      <div class="panel frontstage">
+        <h2>用户前台状态卡</h2>
+        <div class="status-card" id="frontstage"></div>
+      </div>
+      <div class="panel machine">
+        <h2>后台状态机</h2>
+        <p>点击节点查看该状态需要写入什么。</p>
+        <div class="node-list" id="nodes"></div>
+      </div>
+    </section>
+    <section class="panel detail">
+      <h2 id="detail-title">状态详情</h2>
+      <p id="detail-desc"></p>
+      <div class="flow" id="path"></div>
+      <div class="detail-grid">
+        <div class="box">
+          <h3>本节点必须写入</h3>
+          <pre id="writes"></pre>
+        </div>
+        <div class="box">
+          <h3>下一步事件</h3>
+          <pre id="events"></pre>
+        </div>
+      </div>
+      <h2 style="margin-top:22px">Golden Case Trace</h2>
+      <pre id="trace"></pre>
+    </section>
+  </main>
+  <script>
+    const frontstage = [
+      ["现在判断", "这个想法是否值得继续验证"],
+      ["本轮交付", "方向判断 / 需求真伪检查 / 验证计划"],
+      ["不承诺", "不进入 PRD，不批准 MVP，不保证客户采用"],
+      ["关键风险", "竞品替代、材料隐私、行动项后续无人确认"],
+      ["谁把关", "业务把关人 / 研究把关人"],
+      ["要拍板", "先验证 / 先扫竞品 / 缩小范围 / 暂停"],
+      ["可纠偏", "改阶段 / 改产物 / 加角色 / 改执行深度"]
+    ];
+
+    const states = [
+      { id: "domain_gate", name: "领域判定", status: "done", desc: "判断是否属于产品工作或 Product Crew OS 系统操作。", writes: ["domain", "intent", "confidence", "non_product_exit"], events: ["product_work_detected", "non_product_detected"] },
+      { id: "intent_routing", name: "意图路由", status: "done", desc: "将自然语言映射到主流程和候选 stage。", writes: ["main_flow_id", "stage_candidates", "confidence", "correction_needed"], events: ["stage_confirmed", "low_confidence"] },
+      { id: "sop_composing", name: "SOP 编排", status: "done", desc: "按模式组合 1-3 个 SOP，并记录未选择原因。", writes: ["composition_id", "selected_sops", "not_selected", "mode"], events: ["sop_plan_ready"] },
+      { id: "skill_routing", name: "Skill 调用", status: "done", desc: "选择能力包，记录 fallback、失败和成本字段。", writes: ["skill_router_log", "fallback_used", "output_artifact_id"], events: ["skill_ready"] },
+      { id: "artifact_drafting", name: "Artifact 生成", status: "done", desc: "生成方向判断、需求真伪检查、验证计划。", writes: ["artifact_id", "artifact_version", "artifact_type"], events: ["artifact_ready"] },
+      { id: "review_open", name: "评审会开启", status: "done", desc: "锁定 artifact 版本，创建角色 Context Packet。", writes: ["review_session", "context_packets"], events: ["review_required"] },
+      { id: "agent_reviewing", name: "角色评审", status: "done", desc: "记录真实或合成调用，不伪装真实调用。", writes: ["invocation_ledger", "raw_review_records", "real_invocation_performed"], events: ["raw_review_written"] },
+      { id: "gate_checking", name: "Gate 判断", status: "waiting", desc: "等待用户按指标和评审结论拍板。", writes: ["gate_decision_mapping", "gate_owner", "can_main_coach_self_approve=false"], events: ["continue_to_validation", "narrow_scope", "pause_for_competitor_scan", "stop"] },
+      { id: "memory_writing", name: "记忆写入", status: "waiting", desc: "通过后写入 Project Workspace 和可选 Obsidian 镜像。", writes: ["project_state", "decision_log", "timeline", "event_log"], events: ["memory_written"] }
+    ];
+
+    const trace = {
+      case_id: "flow_01_opportunity_discovery_pass",
+      fixture_type: "synthetic_case",
+      real_runtime_claim: false,
+      main_flow_id: "flow_01_opportunity_discovery",
+      selected_sops: ["03", "05", "08"],
+      review_matrix: {
+        Biz: "pass",
+        Research: "pass",
+        CS: "pass",
+        Customer: "pass",
+        Design: "pass",
+        Tech: "pass",
+        QA: "pass",
+        Data: "pass",
+        Legal: "pass",
+        Ops: "pass"
+      },
+      gate_boundary: "仅代表可进入低成本验证，不代表需求成立、PRD 通过、MVP 批准、合规认证或上线批准。"
+    };
+
+    function renderFrontstage() {
+      document.getElementById("frontstage").innerHTML = frontstage.map(([label, value]) => `
+        <div class="status-row"><div class="label">${label}</div><div class="value">${value}</div></div>
+      `).join("");
+    }
+
+    function renderNodes(activeId) {
+      document.getElementById("nodes").innerHTML = states.map(state => `
+        <button class="node ${state.id === activeId ? "active" : ""}" data-id="${state.id}">
+          <div class="node-title"><span>${state.name}</span><span class="badge ${state.status === "waiting" ? "waiting" : ""}">${state.status}</span></div>
+          <div class="node-meta">${state.id}</div>
+        </button>
+      `).join("");
+      document.querySelectorAll(".node").forEach(btn => {
+        btn.addEventListener("click", () => selectState(btn.dataset.id));
+      });
+    }
+
+    function selectState(id) {
+      const state = states.find(item => item.id === id) || states[0];
+      renderNodes(state.id);
+      document.getElementById("detail-title").textContent = state.name;
+      document.getElementById("detail-desc").textContent = state.desc;
+      document.getElementById("writes").textContent = state.writes.map(item => `- ${item}`).join("\n");
+      document.getElementById("events").textContent = state.events.map(item => `- ${item}`).join("\n");
+      document.getElementById("path").innerHTML = states.map(item => `<span class="chip ${item.id === state.id ? "active" : ""}">${item.name}</span>`).join("");
+      document.getElementById("trace").textContent = JSON.stringify(trace, null, 2);
+    }
+
+    renderFrontstage();
+    selectState("domain_gate");
+  </script>
+</body>
+</html>

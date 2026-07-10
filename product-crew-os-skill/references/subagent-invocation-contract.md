@@ -32,9 +32,52 @@ agent invocation 是真实调用记录
 
 1. 如果 SOP、stage boundary、用户指令或主控判断表明需要某个角色评审，必须真实调用子代理。
 2. 调用前必须构造 context packet。
-3. 调用提示词必须写明 `role_key`、角色名称、显示名、人格/语气摘要、当前 stage、artifact、review question、role scope 和 gate。
+3. 调用提示词必须写明 `role_key`、角色名称、显示名、完整 persona 摘要、当前 stage、artifact、review question、role scope 和 gate。
 4. 调用返回后，主控教练必须把结果收束成 artifact 修改、review item、decision log 或 next action。
 5. 本轮完成后必须记录 invocation ledger。
+
+### 2.0 Persona 注入门槛
+
+真实子 Agent 调用不是“把名字换成某个角色”。每次调用前，主控教练必须从 `config/crew-personas.yaml` 或用户/项目 overlay 注入完整 persona block。
+
+最低必填：
+
+| 字段 | 含义 |
+| --- | --- |
+| `role_key` | 稳定机器身份 |
+| `title` | 角色头衔 |
+| `display_name` | 用户看到的角色名 |
+| `role` | 角色职责 |
+| `personality` | 性格关键词 |
+| `speaking_style` | 说话风格 |
+| `must_do` | 必须评审/提醒的内容 |
+| `must_not_do` | 禁止越权的内容 |
+| `memory_focus` | 该角色长期关注点 |
+| `persona_source_ref` | persona 来源，例如 `config/crew-personas.yaml#personas.biz` |
+
+缺少上述字段时，本轮调用必须标记为：
+
+```yaml
+context_packet_quality: "incomplete"
+persona_injection_status: "missing_or_incomplete"
+result: "invalid_for_gate"
+```
+
+这种调用可以作为探索性意见保留，但不能作为 Stage Gate 通过依据，也不能写成“角色已完整评审通过”。
+
+### 2.1 标准 SOP 自动召唤授权
+
+当用户明确进入 Product Crew OS 标准流程，例如说“按标准 SOP 跑”“进入正式评审”“开评审会”“该拉谁拉谁”“按照流程推进”，或项目配置启用了 `auto_invoke_by_stage_boundary` 时，视为用户授权主控教练按 `stage-boundary-matrix.md` 自动召唤必要角色。
+
+自动召唤规则：
+
+1. `Required Roles` 是阶段门要求，必须在 gate 通过前真实调用；不能只由主控教练代替判断。
+2. `Triggered Roles` 在触发条件成立时必须调用；触发条件包括当前 artifact、证据缺口、风险类型、用户材料或项目记忆。
+3. `Out of Bounds` 角色默认不召唤，除非用户明确要求，或主控教练说明存在 SOP 外风险并记录原因。
+4. 如果角色数量超过单轮 runtime 限制，必须分批召唤，并在 invocation ledger 里记录未完成角色的 pending 状态。
+5. 如果当前宿主环境限制真实调用，主控教练必须显示：应召唤角色、已真实调用角色、未调用原因、是否使用模拟视角。不能把“未调用”包装成“已评审”。
+
+这条规则的目的是让产品运行遵循 SOP，而不是每次都等用户手动点名角色。
 
 如果运行环境没有真实子代理能力，或本轮无法调用，主控教练只能说：
 
@@ -79,6 +122,8 @@ SOP 和边界矩阵是最低要求，不是唯一来源。
 | `context_packet_ref` | 本轮 context packet 引用 |
 | `trigger_reason` | SOP、stage boundary、用户要求或主控即时判断 |
 | `result` | pass / conditional_pass / block / advice_only |
+| `context_packet_quality` | complete / incomplete / missing |
+| `persona_injection_status` | complete / incomplete / missing |
 | `timestamp` | 记录时间 |
 
 工具内部昵称不能覆盖用户配置的角色名。比如真实工具返回昵称 `Maxwell`，但本轮 role_key 是 `Design`，用户看到的仍然是 `文设计`。
@@ -88,7 +133,7 @@ SOP 和边界矩阵是最低要求，不是唯一来源。
 一次合格的子 Agent 召唤必须满足：
 
 - 有明确 `role_key`。
-- 有 persona 来源。
+- 有完整 persona 来源和 persona block 注入。
 - 有 context packet。
 - 有真实调用记录，或明确标注为模拟视角。
 - 发言绑定 artifact 具体内容。

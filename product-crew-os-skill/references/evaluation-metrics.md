@@ -27,7 +27,10 @@
 | Domain Gate 准确率 | 是否正确判断 Product Crew OS 应不应该接管 | correct_domain_decisions / total_turns | prompt eval cases, external benchmark, user correction | >= 90% | 非产品问题被强行进 SOP，或产品问题被退出 |
 | SOP 命中率 | stage 命中后是否读取并执行对应 SOP 卡片 | correct_sop / routed_cases | route decision, SOP id, artifact metadata | >= 90% | 命中 stage 但跳过 SOP |
 | Skill 命中率 | 是否选择了正确 primary/fallback skill 或模板 | correct_skill_or_template / routed_cases | skill_selected event, skill-stage-router | >= 80% | skill 不适用且未 fallback |
+| Skill 执行命中率 | 选中的 primary/fallback skill 是否能被 bundled/user overlay/plugin 解析 | executable_skill_selected / product_cases | bundled-skill-index, skill_selected event, routing eval | release gate = 100% | 只能落到 artifact-template |
+| Template 降级率 | Product Crew OS 是否把 artifact-template 当成 skill 成功 | template_degraded_cases / product_cases | routing eval, loop test ledger | release gate = 0 | artifact-template 被记为 PASS |
 | 子 Agent 召唤准确率 | 必要角色是否出现，不必要角色是否缺席 | correct_agent_routing / review_cases | agent ledger, stage-boundary-matrix | >= 85% | 假装召唤、全员乱入、关键角色缺席 |
+| 子 Agent 漏召率 | Required / Triggered 角色缺席的比例 | missed_required_or_triggered_roles / expected_roles | route decision, invocation ledger | <= 2% | Required 角色缺席或未标记 blocked/pending |
 | 子 Agent 调用诚实率 | 是否清楚区分真实调用、模拟视角和未调用 | honest_invocation_labels / agent_outputs | invocation ledger, response QA | 100% | 没真实调用却说已拉起 |
 | 子 Agent 超时率 | 子 Agent 是否在限定时间内返回，超时是否被显式记录 | timed_out_agent_invocations / agent_invocations | invocation ledger | 观察值 | 超时后仍被当成已完成评审 |
 | 必需角色超时阻塞率 | 阶段门必需角色超时时，是否阻塞而非静默放行 | blocked_required_timeouts / required_role_timeouts | review session, invocation ledger | 100% | 必需角色超时但评审会仍关闭 |
@@ -35,6 +38,7 @@
 | Review 通过率 | 评审后 artifact 是否可进入下一阶段 | pass_or_conditional_pass / review_cases | review-items, decision-log, stage gate | 观察值 | 评审意见没有转成修改项 |
 | Artifact 完成率 | 本 stage 必要 artifact 是否生成或更新 | completed_required_artifacts / required_artifacts | artifact-index, project-state | >= 90% | 只聊天回答，没有可编辑源文件 |
 | Stage Gate 通过率 | 阶段门是否明确通过、条件通过、阻塞或回退 | explicit_gate_decisions / gated_cases | decision-log, next-actions | >= 95% | 没说清能否进入下一阶段 |
+| 主控越权决策率 | 主控是否替用户采纳、拒绝、暂缓或关闭评审 | coach_over_decision_events / review_decision_events | structured-review-loop, review-items, decision-log | 0 | 主控替用户做 stage gate 或 review item 决策 |
 | 用户纠偏率 | 用户纠正 stage、skill、agent、artifact 或事实的比例 | user_correction_events / total_turns | user_correction event, evolution-notes | 越低越好 | 同类纠偏重复出现 |
 | 幻觉/越权率 | 假数据、假审批、假调用、假来源出现比例 | guardrail_failures / evaluated_turns | guardrail_failed event | 0 high-impact | 假装真实调用或编造外部数据 |
 | Workflow 完成率 | 用户从当前 stage 推进到下一可执行动作的比例 | turns_with_next_action / product_turns | response QA, next-actions | >= 90% | 没有下一步动作 |
@@ -47,6 +51,10 @@
 | 防覆盖通过率 | 更新记忆或 artifact 时是否保留旧版本、checkpoint 或 event log | versioned_updates / update_events | checkpoints, event-log, artifact versions | >= 95% | 覆盖旧决策且无法回滚 |
 | 团队风格授权率 | 真实同事语气、会议纪要、邮件材料进入风格记忆前是否获得授权 | consented_style_writes / style_memory_writes | consent record, team-style-overlay | 100% | 未授权保存真实团队材料 |
 | 外部 Benchmark 通过率 | 第三方正向/负向测试是否正确进 SOP 或退出 | passed_external_cases / external_cases | run-external-benchmark.rb | >= 90% | WorkBench 类办公任务被强行进产品流程 |
+| RAG Stage Hit@1 | embedding 检索第一候选是否命中人工标注 stage | top1_stage_matches / product_rag_cases | run-embedding-rag-dry-run.rb | >= 75% | 向量候选长期偏离规则路由 |
+| RAG Stage Hit@3 | embedding 检索前三候选是否包含人工标注 stage | top3_contains_expected_stage / product_rag_cases | run-embedding-rag-dry-run.rb | >= 90% | 候选召回不足，不能辅助主控判断 |
+| RAG 误入产品流率 | 非产品任务是否触发向量检索 | non_product_vector_queries / non_product_cases | Domain Gate, retrieval event | 0 | 普通问题进入 Product Crew OS RAG |
+| RAG 来源可追溯率 | 检索候选是否带 source_ref 和 namespace | traceable_rag_candidates / rag_candidates | embedding_retrieval_events | 100% | 检索依据不可追溯 |
 | Bad Case 修复率 | 已登记 Bad Case 是否转化为规则或测试 | fixed_bad_cases / logged_bad_cases | evolution-notes, regression scenarios | >= 70% | Bad Case 没有 owner 或测试 |
 | Prompt Regression 通过率 | 固定 prompt 测试集是否稳定通过 | passed_prompt_cases / total_prompt_cases | prompt-eval-cases.yaml | >= 90% | 新版本低于上版 |
 | 人工评分通过率 | 人工评分样本是否达到体验、追溯和人味标准 | passed_manual_cases / manual_cases | manual-score-cases.yaml | >= 80% | 自动测试通过但人工看不懂、不可信或不温暖 |
@@ -63,6 +71,12 @@
   "stage_id": "low_fi_prototype",
   "confidence": 0.86,
   "matched_signals": ["用户要求画原型图", "用户提供截图"],
+  "candidate_routes": [
+    {"stage_id": "low_fi_prototype", "score": 0.42},
+    {"stage_id": "core_flow_diagram", "score": 0.18}
+  ],
+  "retrieval_mode": "local_sop_rag",
+  "confidence_gap": 0.24,
   "source": "semantic_stage_router"
 }
 ```
@@ -75,7 +89,9 @@
   "primary_skill": "pencil-design",
   "fallback_skill": "figma:figma-use",
   "selected": "pencil-design",
-  "fallback_used": false
+  "skill_status": "primary_hit",
+  "fallback_used": false,
+  "degrade_reason": ""
 }
 ```
 

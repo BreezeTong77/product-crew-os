@@ -1,0 +1,239 @@
+schema_version: "0.1"
+policy_id: "product_crew_os_embedding_rag_policy"
+status: "optional_adapter"
+default_provider: "local_open_source_bge_small_zh"
+providers:
+  local_hash_dry_run:
+    status: "ci_smoke_provider_not_user_runtime"
+    real_embedding_performed: false
+    must_not_count_as_real: true
+  local_open_source_bge_small_zh:
+    status: "optional_local_real_provider"
+    real_embedding_performed: true
+    model_name: "BAAI/bge-small-zh-v1.5"
+    model_source: "HuggingFace / BAAI FlagEmbedding"
+    license: "MIT"
+    embedding_dim: 512
+    default_batch_size: 32
+    max_batch_size: 128
+    normalize_embeddings: true
+    query_instruction: "为这个句子生成表示以用于检索相关文章："
+    passage_instruction_required: false
+    precision_policy: "small model first; prioritize local speed and privacy over maximum benchmark score"
+release_gate:
+  real_embedding_required_for_user_runtime: true
+  smoke_provider_allowed_for_ci: true
+  smoke_provider_must_not_count_as_real: true
+  dry_run_contract_required: true
+  ingestion_contract_required: true
+input_scope_gate:
+  routing_model: "hard_exit_first_then_parallel_rule_and_embedding"
+  hard_non_product_task:
+    retrieval_enabled: false
+    vector_query_allowed: false
+  ambiguous_task:
+    pco_rules_retrieval_enabled: true
+    private_namespace_retrieval_enabled: false
+    low_confidence_action: "needs_clarification"
+  public_pco_rules_retrieval_allowed_before_product_confirmation: true
+  private_namespace_retrieval_requires_consent: true
+domain_gate:
+  legacy_alias_for: "input_scope_gate"
+  must_run_before_private_retrieval: true
+  pco_rules_retrieval_allowed_during_gate: true
+source_ingestion:
+  default_pipeline:
+    - "classify_source"
+    - "extract_text_or_ocr"
+    - "desensitize_and_source_ref"
+    - "semantic_structured_chunk"
+    - "batch_embed"
+    - "upsert_vector_and_fts"
+    - "write_retrieval_ledger"
+  source_types:
+    markdown:
+      extraction_method: "direct_markdown_parser"
+      ocr_required: false
+    yaml:
+      extraction_method: "structured_yaml_parser"
+      ocr_required: false
+    json:
+      extraction_method: "structured_json_parser"
+      ocr_required: false
+    screenshot:
+      extraction_method: "ocr"
+      ocr_required: true
+    image:
+      extraction_method: "ocr"
+      ocr_required: true
+    pdf:
+      extraction_method: "pdf_text_first_then_ocr"
+      ocr_required: "when_text_layer_missing_or_low_confidence"
+    office_doc:
+      extraction_method: "document_parser_then_ocr_for_embedded_images"
+      ocr_required: "when_embedded_image_contains_text"
+    audio:
+      extraction_method: "asr_transcript"
+      ocr_required: false
+  ocr:
+    primary_engine: "PaddleOCR"
+    primary_reason: "Chinese screenshot/PDF and structure-aware OCR support"
+    fallback_engine: "Tesseract"
+    fallback_reason: "lightweight local OCR fallback when PaddleOCR is unavailable"
+    required_outputs:
+      - "ocr_text"
+      - "ocr_confidence"
+      - "page_index"
+      - "bbox_json"
+      - "language_hint"
+      - "source_ref"
+    low_confidence_threshold: 0.72
+    low_confidence_action: "mark_chunk_low_confidence_and_require_human_review_before_gate"
+chunking:
+  strategy: "semantic_structured_overlap"
+  structure_first: true
+  split_order:
+    - "artifact_type"
+    - "markdown_heading"
+    - "yaml_json_path"
+    - "table_block"
+    - "paragraph"
+    - "sentence"
+  target_chars: 520
+  min_chars: 220
+  max_chars: 900
+  overlap:
+    enabled: true
+    ratio: 0.15
+    min_chars: 80
+    max_chars: 160
+    preserve_parent_heading: true
+  chunk_id_strategy: "sha256(namespace + source_ref + section_path + content_hash)"
+  required_metadata:
+    - "namespace"
+    - "scope"
+    - "source_ref"
+    - "source_type"
+    - "artifact_id"
+    - "artifact_version"
+    - "section_path"
+    - "chunk_index"
+    - "content_hash"
+    - "pii_level"
+    - "consent_ref"
+    - "extraction_method"
+    - "ocr_confidence"
+vector_store:
+  default: "sqlite_vec"
+  local_first: true
+  rationale: "portable single-file project workspace; no server dependency; can pair vector search with SQLite FTS5 keyword search"
+  sqlite_vec:
+    status: "optional_local_vector_extension"
+    vector_table: "embedding_chunk_vectors"
+    distance: "cosine"
+    embedding_dim: 512
+    metadata_table: "embedding_chunks"
+  lexical_index:
+    engine: "sqlite_fts5"
+    table: "embedding_chunks_fts"
+  production_scale_option:
+    engine: "qdrant_or_pgvector"
+    condition: "team deployment or large shared workspace"
+batch_indexing:
+  enabled: true
+  default_batch_size: 32
+  max_batch_size: 128
+  retry_limit: 3
+  idempotency_key: "source_ref + content_hash + embedding_model"
+  partial_failure_action: "mark_failed_chunks_and_continue_batch"
+incremental_update:
+  enabled: true
+  change_detection:
+    - "content_hash_changed"
+    - "source_mtime_changed"
+    - "artifact_version_changed"
+    - "consent_scope_changed"
+  unchanged_action: "skip_reembed"
+  changed_action: "rechunk_and_reembed_changed_source"
+  deleted_source_action: "soft_delete_chunks_then_cleanup"
+  dedupe_key: "namespace + source_ref + content_hash"
+maintenance:
+  cleanup_schedule: "weekly"
+  reindex_schedule: "monthly_or_schema_change"
+  stale_chunk_ttl_days: 30
+  failed_job_ttl_days: 14
+  orphan_chunk_action: "soft_delete_then_vacuum_after_ttl"
+  consent_revoked_action: "delete_namespace_or_source_and_write_audit_event"
+monitoring:
+  required_metrics:
+    - "rag_recall_at_1"
+    - "rag_recall_at_3"
+    - "rag_precision_at_3"
+    - "rag_mrr"
+    - "retrieval_latency_p50_ms"
+    - "retrieval_latency_p95_ms"
+    - "embedding_batch_latency_ms"
+    - "ocr_low_confidence_rate"
+    - "source_trace_rate"
+    - "namespace_isolation_violations"
+    - "stale_chunk_rate"
+    - "index_update_failure_rate"
+  minimums:
+    rag_recall_at_3: 0.90
+    rag_precision_at_3: 0.70
+    source_trace_rate: 1.0
+  maximums:
+    namespace_isolation_violations: 0
+    stale_chunk_rate: 0.05
+    index_update_failure_rate: 0.02
+namespaces:
+  pco_rules:
+    scope: "product_rule_memory"
+    allowed_sources:
+      - "references/stage-taxonomy.md"
+      - "references/workflow-sop-library.md"
+      - "references/skill-stage-router.md"
+      - "references/stage-boundary-matrix.md"
+      - "references/semantic-stage-router.md"
+      - "tests/prompt-eval-cases.yaml"
+      - "tests/external-benchmark-cases.yaml"
+      - "tests/badcase-loop-50.md"
+    public_package_allowed: true
+    consent_required: false
+  project:
+    scope: "project_memory"
+    public_package_allowed: false
+    consent_required: true
+    default_enabled: false
+  user_overlay:
+    scope: "user_preference_memory"
+    public_package_allowed: false
+    consent_required: true
+    default_enabled: false
+  team_style_overlay:
+    scope: "team_style_memory"
+    public_package_allowed: false
+    consent_required: true
+    default_enabled: false
+retrieval_contract:
+  top_k: 5
+  rerank_inputs:
+    - "rule_score"
+    - "vector_score"
+    - "source_priority"
+    - "confidence_gap"
+  min_confidence_gap_for_auto_route: 0.12
+  low_confidence_action: "needs_clarification"
+  required_output_fields:
+    - "candidate_routes"
+    - "retrieval_mode"
+    - "confidence_gap"
+    - "source_refs"
+    - "namespace"
+    - "selected_stage"
+metrics:
+  rag_stage_hit_at_1_min: 0.75
+  rag_stage_hit_at_3_min: 0.90
+  false_positive_domain_entry_rate_max: 0.0
+  source_trace_rate_min: 1.0
+  namespace_isolation_violation_max: 0

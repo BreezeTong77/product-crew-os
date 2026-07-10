@@ -11,11 +11,13 @@ If a user's customized config conflicts with this reference, prefer the customiz
 2. A sub-agent can appear only when the current stage lists that role as Required or Triggered.
 3. Required means the workflow should call that role before the stage gate is passed.
 4. Triggered means call the role only if the trigger condition is true.
-5. Out of bounds means do not call the role unless the user explicitly asks for that perspective.
-6. Each summoned role should speak in one focused review turn: what they see, what worries them, what they recommend, and whether they block the gate.
-7. The coach must convert every review into an artifact update, a decision, or an open question.
-8. Review batch limits are runtime controls, not stakeholder-boundary rules. If a stage or SOP requires more roles than the default review batch size, the coach must split the review into ordered batches instead of silently dropping required roles.
-9. The default first batch should prioritize required roles and triggered roles with gate-blocking risk. Optional or lower-risk roles can wait for a second batch, be summarized, or be skipped with an explicit reason.
+5. In Standard SOP mode, Required and triggered roles are automatically summoned by the coach. The user should not need to manually name each role.
+6. Out of bounds means do not call the role unless the user explicitly asks for that perspective.
+7. Each summoned role should speak in one focused review turn: what they see, what worries them, what they recommend, and whether they block the gate.
+8. The coach must convert every review into an artifact update, a decision, or an open question.
+9. Review batch limits are runtime controls, not stakeholder-boundary rules. If a stage or SOP requires more roles than the default review batch size, the coach must split the review into ordered batches instead of silently dropping required roles.
+10. The default first batch should prioritize required roles and triggered roles with gate-blocking risk. Optional or lower-risk roles can wait for a second batch, be summarized, or be skipped with an explicit reason.
+11. If a runtime cannot call a required or triggered role, the coach must mark that role as `pending`, `simulated`, or `runtime_blocked` in the review record instead of silently skipping it.
 
 ## Role Keys
 

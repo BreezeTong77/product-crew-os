@@ -12,6 +12,11 @@ class SemanticStageRouter
     /Product Crew OS|SOP|skill|Stage|Agent|artifact|workflow|router|product|founder|investor|runway|retention|activation|enterprise|workspace|assistant/i
   ].freeze
 
+  RETRIEVAL_STOP_TERMS = %w[
+    帮我 我想 我有 我要 我们 一下 一个 一版 这个 那个 做个 做一 我做 帮我做
+    整理 我整 我整理 帮我整 看下 我看 帮我看 怎么 如何 一下子 help please one
+  ].freeze
+
   ROUTES = [
     ["research_plan", [/验证.*痛点.*访谈样本|验证.*痛点.*通过标准|设计访谈样本|设计.*样本.*通过标准/], 0.96],
     ["interview_synthesis", [/访谈记录.*提炼|访谈.*提炼共性|访谈.*分歧|十份用户访谈|记录很乱.*共性/], 0.96],
@@ -33,10 +38,10 @@ class SemanticStageRouter
     ["opportunity_tree", [/机会树|拆机会|机会.*方案.*实验|目标结果.*确定|opportunity tree/], 0.9],
     ["assumption_mapping", [/危险的假设|假设.*排序|重要性.*不确定性|assumption|风险假设/], 0.9],
     ["value_sizing", [/值不值得做|估算收益|成本和不确定性|价值评估|收益.*成本|value sizing|ROI/], 0.88],
-    ["prioritization", [/先做哪个|哪些先不做|优先级|排序|prioritization|都有人催|above.*line|below.*line/], 0.9],
+    ["prioritization", [/先做哪个|哪些先不做|优先级|排序|prioritization|RICE|ICE|MoSCoW|都有人催|above.*line|below.*line/], 0.9],
     ["solution_exploration", [/几种解法|列方案|比较取舍|方案比较|solution options|option a|option b|credible ways/], 0.88],
     ["mvp_scope", [/先做 MVP|砍范围|not-do|不要做大|scope cutting|MVP 范围|最小可行/], 0.92],
-    ["one_page_proposal", [/一页方案|拿给业务方|过一下方向|one-page|exec summary|资源申请|方向说明/], 0.88],
+    ["one_page_proposal", [/一页方案|一页纸|拿给业务方|过一下方向|one[-\s]?page|one\s*pager|exec summary|资源申请|方向说明/], 0.88],
     ["data_feasibility_precheck", [/数据可不可行|客户数据|推荐逻辑|数据可行性|data feasibility/], 0.9],
     ["technical_feasibility_precheck", [/技术可行|自动化.*权限.*接口|研发视角|能不能做|technical feasibility|架构风险/], 0.9],
     ["compliance_precheck", [/合规|隐私|外部消息触达|法务|compliance|personal data|敏感数据/], 0.9],
@@ -56,7 +61,7 @@ class SemanticStageRouter
     ["acceptance_criteria", [/怎么验收|Given\/When\/Then|验收标准|测试场景|acceptance criteria/], 0.9],
     ["development_tracking", [/研发过程中|范围变了|记录变更|是否接受|development tracking|scope change/], 0.9],
     ["integration_qa", [/联调|测试快结束|bug|能不能上线|integration QA|集成测试/], 0.9],
-    ["launch_readiness", [/准备上线|上线检查|灰度.*监控.*回滚|go\/no-go|launch readiness|客服.*运营.*就绪/], 0.92],
+    ["launch_readiness", [/准备上线|上线检查|灰度.*监控.*回滚|go\/no-go|go\s*no\s*go|launch readiness|客服.*运营.*就绪/], 0.92],
     ["training_enablement", [/一线.*培训|SOP.*FAQ.*话术|培训材料|training enablement|客服话术/], 0.9],
     ["grey_release_pilot", [/灰度试点|灰度范围|回滚条件|pilot|beta|小流量|试点指标/], 0.9],
     ["launch_monitoring", [/上线后每天看什么|监控清单|异常记录|launch monitoring|质量投诉|support tickets/], 0.9],
@@ -70,7 +75,10 @@ class SemanticStageRouter
 
   def initialize(prompt_eval_path:)
     @prompt_eval_path = prompt_eval_path
-    @cases_by_stage = load_cases_by_stage(prompt_eval_path)
+    @cases = load_cases(prompt_eval_path)
+    @cases_by_stage = @cases.each_with_object({}) do |entry, memo|
+      memo[entry.fetch("stage_id")] ||= entry
+    end
   end
 
   def route(user_input)
@@ -80,19 +88,33 @@ class SemanticStageRouter
       return non_product_route(text, "matched_non_product_pattern")
     end
 
+    retrieval_candidates = retrieve_candidates(text)
     scored = ROUTES.map do |stage_id, patterns, base_confidence|
       hits = patterns.select { |pattern| text.match?(pattern) }
       [stage_id, hits, base_confidence]
     end.select { |_stage_id, hits, _confidence| hits.any? }
 
     if scored.empty?
-      return non_product_route(text, "no_product_signal") unless product_like
+      top_candidate = retrieval_candidates.first
+      confidence_gap = candidate_confidence_gap(retrieval_candidates)
+      if top_candidate && retrieval_confident?(top_candidate, confidence_gap)
+        return build_route(
+          stage_id: top_candidate.fetch("stage_id"),
+          confidence: [0.72 + top_candidate.fetch("score"), 0.84].min,
+          matched_signals: top_candidate.fetch("matched_terms"),
+          route_status: product_like ? "retrieval_mapped" : "scope_retrieval_mapped",
+          candidate_routes: retrieval_candidates
+        )
+      end
+
+      return non_product_route(text, "no_product_signal_or_confident_retrieval") unless product_like
 
       return build_route(
         stage_id: "request_triage",
         confidence: 0.55,
         matched_signals: ["product signal found but no specific stage matched"],
-        route_status: "needs_clarification"
+        route_status: "needs_clarification",
+        candidate_routes: retrieval_candidates
       )
     end
 
@@ -102,22 +124,77 @@ class SemanticStageRouter
       stage_id: stage_id,
       confidence: confidence,
       matched_signals: hits.map(&:source),
-      route_status: "mapped"
+      route_status: "mapped",
+      candidate_routes: retrieval_candidates
     )
   end
 
   private
 
-  def load_cases_by_stage(path)
-    return {} unless File.exist?(path)
+  def load_cases(path)
+    return [] unless File.exist?(path)
 
-    YAML.load_file(path).fetch("cases").each_with_object({}) do |entry, memo|
-      memo[entry.fetch("stage_id")] ||= entry
-    end
+    YAML.load_file(path).fetch("cases")
   end
 
   def product_signal?(text)
     PRODUCT_SIGNALS.any? { |pattern| text.match?(pattern) }
+  end
+
+  def tokenize(text)
+    raw = text.to_s.downcase
+    latin_tokens = raw.scan(/[a-z0-9_]{2,}/)
+    han_text = raw.scan(/\p{Han}+/).join
+    han_chars = han_text.chars
+    han_bigrams = han_chars.each_cons(2).map(&:join)
+    han_trigrams = han_chars.each_cons(3).map(&:join)
+    (latin_tokens + han_bigrams + han_trigrams).uniq.reject { |term| RETRIEVAL_STOP_TERMS.include?(term) }
+  end
+
+  def case_search_text(entry)
+    expected = entry["expected"] || {}
+    [
+      entry["case_id"],
+      entry["stage_id"],
+      entry["macro_stage"],
+      entry["user_input"],
+      expected["primary_skill"],
+      expected["fallback_skill"],
+      Array(expected["required_roles"]).join(" "),
+      Array(expected["triggered_roles"]).join(" "),
+      Array(expected["required_artifacts"]).join(" "),
+      expected["stage_gate"]
+    ].compact.join(" ")
+  end
+
+  def retrieve_candidates(text)
+    query_terms = tokenize(text)
+    return [] if query_terms.empty? || @cases.empty?
+
+    @cases.map do |entry|
+      case_terms = tokenize(case_search_text(entry))
+      matched_terms = query_terms & case_terms
+      next if matched_terms.empty?
+
+      score = matched_terms.length.to_f / [query_terms.length, 1].max
+      {
+        "stage_id" => entry.fetch("stage_id"),
+        "case_id" => entry.fetch("case_id"),
+        "score" => score.round(3),
+        "matched_terms" => matched_terms.first(8)
+      }
+    end.compact.sort_by { |candidate| [-candidate.fetch("score"), candidate.fetch("stage_id")] }.first(3)
+  end
+
+  def candidate_confidence_gap(candidates)
+    return nil if candidates.length < 2
+
+    (candidates[0].fetch("score") - candidates[1].fetch("score")).round(3)
+  end
+
+  def retrieval_confident?(top_candidate, confidence_gap)
+    score = top_candidate.fetch("score")
+    score >= 0.34 || (score >= 0.18 && (confidence_gap.nil? || confidence_gap >= 0.12))
   end
 
   def non_product_route(text, reason)
@@ -136,15 +213,21 @@ class SemanticStageRouter
       "triggered_roles" => [],
       "required_artifacts" => [],
       "stage_gate" => nil,
+      "candidate_routes" => [],
+      "retrieval_mode" => "off",
+      "confidence_gap" => nil,
+      "scope_gate" => "hard_exit_or_no_confident_product_route",
+      "routing_model" => "input_scope_gate_parallel_rule_embedding",
       "skill_router_enabled" => false,
       "route_status" => "domain_exit",
       "next_action" => "直接回答用户问题，或使用相关非产品能力。"
     }
   end
 
-  def build_route(stage_id:, confidence:, matched_signals:, route_status:)
+  def build_route(stage_id:, confidence:, matched_signals:, route_status:, candidate_routes: [])
     reference = @cases_by_stage.fetch(stage_id, {})
     expected = reference.fetch("expected", {})
+    confidence_gap = candidate_confidence_gap(candidate_routes)
     {
       "product_crew_os_applies" => true,
       "domain_intent" => "product_work",
@@ -160,6 +243,11 @@ class SemanticStageRouter
       "triggered_roles" => expected["triggered_roles"] || [],
       "required_artifacts" => expected["required_artifacts"] || [],
       "stage_gate" => expected["stage_gate"],
+      "candidate_routes" => candidate_routes,
+      "retrieval_mode" => candidate_routes.empty? ? "rules_only" : "local_sop_rag",
+      "confidence_gap" => confidence_gap,
+      "scope_gate" => "hard_exit_checked",
+      "routing_model" => "input_scope_gate_parallel_rule_embedding",
       "skill_router_enabled" => true,
       "route_status" => route_status,
       "next_action" => route_status == "needs_clarification" ? "先澄清用户要推进的产品阶段，再调用 SOP。" : "读取 SOP，调用对应 skill，并按边界召唤必要角色。"

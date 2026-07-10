@@ -122,3 +122,27 @@ cases:
     expected_stage_id: "iteration_planning"
     expected_primary_skill: "roadmap-planning"
     expected_roles: ["Coach", "Biz", "Data", "CS", "Research", "Tech", "Design"]
+  - case_id: "E21_go_no_go_alias"
+    prompt: "帮我做一个 go no go 检查。"
+    expected_domain_intent: "product_work"
+    expected_stage_id: "launch_readiness"
+    expected_primary_skill: "deliver-launch-checklist"
+    expected_roles: ["Coach", "QA", "Ops", "CS", "Data", "Tech", "Legal"]
+  - case_id: "E22_one_pager_alias"
+    prompt: "帮我做个 one pager，拿给业务方过方向。"
+    expected_domain_intent: "product_work"
+    expected_stage_id: "one_page_proposal"
+    expected_primary_skill: "pm-workbench"
+    expected_roles: ["Coach", "Biz", "Data", "CS", "Customer"]
+  - case_id: "E23_rice_prioritization_alias"
+    prompt: "帮我看下 RICE 怎么排，哪些需求先做。"
+    expected_domain_intent: "product_work"
+    expected_stage_id: "prioritization"
+    expected_primary_skill: "prioritization-advisor"
+    expected_roles: ["Coach", "Biz", "Tech", "Data", "CS", "Customer"]
+  - case_id: "E24_generic整理_not_product"
+    prompt: "帮我整理一下这句话。"
+    expected_domain_intent: "non_product_task"
+    expected_stage_id:
+    expected_primary_skill:
+    expected_roles: []

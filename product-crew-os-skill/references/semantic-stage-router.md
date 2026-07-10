@@ -1,19 +1,21 @@
 # Semantic Stage Router / 语义阶段路由器
 
-本文件记录 Product Crew OS 的未来迭代能力：让主控教练更稳定地把用户自然语言映射到正确产品阶段、SOP、skill、子 Agent 和 artifact。
+本文件记录 Product Crew OS 的语义路由能力：让主控教练更稳定地把用户自然语言映射到正确产品阶段、SOP、skill、子 Agent 和 artifact。
 
 它不是一个单纯的 RAG 数据库功能，而是一套“语义识别 + 工作流路由 + 记忆检索 + 反馈学习”的产品能力。
 
-## 0. 领域意图门 / Domain Intent Gate
+## 0. 输入范围门 / Input Scope Gate
 
-在判断 `stage_id` 之前，主控教练必须先判断这一轮是否应该进入 Product Crew OS。
+在判断 `stage_id` 之前，主控教练必须先判断这一轮是否应该进入 Product Crew OS。这里不是只靠模型“感觉”，而是同时使用硬退出规则、显式规则/别名和公共 `pco_rules` 检索候选。
 
 Product Crew OS 只接管两类请求：
 
 - `product_work`：产品想法、需求、调研、商业判断、方案、PRD、评审、原型、指标、交付、上线、复盘等产品经理工作。
 - `product_crew_os_operation`：安装、配置、评估、修改 Product Crew OS 本身，包括 SOP、skill、角色、记忆、发布包和测试。
 
-如果用户请求属于 `non_product_task`，例如普通翻译、闲聊、通用代码问题、生活问答、纯文件操作、与产品工作无关的信息查询，主控教练不要强行匹配 SOP，也不要进入 Skill Router、子 Agent Review Loop、Project Workspace 或 Stage Gate。
+如果用户请求明确属于 `non_product_task`，例如普通翻译、闲聊、天气时间、股票汇率、生活问答、与产品工作无关的信息查询，主控教练不要强行匹配 SOP，也不要进入 Skill Router、子 Agent Review Loop、Project Workspace 或 Stage Gate。
+
+如果输入没有明显产品词，但出现产品工作常用说法，例如 `go/no-go`、`one pager`、`RICE`、`RACI`、`stakeholder`、`验收`，允许在第一步并行检索公共 `pco_rules` 来辅助判断。这一层只查公共规则包，不查项目、用户偏好或团队风格私有 namespace。
 
 非产品请求的内部路由应类似：
 
@@ -29,7 +31,7 @@ Product Crew OS 只接管两类请求：
 }
 ```
 
-只有当 `product_crew_os_applies=true` 时，才继续执行 stage 判断、SOP 匹配、skill 选择和干系人评审。
+只有当 `product_crew_os_applies=true` 时，才继续执行 SOP 匹配、skill 选择和干系人评审；低置信或候选差距不足时，必须先澄清。
 
 ## 1. 要解决的问题
 
@@ -86,6 +88,12 @@ Semantic Stage Router 是 Product Crew OS 的阶段判断引擎。
   "fallback_skill": "figma:figma-use",
   "artifact": "low-fi-prototype-brief.md / HTML demo",
   "required_roles": ["Coach", "Design"],
+  "candidate_routes": [
+    {"stage_id": "low_fi_prototype", "score": 0.42},
+    {"stage_id": "core_flow_diagram", "score": 0.18}
+  ],
+  "retrieval_mode": "local_sop_rag",
+  "confidence_gap": 0.24,
   "next_action": "生成 HTML Demo，并由 Design 评审视觉还原和交互状态"
 }
 ```
@@ -103,12 +111,26 @@ Semantic Stage Router 是 Product Crew OS 的阶段判断引擎。
 做法：
 
 - 为 44 个 stage 维护名称、别名、典型用户说法、输入特征和排除条件。
-- 每次用户输入时，先做 `domain_intent_gate`；只有确认为产品工作或 Product Crew OS 操作时，才输出内部 `stage_route_decision`。
+- 每次用户输入时，先做 `input_scope_gate`：硬性非产品任务直接退出；其他输入允许规则/别名和公共 `pco_rules` 检索并行产生候选。
 - 当置信度低于阈值时，先澄清，不直接执行。
 - 当用户纠正阶段判断时，记录为 routing feedback。
 - 未命中 SOP 不等于自动进入 `request_triage`。只有 `product_crew_os_applies=true` 且 stage 仍不清楚时，才进入 `request_triage` 或提出澄清问题。
 
 适合 v0.1.x 到 v0.2.x。
+
+### M1.1：44 SOP 本地检索索引
+
+目标：在不依赖外部 embedding 服务的情况下，提高“用户说人话 -> 命中 44 SOP”的稳定性。
+
+当前基线实现：
+
+- 检索源：`tests/prompt-eval-cases.yaml` 中的 44 个 SOP 基准用例，包括 stage、macro stage、用户说法、primary/fallback skill、required/triggered roles、artifact 和 stage gate。
+- 检索方式：本地轻量词项检索，先切分英文/数字 token，再对中文做 2-gram / 3-gram 匹配。
+- 触发时机：显式规则和本地 SOP 检索在输入范围门内并行运行；硬性非产品任务退出，其余模糊输入可以先查公共 `pco_rules`，再由置信度和候选差距决定是否自动路由。
+- 输出要求：`candidate_routes`、`retrieval_mode`、`confidence_gap`、`matched_signals` 必须进入 route decision，供后续 eval 和 badcase 复盘使用。
+- 低置信度策略：候选分数不足时进入 `needs_clarification`，不能为了推进而硬选 SOP。
+
+这个阶段的目标不是替代规则，而是补规则的盲区，并让“为什么判断到这个 SOP”可回溯。
 
 ### M1：轻量检索
 
@@ -121,8 +143,12 @@ Semantic Stage Router 是 Product Crew OS 的阶段判断引擎。
 - `skill-stage-router.md`
 - `stage-boundary-matrix.md`
 - `usage-modes-and-trigger-examples.md`
+- `tests/prompt-eval-cases.yaml`
+- `tests/external-benchmark-cases.yaml`
+- `tests/badcase-loop-50.md`
 - 项目中的 `decision-log.md`
 - 历史 `stage-route-decision.jsonl`
+- 历史 `routing-feedback.jsonl`
 - 用户批准的团队风格 overlay
 
 实现可以先用本地 Markdown / JSON 检索，不强制上向量数据库。
@@ -143,6 +169,10 @@ RAG 适合检索：
 
 注意：
 
+- Embedding 是可选实现，不是当前 release gate 的硬依赖。
+- 如果没有 embedding adapter 或向量库，必须回退到本地 SOP 检索，而不是跳过路由证据。
+- 只有用户授权写入项目记忆或团队风格时，真实公司材料才可以进入向量索引。
+- 具体 adapter contract、namespace 隔离和 dry-run 门禁见 `embedding-rag-adapter.md`。
 - RAG 不能替代 stage gate。
 - 检索结果必须标注来源。
 - 项目记忆、用户偏好、产品规则仍必须分容器保存。
@@ -196,6 +226,19 @@ RAG 适合检索：
 }
 ```
 
+## 4.1 路由坏率门禁
+
+Semantic Stage Router 的质量不能只看是否“能回答”，必须在测试报告里暴露以下坏率：
+
+| 指标 | 失败含义 | 门禁方向 |
+| --- | --- | --- |
+| `template_degraded_rate` | skill router 最终只能落到 artifact-template | release gate 必须为 0 |
+| `agent_miss_rate` | Required / Triggered 角色在 route decision 或 ledger 中缺席 | 越低越好，超过阈值进入 badcase |
+| `coach_over_decision_rate` | 主控在评审后替用户采纳、拒绝、关闭或越过 Stage Gate | 必须为 0 |
+| `skill_execution_hit_rate` | 选中的 primary/fallback skill 能被 bundled/user overlay/plugin 解析 | release gate 应为 100% |
+
+如果出现 `template_degraded_rate > 0`，该轮可以继续生成 artifact，但不能宣称 skill 已按 SOP 正常调用。
+
 ## 5. 与 RAG 的关系
 
 RAG 是手段，不是产品卖点。
@@ -207,10 +250,11 @@ RAG 是手段，不是产品卖点。
 技术表达可以是：
 
 ```text
-semantic intent classification
+input scope gate
+-> semantic intent classification + public pco_rules retrieval
 -> stage taxonomy retrieval
 -> SOP / skill / stakeholder retrieval
--> project memory retrieval
+-> authorized project memory retrieval
 -> route decision
 -> artifact and review execution
 -> routing feedback loop
@@ -234,7 +278,9 @@ Semantic Stage Router 进入可用状态需要满足：
 
 - 44 个 stage 都有别名和触发样例。
 - 每次实质工作前能输出内部 route decision。
+- route decision 带 `candidate_routes`、`retrieval_mode`、`confidence_gap`。
 - 低置信度时会澄清。
 - 用户纠错会被记录为 routing feedback。
 - route decision 能解释 SOP、skill、roles、artifact 和 next action。
 - RAG 检索结果遵守 Product Rule Memory / User Preference Memory / Project Memory 隔离。
+- routing eval 必须报告 `template_degraded_rate`、`agent_miss_rate`、`coach_over_decision_rate` 和 `skill_execution_hit_rate`。

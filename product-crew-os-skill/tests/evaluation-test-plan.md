@@ -18,6 +18,9 @@
 | L2 | Prompt Eval | 44 个 SOP 的用户输入、stage、skill、artifact、agent、gate | `prompt-eval-cases.yaml` |
 | L3 | External Benchmark | 第三方 PM benchmark 是否能被映射到 stage / skill / artifact / gate | `run-external-benchmark.rb` |
 | L3a | Semantic Routing Eval | 用 gold label 计算 Domain / Stage / Skill / Agent 命中率 | `run-routing-eval.rb` + `external-benchmark-cases.yaml` |
+| L3b | Embedding RAG Dry Run | 验证 `pco_rules` 公共规则索引、Input Scope Gate、source_ref 和 RAG hit@k | `run-embedding-rag-dry-run.rb` + `embedding-rag-policy.yaml` |
+| L3c | RAG Ingestion Contract | 验证 OCR、语义 overlap chunk、开源 embedding、vector store、增量更新、维护和监控契约 | `run-rag-ingestion-contract.rb` + `embedding-rag-policy.yaml` + `embedding-rag-schema.sql` |
+| L3d | Local Open-Source Embedding Provider Contract | 验证本地 BGE 开源 embedding provider 是否真实可用；缺依赖时必须 runtime_blocked，不能算通过 | `run-local-open-source-embedding-provider-contract.rb` |
 | L4 | Runtime Smoke | SQLite runtime、项目资产包、Context Packet、Obsidian-compatible 导出是否可运行 | `run-runtime-smoke.rb` |
 | L5 | SOP E2E Smoke | 44 个 SOP 是否能真实写入 runtime，并产生可观测记录 | `run-sop-e2e-smoke.rb` |
 | L6 | Loop 50 Bad Case | 44 个 SOP + 6 个高风险 Bad Case 是否闭环通过，是否写入测试账本 | `run-loop-50-cases.rb` + `badcase-loop-50.md` + `test-ledger.md` |
@@ -33,6 +36,8 @@ ruby product-crew-os-skill/tests/validate-package.rb
 ruby product-crew-os-skill/tests/run-regression.rb --mock-delegate --check-only
 ruby product-crew-os-skill/tests/run-external-benchmark.rb
 ruby product-crew-os-skill/tests/run-routing-eval.rb
+ruby product-crew-os-skill/tests/run-embedding-rag-dry-run.rb
+ruby product-crew-os-skill/tests/run-rag-ingestion-contract.rb
 ruby product-crew-os-skill/tests/run-runtime-smoke.rb
 ruby product-crew-os-skill/tests/run-sop-e2e-smoke.rb
 ruby product-crew-os-skill/tests/run-review-loop-e2e.rb
@@ -45,11 +50,16 @@ ruby product-crew-os-skill/tests/run-loop-50-cases.rb
 - `run-regression: PASS`
 - `run-external-benchmark: PASS`
 - `run-routing-eval: PASS`
+- `run-embedding-rag-dry-run: PASS`
+- `run-rag-ingestion-contract: PASS`
 - `run-runtime-smoke: PASS`
 - `run-sop-e2e-smoke: PASS`
 - `run-review-loop-e2e: PASS`
 - `run-loop-50-cases: PASS`
 - `run-routing-eval` 的 Stage accuracy、Skill hit rate、Agent recall 必须达到阈值。
+- `run-embedding-rag-dry-run` 的 RAG hit@k、source trace rate、false positive domain entry rate 和 namespace isolation 必须达到阈值；它不代表真实外部 embedding provider 已上线。
+- `run-rag-ingestion-contract` 必须证明 OCR、语义结构化 overlap chunk、开源 embedding、SQLite vector store、批处理、增量更新、维护和监控都有结构化配置与 schema 字段。
+- `run-local-open-source-embedding-provider-contract` 只有在本机能真实加载 `BAAI/bge-small-zh-v1.5` 并返回向量时才通过；缺少 `sentence-transformers` / `FlagEmbedding` 或模型不可用时必须返回 `runtime_blocked_missing_local_model`。
 - `run-review-loop-e2e` 必须证明用户未确认不能关闭评审，未解决 must-fix 不能关闭评审。
 - `prompt-eval-cases.yaml` 至少包含 44 个 case。
 - `manual-score-cases.yaml` 至少保留核心人工评分样本，用于判断人味、可追溯性和 Review Loop 质量。

@@ -1,0 +1,292 @@
+case_id: flow_01_opportunity_discovery_pass
+fixture_type: synthetic_case
+real_runtime_claim: false
+main_flow_id: flow_01_opportunity_discovery
+main_flow_name: 项目接入与机会发现
+covered_stage_id: business_context
+result_boundary: "仅代表可进入低成本验证，不代表需求成立、PRD 通过、MVP 批准、合规认证或上线批准。"
+
+frontstage_policy:
+  visible_fields:
+    - current_judgment
+    - deliverables
+    - non_promises
+    - key_risks
+    - decision_options
+    - correction_entry
+  hidden_by_default:
+    - sop_ids
+    - skill_calls
+    - gate_ids
+    - role_keys
+    - runtime_trace
+    - invocation_ledger
+    - raw_review_records
+
+state_machine:
+  initial_state: idle
+  final_state: done
+  expected_path:
+    - domain_gate
+    - intent_routing
+    - stage_matched
+    - sop_composing
+    - skill_routing
+    - artifact_drafting
+    - evidence_checking
+    - review_open
+    - agent_reviewing
+    - review_summarizing
+    - user_deciding
+    - gate_checking
+    - memory_writing
+    - done
+
+domain_intent_gate:
+  domain: product_work
+  intent: opportunity_assessment
+  confidence: 0.91
+  candidates:
+    - canonical_stage_id: business_context
+      confidence: 0.41
+    - canonical_stage_id: evidence_inventory
+      confidence: 0.29
+    - canonical_stage_id: mvp_scope
+      confidence: 0.18
+  user_correction_needed: false
+
+sop_composition:
+  composition_id: COMP-FLOW-01-PASS
+  mode: standard
+  selected_sops:
+    - sop_id: "03"
+      canonical_stage_id: business_context
+      output_artifact_id: opportunity-brief-v0
+    - sop_id: "05"
+      canonical_stage_id: evidence_inventory
+      output_artifact_id: demand-authenticity-check-v0
+    - sop_id: "08"
+      canonical_stage_id: research_plan
+      output_artifact_id: validation-plan-v0
+  not_selected:
+    - sop_id: "26"
+      reason: "缺少需求真伪验证，不能直接进入 PRD。"
+    - sop_id: "20"
+      reason: "未决定 MVP 范围，技术方案判断暂不触发。"
+
+skill_router_log:
+  - skill_call_id: SKILL-001
+    skill_name: problem-validation
+    skill_version: built_in_or_external
+    input_summary: "判断会议后行动项整理方向的问题频率、痛感、替代方案和真伪需求。"
+    output_artifact_id: demand-authenticity-check-v0
+    status: success_or_template_fallback
+    fallback_used: true
+    failure_reason:
+    retry_count: 0
+    latency_ms:
+    token_cost_estimate:
+  - skill_call_id: SKILL-002
+    skill_name: product-strategy
+    skill_version: built_in_or_external
+    input_summary: "形成方向判断和低成本验证边界。"
+    output_artifact_id: opportunity-brief-v0
+    status: success_or_template_fallback
+    fallback_used: true
+    failure_reason:
+    retry_count: 0
+    latency_ms:
+    token_cost_estimate:
+  - skill_call_id: SKILL-003
+    skill_name: experiment-design
+    skill_version: built_in_or_external
+    input_summary: "形成样本、问题、通过/失败标准和指标口径。"
+    output_artifact_id: validation-plan-v0
+    status: success_or_template_fallback
+    fallback_used: true
+    failure_reason:
+    retry_count: 0
+    latency_ms:
+    token_cost_estimate:
+
+context_packets:
+  - context_packet_id: CP-BIZ-FLOW-01
+    role_key: Biz
+    display_name: 包总
+    stage_id: business_context
+    artifact_refs:
+      - artifact_id: opportunity-brief-v0
+        artifact_name: 方向判断 v0
+        artifact_version: v0.4
+    known_decisions:
+      - "本阶段只允许低成本验证。"
+    open_risks:
+      - "竞品或替代方案可能已覆盖任务闭环。"
+    output_contract: "PASS / CONDITIONAL / BLOCK + 必须修改项。"
+  - context_packet_id: CP-RESEARCH-FLOW-01
+    role_key: Research
+    display_name: 研希
+    stage_id: evidence_inventory
+    artifact_refs:
+      - artifact_id: validation-plan-v0
+        artifact_name: 验证计划 v0
+        artifact_version: v0.4
+    known_decisions:
+      - "未经验证的假设不能进入正式 PRD Gate。"
+    open_risks:
+      - "用户说愿意试用不等于愿意付费或迁移。"
+    output_contract: "PASS / CONDITIONAL / BLOCK + 必须修改项。"
+
+invocation_ledger:
+  - invocation_id: INV-BIZ-FLOW-01
+    role_key: Biz
+    role_title: 业务负责人
+    display_name: 包总
+    stage_id: business_context
+    artifact_id: opportunity-brief-v0
+    context_packet_ref: CP-BIZ-FLOW-01
+    raw_review_record_ref: raw-review-records/flow-01/Biz.md
+    result: pass
+    runtime_agent_id:
+    real_invocation_performed: false
+    simulation_label: synthetic_fixture
+  - invocation_id: INV-RESEARCH-FLOW-01
+    role_key: Research
+    role_title: 用户研究员
+    display_name: 研希
+    stage_id: evidence_inventory
+    artifact_id: validation-plan-v0
+    context_packet_ref: CP-RESEARCH-FLOW-01
+    raw_review_record_ref: raw-review-records/flow-01/Research.md
+    result: pass
+    runtime_agent_id:
+    real_invocation_performed: false
+    simulation_label: synthetic_fixture
+
+measurement_plan:
+  sample_min: 10
+  metrics:
+    - metric_id: pain_frequency_rate
+      numerator: "每周遇到 2 次以上行动项漏跟的受访者数"
+      denominator: "有效受访者总数"
+      threshold: ">= 6/10"
+      data_source: "用户访谈"
+      owner_role: Research
+      decision_action_if_pass: continue_to_validation
+      decision_action_if_fail: pause_or_stop
+    - metric_id: workaround_rate
+      numerator: "存在 workaround 的受访者数"
+      denominator: "有效受访者总数"
+      threshold: ">= 5/10"
+      data_source: "用户访谈"
+      owner_role: Research
+      decision_action_if_pass: continue_to_validation
+      decision_action_if_fail: stop_or_reframe_problem
+    - metric_id: material_acceptance_rate
+      numerator: "愿意提供可接受材料的受访者数"
+      denominator: "有效受访者总数"
+      threshold: ">= 4/10"
+      data_source: "隐私接受度问题"
+      owner_role: Research
+      decision_action_if_pass: continue_to_validation
+      decision_action_if_fail: narrow_scope
+    - metric_id: business_signal_rate
+      numerator: "有付费/预算/决策/迁移信号的受访者数"
+      denominator: "有效受访者总数"
+      threshold: ">= 3/10"
+      data_source: "商业信号访谈"
+      owner_role: Biz
+      decision_action_if_pass: continue_to_validation
+      decision_action_if_fail: pause_for_competitor_scan
+
+gate_decision_mapping:
+  continue_to_validation:
+    required:
+      - "pain_frequency_rate >= 6/10"
+      - "workaround_rate >= 5/10"
+      - "material_acceptance_rate >= 4/10"
+    note: "仅代表继续低成本验证，不代表进入 MVP。"
+  narrow_scope:
+    trigger_any:
+      - "material_acceptance_rate < 4/10 but transcript-only acceptance is positive"
+  pause_for_competitor_scan:
+    trigger_any:
+      - "existing_tool_gap_rate < 4/10"
+  stop:
+    trigger_any:
+      - "users only need summaries, not task follow-up"
+
+material_use_policy:
+  synthetic_case: true
+  contains_real_user_material: false
+  contains_real_customer_material: false
+  contains_real_colleague_material: false
+  requires_separate_consent_for:
+    - long_term_memory
+    - role_style_training
+    - template_reuse
+    - public_rule_package
+    - public_example
+    - product_marketing
+  deidentification_required_before_public_use: true
+
+privacy_public_boundary:
+  gate_disclaimer: "Gate/Formal Gate 仅代表流程证据、角色评审与用户决策检查，不构成法务合规认证、律师审查、上线批准或对外合规背书。"
+  ordinary_user_frontstage_must_not_show:
+    - runtime_trace
+    - invocation_ledger
+    - role_key
+    - raw_review_records
+    - private_material
+
+frontstage_main_flow_audit:
+  flows:
+    - main_flow_id: flow_01_opportunity_discovery
+      user_visible_name: 项目接入与机会发现
+      coverage_status: covered_by_this_case
+    - main_flow_id: flow_02_problem_user_understanding
+      user_visible_name: 问题定义与用户理解
+      coverage_status: indexed_not_covered
+    - main_flow_id: flow_03_value_scope
+      user_visible_name: 价值判断与范围定义
+      coverage_status: indexed_not_covered
+    - main_flow_id: flow_04_solution_feasibility
+      user_visible_name: 方案设计与可行性验证
+      coverage_status: indexed_not_covered
+    - main_flow_id: flow_05_prd_cross_functional_review
+      user_visible_name: PRD 产出与跨职能评审
+      coverage_status: indexed_not_covered
+    - main_flow_id: flow_06_delivery_planning
+      user_visible_name: 交付规划与开发跟踪
+      coverage_status: indexed_not_covered
+    - main_flow_id: flow_07_launch_readiness
+      user_visible_name: 上线准备与灰度发布
+      coverage_status: indexed_not_covered
+    - main_flow_id: flow_08_post_launch_iteration
+      user_visible_name: 上线监控与复盘迭代
+      coverage_status: indexed_not_covered
+
+training_acceptance_checklist:
+  new_user:
+    - "能否说清当前在判断什么"
+    - "能否说清本轮交付什么"
+    - "能否说清本轮不承诺什么"
+    - "能否选择下一步拍板项"
+    - "能否知道如何纠偏"
+  auditor:
+    - "能否追到 Context Packet"
+    - "能否追到 Invocation Ledger"
+    - "能否追到 raw review"
+    - "能否检查 synthetic case 没有伪装真实调用"
+
+review_matrix:
+  Biz: pass
+  Research: pass
+  CS: pass
+  Customer: pass
+  Design: pass
+  Tech: pass
+  QA: pass
+  Data: pass
+  Legal: pass
+  Ops: pass

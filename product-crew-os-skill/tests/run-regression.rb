@@ -20,6 +20,26 @@ def assert(errors, condition, message)
 end
 
 packet = YAML.load_file(File.join(skill_root, "templates", "agent-context-packet.yaml"))
+base_persona = packet.dig("memory_snapshot", "base_persona") || {}
+%w[role_key title display_name role persona_source_ref persona_injection_status].each do |field|
+  assert(errors, base_persona.key?(field), "agent context packet base_persona missing #{field}")
+end
+%w[personality speaking_style must_do must_not_do memory_focus].each do |field|
+  assert(errors, base_persona[field].is_a?(Array), "agent context packet base_persona #{field} must be an array")
+end
+assert(errors, (packet.dig("output_contract", "must_include") || []).include?("use configured persona voice"), "agent output contract must require configured persona voice")
+
+persona_config = YAML.load_file(File.join(skill_root, "config", "crew-personas.yaml"))
+%w[biz research design tech data qa legal cs customer ops].each do |persona_key|
+  persona = persona_config.dig("personas", persona_key) || {}
+  label = persona["role_key"] || persona_key
+  %w[role_key title display_name role].each do |field|
+    assert(errors, persona[field].to_s != "", "crew persona #{label} missing #{field}")
+  end
+  %w[personality speaking_style must_do must_not_do memory_focus].each do |field|
+    assert(errors, Array(persona[field]).any?, "crew persona #{label} missing #{field}")
+  end
+end
 
 mock_delegate_enabled = ARGV.include?("--mock-delegate")
 check_only = ARGV.include?("--check-only")
@@ -157,6 +177,77 @@ if review_batch_scenario
   assert(errors, (expected["must_not"] || []).include?("drop required roles because the first batch is full"), "review batch scenario should forbid first-batch role dropping")
 end
 
+semantic_router_text = File.read(File.join(skill_root, "references", "semantic-stage-router.md"))
+%w[candidate_routes retrieval_mode confidence_gap template_degraded_rate agent_miss_rate coach_over_decision_rate skill_execution_hit_rate].each do |phrase|
+  assert(errors, semantic_router_text.include?(phrase), "semantic stage router missing #{phrase}")
+end
+metrics_text = File.read(File.join(skill_root, "references", "evaluation-metrics.md"))
+%w[Template 降级率 子 Agent 漏召率 主控越权决策率 Skill 执行命中率].each do |phrase|
+  assert(errors, metrics_text.include?(phrase), "evaluation metrics missing #{phrase}")
+end
+embedding_reference = File.read(File.join(skill_root, "references", "embedding-rag-adapter.md"))
+[
+  "pco_rules",
+  "project",
+  "user_overlay",
+  "team_style_overlay",
+  "Input Scope Gate",
+  "hard non-product exit check",
+  "source_ref",
+  "confidence_gap",
+  "local_open_source_bge_small_zh",
+  "PaddleOCR",
+  "Tesseract",
+  "semantic_structured_overlap",
+  "BAAI/bge-small-zh-v1.5",
+  "sqlite-vec",
+  "FTS5",
+  "incremental update",
+  "maintenance",
+  "recall",
+  "precision"
+].each do |phrase|
+  assert(errors, embedding_reference.include?(phrase), "embedding RAG adapter missing #{phrase}")
+end
+embedding_policy = YAML.load_file(File.join(skill_root, "config", "embedding-rag-policy.yaml"))
+assert(errors, embedding_policy.dig("input_scope_gate", "routing_model") == "hard_exit_first_then_parallel_rule_and_embedding", "embedding policy must use input scope gate parallel routing")
+assert(errors, embedding_policy.dig("input_scope_gate", "hard_non_product_task", "retrieval_enabled") == false, "embedding policy must block retrieval for hard non-product tasks")
+assert(errors, embedding_policy.dig("input_scope_gate", "ambiguous_task", "pco_rules_retrieval_enabled") == true, "embedding policy must allow public pco_rules retrieval for ambiguous tasks")
+assert(errors, embedding_policy.dig("input_scope_gate", "ambiguous_task", "private_namespace_retrieval_enabled") == false, "embedding policy must block private retrieval during ambiguous scope gate")
+assert(errors, embedding_policy.dig("domain_gate", "legacy_alias_for") == "input_scope_gate", "embedding policy must keep domain gate as legacy alias")
+assert(errors, embedding_policy.dig("release_gate", "ingestion_contract_required") == true, "embedding policy must require ingestion contract")
+assert(errors, embedding_policy.dig("source_ingestion", "ocr", "primary_engine") == "PaddleOCR", "embedding policy must set PaddleOCR as primary OCR")
+assert(errors, embedding_policy.dig("chunking", "strategy") == "semantic_structured_overlap", "embedding policy must use semantic structured overlap chunking")
+assert(errors, embedding_policy.dig("providers", "local_open_source_bge_small_zh", "model_name") == "BAAI/bge-small-zh-v1.5", "embedding policy must choose BAAI/bge-small-zh-v1.5")
+assert(errors, embedding_policy.dig("vector_store", "default") == "sqlite_vec", "embedding policy must default to sqlite_vec")
+assert(errors, embedding_policy.dig("batch_indexing", "enabled") == true, "embedding policy must enable batch indexing")
+assert(errors, embedding_policy.dig("incremental_update", "enabled") == true, "embedding policy must enable incremental update")
+assert(errors, embedding_policy.dig("namespaces", "pco_rules", "public_package_allowed") == true, "embedding policy must allow public pco_rules in package")
+%w[project user_overlay team_style_overlay].each do |namespace|
+  assert(errors, embedding_policy.dig("namespaces", namespace, "public_package_allowed") == false, "embedding policy must keep #{namespace} out of public package")
+  assert(errors, embedding_policy.dig("namespaces", namespace, "consent_required") == true, "embedding policy must require consent for #{namespace}")
+end
+embedding_schema = File.read(File.join(skill_root, "runtime", "db", "embedding-rag-schema.sql"))
+%w[embedding_documents embedding_chunks embedding_retrieval_events namespace source_ref consent_ref public_package_allowed source_type extraction_method ocr_confidence section_path embedding_vector_indexes rag_ingestion_jobs rag_retrieval_quality_metrics rag_maintenance_events score_breakdown_json].each do |phrase|
+  assert(errors, embedding_schema.include?(phrase), "embedding schema missing #{phrase}")
+end
+dry_run_script = File.read(File.join(skill_root, "tests", "run-embedding-rag-dry-run.rb"))
+%w[rag_stage_hit_at_1 rag_stage_hit_at_3 false_positive_domain_entry_rate source_trace_rate namespace_isolation_violations RETRIEVAL_STOP_TERMS launch_readiness one_page_proposal prioritization].each do |phrase|
+  assert(errors, dry_run_script.include?(phrase), "embedding dry-run missing #{phrase}")
+end
+rag_ingestion_contract = File.read(File.join(skill_root, "tests", "run-rag-ingestion-contract.rb"))
+%w[PaddleOCR Tesseract semantic_structured_overlap BAAI/bge-small-zh-v1.5 sqlite_vec rag_recall_at_3].each do |phrase|
+  assert(errors, rag_ingestion_contract.include?(phrase), "RAG ingestion contract missing #{phrase}")
+end
+embedding_provider = File.read(File.join(skill_root, "runtime", "embedding_provider.rb"))
+%w[LocalOpenSourceBGESmallZH BAAI/bge-small-zh-v1.5 real_embedding_performed local_hash_dry_run runtime_blocked_missing_local_model].each do |phrase|
+  assert(errors, embedding_provider.include?(phrase), "embedding provider missing #{phrase}")
+end
+local_embedding_contract = File.read(File.join(skill_root, "tests", "run-local-open-source-embedding-provider-contract.rb"))
+%w[local_open_source_bge_small_zh real_local_call_passed runtime_blocked_missing_local_model].each do |phrase|
+  assert(errors, local_embedding_contract.include?(phrase), "local open-source embedding contract missing #{phrase}")
+end
+
 assert(errors, prompt_eval_cases.length == 44, "prompt eval should cover 44 SOP cases, found #{prompt_eval_cases.length}")
 %w[project_intake low_fi_prototype formal_requirements_review launch_readiness iteration_planning].each do |stage_id|
   assert(errors, prompt_eval_cases.any? { |test_case| test_case["stage_id"] == stage_id }, "prompt eval missing stage: #{stage_id}")
@@ -179,7 +270,10 @@ command = "ruby product-crew-os-skill/tests/run-regression.rb #{ARGV.join(" ")}"
 if errors.empty?
   unless check_only
     FileUtils.mkdir_p(result_dir)
-    File.write(result_path, "# Regression Result\n\nstatus: PASS\n\ngenerated_at: #{generated_at}\ncommand: #{command}\n\nchecks:\n- package scenarios loaded\n- mock delegate invocation ledger assertion passed\n- simulation fallback label assertion passed\n- memory snapshot and memory delta assertion passed\n- non-product task exits Product Crew OS workflow assertion passed\n- project asset pack persistence assertion passed\n- review batch coverage assertion passed\n- 44 SOP prompt eval coverage assertion passed\n")
+    File.write(result_path, "# Regression Result\n\nstatus: PASS\n\ngenerated_at: #{generated_at}\ncommand: #{command}\n\nchecks:\n- package scenarios loaded\n- persona injection contract assertion passed\n- mock delegate invocation ledger assertion passed\n- simulation fallback label assertion passed\n- memory snapshot and memory delta assertion passed\n- non-product task exits Product Crew OS workflow assertion passed\n- project asset pack persistence assertion passed\n- review batch coverage assertion passed\n- semantic router RAG and bad-rate metric assertions passed\n- embedding RAG adapter contract assertions passed
+- RAG ingestion / OCR / chunk / vector store contract assertions passed
+- local open-source embedding provider contract assertions passed
+- 44 SOP prompt eval coverage assertion passed\n")
   end
   puts "run-regression: PASS"
   puts "result: #{check_only ? "not written (--check-only)" : result_path}"

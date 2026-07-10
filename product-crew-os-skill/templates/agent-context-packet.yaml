@@ -41,8 +41,17 @@ context:
 memory_snapshot:
   base_persona:
     role_key: ""
+    title: ""
     display_name: ""
+    role: ""
+    personality: []
+    speaking_style: []
+    must_do: []
+    must_not_do: []
+    memory_focus: []
     stable_concerns: []
+    persona_source_ref: ""
+    persona_injection_status: "complete | incomplete | missing"
   user_overlay:
     exists: false
     summary: ""
@@ -75,6 +84,8 @@ output_contract:
     - "one concrete concern"
     - "one concrete fix"
     - "gate decision"
+    - "stay inside role authority"
+    - "use configured persona voice"
   structured_review_shadow:
     role_key: ""
     result: ""

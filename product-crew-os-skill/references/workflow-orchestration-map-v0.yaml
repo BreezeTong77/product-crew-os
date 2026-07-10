@@ -1,0 +1,310 @@
+schema_version: "0.1"
+map_kind: "workflow_orchestration_map"
+updated_at: "2026-07-10"
+claim_boundary:
+  overall_status: "flow_01_complete"
+  full_macro_flows_complete: 1
+  macro_flows_total: 10
+  purpose: "Define the macro-flow orchestration counter and mark only replayable full macro-flow Golden Cases as complete."
+  allowed_claim: "flow_01 机会发现已具备完整主流程 Golden Case；当前 10 大主流程完整编排为 1/10。"
+  must_not_claim:
+    - "10 大主流程已完整跑通"
+    - "44 个 SOP runtime smoke 等于完整主流程编排"
+    - "flow_01 完整 Golden Case 等于 PM 全流程完成"
+    - "synthetic Golden Case 等于真实业务线上验证"
+completion_definition:
+  required_for_full_macro_flow:
+    - flow_map_defined
+    - state_machine_path_defined
+    - artifact_chain_defined
+    - primary_skill_assertions_defined
+    - required_and_triggered_roles_defined
+    - invocation_ledger_assertions_defined
+    - gate_evidence_defined
+    - golden_case_replayable
+  complete_status_rule: "A macro flow is complete only when implementation_status is complete, completion_qualifies_as_full_macro_flow is true, and golden_case.status is complete."
+skill_status_values:
+  - primary_hit
+  - fallback_hit
+  - template_degraded
+  - missing
+  - runtime_blocked
+runtime_status_values:
+  - not_started
+  - partial
+  - complete
+  - runtime_blocked
+macro_flows:
+  - flow_id: "flow_01_opportunity_discovery"
+    title: "机会发现"
+    user_visible_goal: "判断一个方向是否值得进入低成本验证。"
+    implementation_status: "complete"
+    completion_qualifies_as_full_macro_flow: true
+    current_evidence:
+      sop_router_status: "implemented"
+      runtime_smoke_status: "tested"
+      full_state_machine_status: "complete"
+      golden_case_status: "complete"
+    stages:
+      - { stage_id: "project_intake", sop_ids: ["00"], required_artifacts: ["project-card.md"] }
+      - { stage_id: "request_triage", sop_ids: ["01"], required_artifacts: ["triage-note.md"] }
+      - { stage_id: "stakeholder_map", sop_ids: ["02"], required_artifacts: ["stakeholder-map.md"] }
+      - { stage_id: "business_context", sop_ids: ["03"], required_artifacts: ["business-context.md"] }
+      - { stage_id: "existing_workflow_mapping", sop_ids: ["04"], required_artifacts: ["current-state-workflow.md"] }
+      - { stage_id: "evidence_inventory", sop_ids: ["05"], required_artifacts: ["evidence-inventory.md", "opportunity-gate-summary.md"] }
+    artifacts:
+      - "project-card.md"
+      - "triage-note.md"
+      - "stakeholder-map.md"
+      - "business-context.md"
+      - "current-state-workflow.md"
+      - "evidence-inventory.md"
+      - "opportunity-gate-summary.md"
+    required_roles: ["Coach"]
+    triggered_roles: ["Biz", "Research", "Data", "Customer", "CS"]
+    gate:
+      status_values: ["pass", "conditional_pass", "block", "rollback"]
+      pass_boundary: "只能代表进入低成本验证，不代表需求成立、PRD 通过、MVP 批准或上线批准。"
+    golden_case:
+      status: "complete"
+      existing_files:
+        - "tests/golden-cases/flow-01-opportunity-discovery-pass.yaml"
+        - "tests/golden-cases/flow-01-opportunity-discovery-full.yaml"
+      missing_for_complete: []
+    missing_assertions: []
+  - flow_id: "flow_02_user_research"
+    title: "用户研究"
+    user_visible_goal: "把假设变成可验证的用户研究计划、访谈提纲和洞察。"
+    implementation_status: "partial"
+    completion_qualifies_as_full_macro_flow: false
+    current_evidence:
+      sop_router_status: "implemented"
+      runtime_smoke_status: "tested"
+      full_state_machine_status: "partial"
+      golden_case_status: "missing"
+    stages:
+      - { stage_id: "user_segmentation", sop_ids: ["07"], required_artifacts: ["user-segmentation.md"] }
+      - { stage_id: "research_plan", sop_ids: ["08"], required_artifacts: ["research-plan.md"] }
+      - { stage_id: "interview_guide", sop_ids: ["09"], required_artifacts: ["interview-guide.md"] }
+      - { stage_id: "interview_synthesis", sop_ids: ["10"], required_artifacts: ["interview-synthesis.md"] }
+      - { stage_id: "persona_jtbd_journey", sop_ids: ["11"], required_artifacts: ["persona-jtbd-journey.md"] }
+    artifacts: ["user-segmentation.md", "research-plan.md", "interview-guide.md", "interview-synthesis.md", "insight-summary.md"]
+    required_roles: ["Coach", "Research"]
+    triggered_roles: ["CS", "Biz", "Data"]
+    gate:
+      status_values: ["pass", "conditional_pass", "block", "rollback"]
+      pass_boundary: "研究证据足以支撑问题定义，不代表解决方案已成立。"
+    golden_case:
+      status: "missing"
+      existing_files: []
+      missing_for_complete: ["创建 flow_02_user_research_full.yaml", "补齐访谈证据和 synthesis 断言"]
+    missing_assertions: ["research_evidence_trace", "non_leading_questions", "insights_tied_to_quotes"]
+  - flow_id: "flow_03_problem_framing"
+    title: "问题定义"
+    user_visible_goal: "把功能想法收束成用户、场景、问题和机会树。"
+    implementation_status: "not_started"
+    completion_qualifies_as_full_macro_flow: false
+    current_evidence:
+      sop_router_status: "implemented"
+      runtime_smoke_status: "tested"
+      full_state_machine_status: "missing"
+      golden_case_status: "missing"
+    stages:
+      - { stage_id: "problem_definition", sop_ids: ["06"], required_artifacts: ["problem-statement.md"] }
+      - { stage_id: "opportunity_tree", sop_ids: ["12"], required_artifacts: ["opportunity-tree.md"] }
+      - { stage_id: "assumption_mapping", sop_ids: ["13"], required_artifacts: ["assumption-map.md"] }
+    artifacts: ["problem-statement.md", "opportunity-tree.md", "assumption-map.md"]
+    required_roles: ["Coach"]
+    triggered_roles: ["Research", "Biz", "CS", "Customer"]
+    gate:
+      status_values: ["pass", "conditional_pass", "block", "rollback"]
+      pass_boundary: "问题和机会清楚，不代表需求优先级或方案范围已批准。"
+    golden_case:
+      status: "missing"
+      existing_files: []
+      missing_for_complete: ["创建 flow_03_problem_framing_full.yaml", "补齐问题-机会-假设链路断言"]
+    missing_assertions: ["problem_not_solution", "opportunity_tree_links_outcome", "riskiest_assumptions_ranked"]
+  - flow_id: "flow_04_requirement_analysis"
+    title: "需求分析"
+    user_visible_goal: "把需求、价值、优先级和 MVP 边界讲清楚。"
+    implementation_status: "partial"
+    completion_qualifies_as_full_macro_flow: false
+    current_evidence:
+      sop_router_status: "implemented"
+      runtime_smoke_status: "tested"
+      full_state_machine_status: "partial"
+      golden_case_status: "missing"
+    stages:
+      - { stage_id: "value_sizing", sop_ids: ["14"], required_artifacts: ["value-sizing.md"] }
+      - { stage_id: "prioritization", sop_ids: ["15"], required_artifacts: ["prioritization-matrix.md"] }
+      - { stage_id: "mvp_scope", sop_ids: ["17"], required_artifacts: ["mvp-scope.md"] }
+      - { stage_id: "one_page_proposal", sop_ids: ["18"], required_artifacts: ["one-page-proposal.md"] }
+    artifacts: ["value-sizing.md", "prioritization-matrix.md", "mvp-scope.md", "one-page-proposal.md"]
+    required_roles: ["Coach", "Biz"]
+    triggered_roles: ["Tech", "Data", "Design", "Customer", "CS"]
+    gate:
+      status_values: ["pass", "conditional_pass", "block", "rollback"]
+      pass_boundary: "MVP 可证明一个核心假设，不代表 PRD 已通过。"
+    golden_case:
+      status: "missing"
+      existing_files: []
+      missing_for_complete: ["创建 flow_04_requirement_analysis_full.yaml", "补齐 not-do list 和 priority 决策断言"]
+    missing_assertions: ["mvp_scope_boundary", "rejected_scope_reasons", "priority_decision_log"]
+  - flow_id: "flow_05_solution_design"
+    title: "方案设计"
+    user_visible_goal: "把方案、流程、原型、可行性和指标设计成可评审产物。"
+    implementation_status: "partial"
+    completion_qualifies_as_full_macro_flow: false
+    current_evidence:
+      sop_router_status: "implemented"
+      runtime_smoke_status: "tested"
+      full_state_machine_status: "partial"
+      golden_case_status: "missing"
+    stages:
+      - { stage_id: "solution_exploration", sop_ids: ["16"], required_artifacts: ["solution-options.md"] }
+      - { stage_id: "data_feasibility_precheck", sop_ids: ["19"], required_artifacts: ["data-precheck.md"] }
+      - { stage_id: "technical_feasibility_precheck", sop_ids: ["20"], required_artifacts: ["technical-precheck.md"] }
+      - { stage_id: "compliance_precheck", sop_ids: ["21"], required_artifacts: ["compliance-precheck.md"] }
+      - { stage_id: "core_flow_diagram", sop_ids: ["22"], required_artifacts: ["core-flow-diagram.md"] }
+      - { stage_id: "low_fi_prototype", sop_ids: ["23"], required_artifacts: ["low-fi-prototype.md"] }
+      - { stage_id: "metrics_design", sop_ids: ["24"], required_artifacts: ["metrics-plan.md"] }
+      - { stage_id: "instrumentation_plan", sop_ids: ["25"], required_artifacts: ["instrumentation-plan.md"] }
+    artifacts: ["solution-options.md", "core-flow-diagram.md", "low-fi-prototype.md", "technical-precheck.md", "data-precheck.md", "compliance-precheck.md", "metrics-plan.md", "instrumentation-plan.md"]
+    required_roles: ["Coach"]
+    triggered_roles: ["Design", "Tech", "Data", "Legal", "CS", "Customer"]
+    gate:
+      status_values: ["pass", "conditional_pass", "block", "rollback"]
+      pass_boundary: "方案可进入 PRD 起草，不代表正式需求评审通过。"
+    golden_case:
+      status: "missing"
+      existing_files: []
+      missing_for_complete: ["创建 flow_05_solution_design_full.yaml", "补齐可行性预检和低保真评审断言"]
+    missing_assertions: ["solution_tradeoff_visible", "feasibility_prechecks_complete", "metrics_linked_to_flow"]
+  - flow_id: "flow_06_prd_drafting"
+    title: "PRD 起草"
+    user_visible_goal: "把已验证的问题、范围和方案写成可评审 PRD。"
+    implementation_status: "not_started"
+    completion_qualifies_as_full_macro_flow: false
+    current_evidence:
+      sop_router_status: "implemented"
+      runtime_smoke_status: "tested"
+      full_state_machine_status: "missing"
+      golden_case_status: "missing"
+    stages:
+      - { stage_id: "prd_outline", sop_ids: ["26"], required_artifacts: ["prd-outline.md"] }
+      - { stage_id: "prd_v0_draft", sop_ids: ["27"], required_artifacts: ["prd-v0.md"] }
+      - { stage_id: "pm_self_review", sop_ids: ["28"], required_artifacts: ["pm-self-review.md"] }
+    artifacts: ["prd-outline.md", "prd-v0.md", "pm-self-review.md"]
+    required_roles: ["Coach"]
+    triggered_roles: ["Biz", "Design", "Tech", "Data", "QA", "Legal"]
+    gate:
+      status_values: ["pass", "conditional_pass", "block", "rollback"]
+      pass_boundary: "PRD v0 可进入正式评审，不代表评审通过。"
+    golden_case:
+      status: "missing"
+      existing_files: []
+      missing_for_complete: ["创建 flow_06_prd_drafting_full.yaml", "补齐 PRD 章节来源和 assumption 标记断言"]
+    missing_assertions: ["prd_sections_have_sources", "self_review_does_not_replace_formal_review", "open_questions_visible"]
+  - flow_id: "flow_07_cross_functional_review"
+    title: "跨职能评审"
+    user_visible_goal: "让业务、技术、设计、数据、测试等角色围绕同一版产物形成可追溯决策。"
+    implementation_status: "partial"
+    completion_qualifies_as_full_macro_flow: false
+    current_evidence:
+      sop_router_status: "implemented"
+      runtime_smoke_status: "tested"
+      full_state_machine_status: "partial"
+      golden_case_status: "missing"
+    stages:
+      - { stage_id: "internal_product_review", sop_ids: ["29"], required_artifacts: ["internal-review.md"] }
+      - { stage_id: "design_review", sop_ids: ["30"], required_artifacts: ["design-review.md"] }
+      - { stage_id: "data_review", sop_ids: ["31"], required_artifacts: ["data-review.md"] }
+      - { stage_id: "technical_pre_review", sop_ids: ["32"], required_artifacts: ["technical-review.md"] }
+      - { stage_id: "formal_requirements_review", sop_ids: ["33"], required_artifacts: ["formal-review-pack.md", "gate-summary.md"] }
+    artifacts: ["review-session.md", "context-packets/*.yaml", "raw-review-records/*.md", "review-items.yaml", "conflict-matrix.md", "gate-summary.md"]
+    required_roles: ["Coach"]
+    triggered_roles: ["Biz", "Tech", "Design", "Data", "QA", "Legal", "CS", "Customer"]
+    gate:
+      status_values: ["pass", "conditional_pass", "block", "rollback"]
+      pass_boundary: "正式评审结果可追溯，不代表上线批准。"
+    golden_case:
+      status: "missing"
+      existing_files: []
+      missing_for_complete: ["创建 flow_07_cross_functional_review_full.yaml", "补齐 persona 注入、raw review、用户决策断言"]
+    missing_assertions: ["persona_injection_complete", "required_roles_invoked_or_blocked", "raw_reviews_written", "user_decision_required"]
+  - flow_id: "flow_08_delivery_planning"
+    title: "交付规划"
+    user_visible_goal: "把通过评审的需求拆成研发、验收和测试可执行任务。"
+    implementation_status: "not_started"
+    completion_qualifies_as_full_macro_flow: false
+    current_evidence:
+      sop_router_status: "implemented"
+      runtime_smoke_status: "tested"
+      full_state_machine_status: "missing"
+      golden_case_status: "missing"
+    stages:
+      - { stage_id: "task_breakdown", sop_ids: ["34"], required_artifacts: ["task-breakdown.md"] }
+      - { stage_id: "acceptance_criteria", sop_ids: ["35"], required_artifacts: ["acceptance-criteria.md"] }
+      - { stage_id: "development_tracking", sop_ids: ["36"], required_artifacts: ["development-change-log.md"] }
+    artifacts: ["epic-breakdown.md", "story-map.md", "task-breakdown.md", "acceptance-criteria.md", "test-scenarios.md"]
+    required_roles: ["Coach", "Tech"]
+    triggered_roles: ["Design", "Data", "QA", "Biz"]
+    gate:
+      status_values: ["pass", "conditional_pass", "block", "rollback"]
+      pass_boundary: "任务和验收可进入开发执行，不代表上线就绪。"
+    golden_case:
+      status: "missing"
+      existing_files: []
+      missing_for_complete: ["创建 flow_08_delivery_planning_full.yaml", "补齐 PRD 到 task/acceptance trace 断言"]
+    missing_assertions: ["task_trace_to_prd", "acceptance_testable", "qa_review_when_release_risk"]
+  - flow_id: "flow_09_launch_readiness"
+    title: "上线准备"
+    user_visible_goal: "确认 QA、灰度、培训、监控、回滚和风险 owner 已就绪。"
+    implementation_status: "not_started"
+    completion_qualifies_as_full_macro_flow: false
+    current_evidence:
+      sop_router_status: "implemented"
+      runtime_smoke_status: "tested"
+      full_state_machine_status: "missing"
+      golden_case_status: "missing"
+    stages:
+      - { stage_id: "integration_qa", sop_ids: ["37"], required_artifacts: ["integration-qa.md"] }
+      - { stage_id: "launch_readiness", sop_ids: ["38"], required_artifacts: ["launch-checklist.md"] }
+      - { stage_id: "training_enablement", sop_ids: ["39"], required_artifacts: ["training-plan.md"] }
+      - { stage_id: "grey_release_pilot", sop_ids: ["40"], required_artifacts: ["pilot-plan.md"] }
+    artifacts: ["integration-qa.md", "launch-checklist.md", "rollout-plan.md", "training-plan.md", "go-no-go.md"]
+    required_roles: ["Coach", "QA"]
+    triggered_roles: ["Tech", "Data", "Ops", "CS", "Legal", "Biz"]
+    gate:
+      status_values: ["pass", "conditional_pass", "block", "rollback"]
+      pass_boundary: "上线准备通过代表 rollout 条件具备，不构成法务合规认证或商业成功保证。"
+    golden_case:
+      status: "missing"
+      existing_files: []
+      missing_for_complete: ["创建 flow_09_launch_readiness_full.yaml", "补齐 go/no-go、回滚和 P0 风险断言"]
+    missing_assertions: ["p0_risk_blocks_gate", "rollback_plan_exists", "monitoring_owner_assigned"]
+  - flow_id: "flow_10_post_launch_review"
+    title: "复盘迭代"
+    user_visible_goal: "把上线后的指标、反馈、事故、经验和下一版计划沉淀下来。"
+    implementation_status: "not_started"
+    completion_qualifies_as_full_macro_flow: false
+    current_evidence:
+      sop_router_status: "implemented"
+      runtime_smoke_status: "tested"
+      full_state_machine_status: "missing"
+      golden_case_status: "missing"
+    stages:
+      - { stage_id: "launch_monitoring", sop_ids: ["41"], required_artifacts: ["launch-monitoring.md"] }
+      - { stage_id: "post_launch_review", sop_ids: ["42"], required_artifacts: ["post-launch-review.md"] }
+      - { stage_id: "iteration_planning", sop_ids: ["43"], required_artifacts: ["iteration-plan.md"] }
+    artifacts: ["launch-monitoring.md", "metric-review.md", "feedback-synthesis.md", "post-launch-review.md", "iteration-plan.md"]
+    required_roles: ["Coach"]
+    triggered_roles: ["Data", "Biz", "CS", "Tech", "QA", "Design", "Research"]
+    gate:
+      status_values: ["pass", "conditional_pass", "block", "rollback"]
+      pass_boundary: "复盘完成代表学习和下一步明确，不代表下一轮投入自动批准。"
+    golden_case:
+      status: "missing"
+      existing_files: []
+      missing_for_complete: ["创建 flow_10_post_launch_review_full.yaml", "补齐指标事实、反馈、Bad Case 和迭代计划断言"]
+    missing_assertions: ["metrics_fact_vs_interpretation", "badcase_written", "iteration_backlog_has_evidence"]

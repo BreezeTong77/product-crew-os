@@ -1,0 +1,176 @@
+schema_version: "0.1"
+coverage_kind: "workflow_implementation_coverage"
+updated_at: "2026-07-10"
+claim_boundary:
+  overall_status: "partial"
+  full_workflow_state_machine_complete: false
+  macro_flow_orchestration_map_ref: "references/workflow-orchestration-map-v0.yaml"
+  macro_flow_orchestration_counter: "1/10_experimental_not_release_gate"
+  macro_flow_orchestration_release_gate_enabled: false
+  release_claim_allowed: "当前主线门禁回到 44 SOP 命中、Skill Router 命中、Runtime Smoke 写入和 Review Ledger 可追踪；宏流程编排仅作为实验审计记录保留。"
+  must_not_claim:
+    - "10 个主流程全部完整状态机跑通"
+    - "44 个 SOP 全部具备完整 Golden Case"
+    - "后续 PRD、交付、上线、复盘流程已完整编排"
+    - "runtime smoke 等同于完整 workflow orchestration"
+coverage_summary:
+  macro_flows_total: 10
+  fine_stages_total: 44
+  sop_cards_defined: 44
+  skill_router_mapped: 44
+  prompt_eval_cases: 44
+  runtime_smoke_stages: 44
+  golden_case_files: 2
+  main_flows_with_golden_case: 1
+  full_macro_flows_complete: 1
+  full_macro_flows_complete_release_gate_enabled: false
+  full_state_machine_stage_gates_complete: 6
+  note: "runtime_smoke_stages 表示 record-turn / SQLite / Artifact / Review Ledger 可写入，不代表每个阶段都已具备完整人工可审计 Golden Case。"
+golden_cases:
+  - case_id: "flow_01_opportunity_discovery_pass"
+    file: "tests/golden-cases/flow-01-opportunity-discovery-pass.yaml"
+    main_flow_id: "flow_01_opportunity_discovery"
+    covered_stage_id: "business_context"
+    selected_sops:
+      - "business_context"
+      - "evidence_inventory"
+      - "research_plan"
+    boundary: "只证明机会发现样例的一条编排路径可通过，不证明所有机会发现 SOP 或后续主流程完整。"
+  - case_id: "flow_01_opportunity_discovery_full"
+    file: "tests/golden-cases/flow-01-opportunity-discovery-full.yaml"
+    main_flow_id: "flow_01_opportunity_discovery"
+    covered_stage_id: "opportunity_discovery_full"
+    selected_sops:
+      - "project_intake"
+      - "request_triage"
+      - "stakeholder_map"
+      - "business_context"
+      - "existing_workflow_mapping"
+      - "evidence_inventory"
+    boundary: "实验审计记录：证明 flow_01 机会发现完整主流程可回放；当前不作为主线 release gate。"
+macro_flow_coverage:
+  - macro_flow: "opportunity_discovery"
+    fine_stages: ["project_intake", "request_triage", "stakeholder_map", "business_context", "existing_workflow_mapping", "evidence_inventory"]
+    sop_router_status: "implemented"
+    runtime_smoke_status: "tested"
+    full_state_machine_status: "complete"
+    golden_case_status: "complete"
+    gap: "flow_01 已有完整主流程 Golden Case；其余主流程仍需独立补齐。"
+  - macro_flow: "user_research"
+    fine_stages: ["research_plan", "interview_guide", "interview_synthesis", "persona_jtbd_journey"]
+    sop_router_status: "implemented"
+    runtime_smoke_status: "tested"
+    full_state_machine_status: "partial"
+    golden_case_status: "partial"
+    gap: "research_plan 只作为 flow_01 selected SOP 出现；未形成完整用户研究主流程 Golden Case。"
+  - macro_flow: "problem_framing"
+    fine_stages: ["problem_definition", "user_segmentation", "opportunity_tree", "assumption_mapping"]
+    sop_router_status: "implemented"
+    runtime_smoke_status: "tested"
+    full_state_machine_status: "missing"
+    golden_case_status: "missing"
+    gap: "缺问题定义主流程状态机样例、角色评审路径与 gate 证据。"
+  - macro_flow: "requirement_analysis"
+    fine_stages: ["value_sizing", "prioritization", "mvp_scope", "one_page_proposal"]
+    sop_router_status: "implemented"
+    runtime_smoke_status: "tested"
+    full_state_machine_status: "partial"
+    golden_case_status: "missing"
+    gap: "mvp_scope 在真实项目中被使用，但发布包缺完整需求分析 Golden Case。"
+  - macro_flow: "solution_design"
+    fine_stages: ["solution_exploration", "data_feasibility_precheck", "technical_feasibility_precheck", "compliance_precheck", "core_flow_diagram", "low_fi_prototype", "metrics_design", "instrumentation_plan"]
+    sop_router_status: "implemented"
+    runtime_smoke_status: "tested"
+    full_state_machine_status: "partial"
+    golden_case_status: "missing"
+    gap: "低保真和可行性相关测试已有局部场景，但缺方案设计主流程完整状态机和 Golden Case。"
+  - macro_flow: "prd_drafting"
+    fine_stages: ["prd_outline", "prd_v0_draft", "pm_self_review"]
+    sop_router_status: "implemented"
+    runtime_smoke_status: "tested"
+    full_state_machine_status: "missing"
+    golden_case_status: "missing"
+    gap: "缺 PRD 从大纲到 v0 到自审的完整状态机、artifact diff 和 gate 证据。"
+  - macro_flow: "cross_functional_review"
+    fine_stages: ["internal_product_review", "design_review", "data_review", "technical_pre_review", "formal_requirements_review"]
+    sop_router_status: "implemented"
+    runtime_smoke_status: "tested"
+    full_state_machine_status: "partial"
+    golden_case_status: "missing"
+    gap: "structured review loop 有 E2E 测试，但 formal requirements review 尚无完整跨职能 Golden Case。"
+  - macro_flow: "delivery_planning"
+    fine_stages: ["task_breakdown", "acceptance_criteria", "development_tracking"]
+    sop_router_status: "implemented"
+    runtime_smoke_status: "tested"
+    full_state_machine_status: "missing"
+    golden_case_status: "missing"
+    gap: "缺任务拆解、验收标准、开发变更跟踪的完整编排样例。"
+  - macro_flow: "launch_readiness"
+    fine_stages: ["integration_qa", "launch_readiness", "training_enablement", "grey_release_pilot"]
+    sop_router_status: "implemented"
+    runtime_smoke_status: "tested"
+    full_state_machine_status: "missing"
+    golden_case_status: "missing"
+    gap: "缺联调、上线清单、培训、灰度试点的完整上线门禁 Golden Case。"
+  - macro_flow: "post_launch_review"
+    fine_stages: ["launch_monitoring", "post_launch_review", "iteration_planning"]
+    sop_router_status: "implemented"
+    runtime_smoke_status: "tested"
+    full_state_machine_status: "missing"
+    golden_case_status: "missing"
+    gap: "缺上线监控、复盘和迭代规划的闭环 Golden Case。"
+stage_coverage:
+  - { index: 0, stage_id: "project_intake", macro_flow: "opportunity_discovery", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: true, state_machine_coverage: "flow_01_full", implementation_status: "complete" }
+  - { index: 1, stage_id: "request_triage", macro_flow: "opportunity_discovery", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: true, state_machine_coverage: "flow_01_full", implementation_status: "complete" }
+  - { index: 2, stage_id: "stakeholder_map", macro_flow: "opportunity_discovery", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: true, state_machine_coverage: "flow_01_full", implementation_status: "complete" }
+  - { index: 3, stage_id: "business_context", macro_flow: "opportunity_discovery", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: true, state_machine_coverage: "flow_01_full", implementation_status: "complete" }
+  - { index: 4, stage_id: "existing_workflow_mapping", macro_flow: "opportunity_discovery", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: true, state_machine_coverage: "flow_01_full", implementation_status: "complete" }
+  - { index: 5, stage_id: "evidence_inventory", macro_flow: "opportunity_discovery", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: true, state_machine_coverage: "flow_01_full", implementation_status: "complete" }
+  - { index: 6, stage_id: "problem_definition", macro_flow: "problem_framing", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "missing", implementation_status: "partial" }
+  - { index: 7, stage_id: "user_segmentation", macro_flow: "problem_framing", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "missing", implementation_status: "partial" }
+  - { index: 8, stage_id: "research_plan", macro_flow: "user_research", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "selected_sop_in_flow_01", implementation_status: "partial" }
+  - { index: 9, stage_id: "interview_guide", macro_flow: "user_research", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "missing", implementation_status: "partial" }
+  - { index: 10, stage_id: "interview_synthesis", macro_flow: "user_research", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "missing", implementation_status: "partial" }
+  - { index: 11, stage_id: "persona_jtbd_journey", macro_flow: "user_research", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "missing", implementation_status: "partial" }
+  - { index: 12, stage_id: "opportunity_tree", macro_flow: "problem_framing", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "missing", implementation_status: "partial" }
+  - { index: 13, stage_id: "assumption_mapping", macro_flow: "problem_framing", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "missing", implementation_status: "partial" }
+  - { index: 14, stage_id: "value_sizing", macro_flow: "requirement_analysis", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "missing", implementation_status: "partial" }
+  - { index: 15, stage_id: "prioritization", macro_flow: "requirement_analysis", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "missing", implementation_status: "partial" }
+  - { index: 16, stage_id: "solution_exploration", macro_flow: "solution_design", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "missing", implementation_status: "partial" }
+  - { index: 17, stage_id: "mvp_scope", macro_flow: "requirement_analysis", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "project_used_no_golden_case", implementation_status: "partial" }
+  - { index: 18, stage_id: "one_page_proposal", macro_flow: "requirement_analysis", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "missing", implementation_status: "partial" }
+  - { index: 19, stage_id: "data_feasibility_precheck", macro_flow: "solution_design", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "scenario_only", implementation_status: "partial" }
+  - { index: 20, stage_id: "technical_feasibility_precheck", macro_flow: "solution_design", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "scenario_only", implementation_status: "partial" }
+  - { index: 21, stage_id: "compliance_precheck", macro_flow: "solution_design", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "missing", implementation_status: "partial" }
+  - { index: 22, stage_id: "core_flow_diagram", macro_flow: "solution_design", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "missing", implementation_status: "partial" }
+  - { index: 23, stage_id: "low_fi_prototype", macro_flow: "solution_design", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "project_used_no_golden_case", implementation_status: "partial" }
+  - { index: 24, stage_id: "metrics_design", macro_flow: "solution_design", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "missing", implementation_status: "partial" }
+  - { index: 25, stage_id: "instrumentation_plan", macro_flow: "solution_design", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "missing", implementation_status: "partial" }
+  - { index: 26, stage_id: "prd_outline", macro_flow: "prd_drafting", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "missing", implementation_status: "partial" }
+  - { index: 27, stage_id: "prd_v0_draft", macro_flow: "prd_drafting", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "missing", implementation_status: "partial" }
+  - { index: 28, stage_id: "pm_self_review", macro_flow: "prd_drafting", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "scenario_only", implementation_status: "partial" }
+  - { index: 29, stage_id: "internal_product_review", macro_flow: "cross_functional_review", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "structured_review_loop_partial", implementation_status: "partial" }
+  - { index: 30, stage_id: "design_review", macro_flow: "cross_functional_review", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "structured_review_loop_partial", implementation_status: "partial" }
+  - { index: 31, stage_id: "data_review", macro_flow: "cross_functional_review", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "structured_review_loop_partial", implementation_status: "partial" }
+  - { index: 32, stage_id: "technical_pre_review", macro_flow: "cross_functional_review", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "scenario_only", implementation_status: "partial" }
+  - { index: 33, stage_id: "formal_requirements_review", macro_flow: "cross_functional_review", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "structured_review_loop_partial", implementation_status: "partial" }
+  - { index: 34, stage_id: "task_breakdown", macro_flow: "delivery_planning", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "missing", implementation_status: "partial" }
+  - { index: 35, stage_id: "acceptance_criteria", macro_flow: "delivery_planning", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "missing", implementation_status: "partial" }
+  - { index: 36, stage_id: "development_tracking", macro_flow: "delivery_planning", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "missing", implementation_status: "partial" }
+  - { index: 37, stage_id: "integration_qa", macro_flow: "launch_readiness", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "missing", implementation_status: "partial" }
+  - { index: 38, stage_id: "launch_readiness", macro_flow: "launch_readiness", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "scenario_only", implementation_status: "partial" }
+  - { index: 39, stage_id: "training_enablement", macro_flow: "launch_readiness", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "missing", implementation_status: "partial" }
+  - { index: 40, stage_id: "grey_release_pilot", macro_flow: "launch_readiness", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "missing", implementation_status: "partial" }
+  - { index: 41, stage_id: "launch_monitoring", macro_flow: "post_launch_review", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "missing", implementation_status: "partial" }
+  - { index: 42, stage_id: "post_launch_review", macro_flow: "post_launch_review", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "missing", implementation_status: "partial" }
+  - { index: 43, stage_id: "iteration_planning", macro_flow: "post_launch_review", sop_card: true, skill_router: true, prompt_eval: true, runtime_smoke: true, has_stage_gate: true, has_golden_case: false, state_machine_coverage: "missing", implementation_status: "partial" }
+next_build_order:
+  - "flow_02_user_research: user_segmentation + research_plan + interview_guide + interview_synthesis + persona_jtbd_journey"
+  - "flow_03_problem_framing: problem_definition + opportunity_tree + assumption_mapping"
+  - "flow_04_requirement_analysis: value_sizing + prioritization + mvp_scope + one_page_proposal"
+  - "flow_05_solution_design: solution_exploration + feasibility prechecks + core_flow_diagram + low_fi_prototype + metrics_design + instrumentation_plan"
+  - "flow_06_prd_drafting: prd_outline + prd_v0_draft + pm_self_review"
+  - "flow_07_cross_functional_review: internal_product_review + design_review + data_review + technical_pre_review + formal_requirements_review"
+  - "flow_08_delivery_planning: task_breakdown + acceptance_criteria + development_tracking"
+  - "flow_09_launch_readiness: integration_qa + launch_readiness + training_enablement + grey_release_pilot"
+  - "flow_10_post_launch_review: launch_monitoring + post_launch_review + iteration_planning"

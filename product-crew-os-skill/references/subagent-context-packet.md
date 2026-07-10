@@ -30,12 +30,21 @@ Minimum fields:
 - `review.role_key`
 - `review.review_question`
 - `review.role_scope`
+- `memory_snapshot.base_persona.role_key`
+- `memory_snapshot.base_persona.title`
+- `memory_snapshot.base_persona.display_name`
+- `memory_snapshot.base_persona.personality`
+- `memory_snapshot.base_persona.speaking_style`
+- `memory_snapshot.base_persona.must_do`
+- `memory_snapshot.base_persona.must_not_do`
+- `memory_snapshot.base_persona.memory_focus`
+- `memory_snapshot.base_persona.persona_source_ref`
 - `context.known_decisions`
 - `context.open_risks`
 - `evidence_boundary`
 - `output_contract`
 
-If these are missing, the coach should create or ask for them before the sub-agent speaks.
+If these are missing, the coach must create them before the sub-agent speaks. A packet with only `role_key`, role title, and display name is not a valid Product Crew OS sub-agent context packet; it is only a named generic reviewer.
 
 After the packet is prepared, apply `subagent-invocation-contract.md`.
 The packet proves context quality; the invocation ledger proves whether a real sub-agent was actually called.
@@ -83,6 +92,16 @@ When summoning a sub-agent, the coach should internally frame it like:
 > 你是 `<role title - name>`。只基于下面的 context packet 评审，不要补脑。请用自然语言给用户一个同事式反馈，同时保留 structured review shadow。
 
 The prompt must include the stable `role_key`. If the runtime returns a system nickname, keep it only in the invocation ledger. Do not expose it as the user's configured role name.
+
+The prompt must also include the configured persona block from `crew-personas.yaml` or an approved user/project overlay:
+
+- personality
+- speaking_style
+- must_do
+- must_not_do
+- memory_focus
+
+If the persona block is absent, mark the invocation as `context_packet_incomplete` and do not count it as a passed sub-agent invocation.
 
 ## No-Context Rule
 

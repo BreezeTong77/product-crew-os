@@ -10,7 +10,7 @@ require "time"
 require "tmpdir"
 require "yaml"
 
-RUNNER_VERSION = "loop-50-ledger-v3"
+RUNNER_VERSION = "loop-50-ledger-v4"
 
 skill_root = File.expand_path("..", __dir__)
 runtime = File.join(skill_root, "runtime", "pco_runtime.rb")
@@ -99,6 +99,17 @@ def choose_skill(primary, fallback, bundled)
   ["artifact-template", "template_used"]
 end
 
+def skill_status_degrade_reason(status)
+  case status
+  when "fallback_used"
+    "primary skill unavailable; used fallback"
+  when "template_used"
+    "primary and fallback unavailable; fallback to artifact-template"
+  else
+    ""
+  end
+end
+
 def markdown_table(rows)
   lines = [
     "| # | Case | 类型 | 结果 | Bad Case / 验证点 | 证据 |",
@@ -110,7 +121,22 @@ def markdown_table(rows)
   lines.join("\n")
 end
 
-def record_result(results:, ledger:, suite_run_id:, case_id:, case_type:, status:, badcase:, evidence:, case_hash:, source_ref:)
+def record_result(
+  results:,
+  ledger:,
+  suite_run_id:,
+  case_id:,
+  case_type:,
+  status:,
+  badcase:,
+  evidence:,
+  case_hash:,
+  source_ref:,
+  expected_primary_skill: "",
+  selected_skill: "",
+  skill_status: "",
+  degrade_reason: ""
+)
   results << {
     case_id: case_id,
     case_type: case_type,
@@ -128,7 +154,11 @@ def record_result(results:, ledger:, suite_run_id:, case_id:, case_type:, status
     case_hash: case_hash,
     status: status,
     evidence: evidence,
-    badcase: badcase
+    badcase: badcase,
+    expected_primary_skill: expected_primary_skill,
+    selected_skill: selected_skill,
+    skill_status: skill_status,
+    degrade_reason: degrade_reason
   )
 end
 
@@ -159,6 +189,10 @@ class TestLedger
     sqlite(File.read(schema_path))
     ensure_column("test_cases", "last_checked_at", "TEXT DEFAULT ''")
     ensure_column("test_case_runs", "suite_run_id", "TEXT DEFAULT NULL")
+    ensure_column("test_case_runs", "expected_primary_skill", "TEXT DEFAULT ''")
+    ensure_column("test_case_runs", "selected_skill", "TEXT DEFAULT ''")
+    ensure_column("test_case_runs", "skill_status", "TEXT DEFAULT ''")
+    ensure_column("test_case_runs", "degrade_reason", "TEXT DEFAULT ''")
     ensure_test_case_runs_suite_fk
   end
 
@@ -205,7 +239,22 @@ class TestLedger
     SQL
   end
 
-  def record_case(suite_run_id:, case_id:, suite:, case_type:, title:, source_ref:, case_hash:, status:, evidence:, badcase:)
+  def record_case(
+    suite_run_id:,
+    case_id:,
+    suite:,
+    case_type:,
+    title:,
+    source_ref:,
+    case_hash:,
+    status:,
+    evidence:,
+    badcase:,
+    expected_primary_skill: "",
+    selected_skill: "",
+    skill_status: "",
+    degrade_reason: ""
+  )
     return if disabled?
 
     at = now_iso
@@ -241,9 +290,9 @@ class TestLedger
     end
     sqlite(<<~SQL)
       INSERT INTO test_case_runs
-        (run_id, suite_run_id, case_id, suite, case_type, case_hash, status, evidence, badcase, source_ref, started_at, finished_at)
+        (run_id, suite_run_id, case_id, suite, case_type, case_hash, status, evidence, badcase, source_ref, expected_primary_skill, selected_skill, skill_status, degrade_reason, started_at, finished_at)
       VALUES
-        (#{q("run_#{at}_#{SecureRandom.hex(4)}_#{case_id}")}, #{q(suite_run_id)}, #{q(case_id)}, #{q(suite)}, #{q(case_type)}, #{q(case_hash)}, #{q(status)}, #{q(evidence)}, #{q(badcase)}, #{q(source_ref)}, #{q(at)}, #{q(at)});
+        (#{q("run_#{at}_#{SecureRandom.hex(4)}_#{case_id}")}, #{q(suite_run_id)}, #{q(case_id)}, #{q(suite)}, #{q(case_type)}, #{q(case_hash)}, #{q(status)}, #{q(evidence)}, #{q(badcase)}, #{q(source_ref)}, #{q(expected_primary_skill)}, #{q(selected_skill)}, #{q(skill_status)}, #{q(degrade_reason)}, #{q(at)}, #{q(at)});
     SQL
   end
 
@@ -296,13 +345,17 @@ class TestLedger
         evidence TEXT DEFAULT '',
         badcase TEXT DEFAULT '',
         source_ref TEXT DEFAULT '',
+        expected_primary_skill TEXT DEFAULT '',
+        selected_skill TEXT DEFAULT '',
+        skill_status TEXT DEFAULT '',
+        degrade_reason TEXT DEFAULT '',
         started_at TEXT NOT NULL,
         finished_at TEXT NOT NULL,
         FOREIGN KEY(case_id) REFERENCES test_cases(case_id),
         FOREIGN KEY(suite_run_id) REFERENCES suite_runs(suite_run_id)
       );
       INSERT INTO test_case_runs_new
-        (run_id, suite_run_id, case_id, suite, case_type, case_hash, status, evidence, badcase, source_ref, started_at, finished_at)
+        (run_id, suite_run_id, case_id, suite, case_type, case_hash, status, evidence, badcase, source_ref, expected_primary_skill, selected_skill, skill_status, degrade_reason, started_at, finished_at)
       SELECT
         run_id,
         CASE
@@ -317,6 +370,10 @@ class TestLedger
         evidence,
         badcase,
         source_ref,
+        '' AS expected_primary_skill,
+        '' AS selected_skill,
+        '' AS skill_status,
+        '' AS degrade_reason,
         started_at,
         finished_at
       FROM test_case_runs;
@@ -445,6 +502,7 @@ Dir.mktmpdir("pco-loop-50-") do |dir|
     primary = expected.fetch("primary_skill")
     fallback = expected.fetch("fallback_skill")
     chosen_skill, status = choose_skill(primary, fallback, bundled)
+    skill_degrade_reason = skill_status_degrade_reason(status)
     artifact_name = Array(expected.fetch("required_artifacts")).first || "#{stage_id}.md"
     roles = (Array(expected["required_roles"]) + Array(expected["triggered_roles"])).uniq
     roles = ["Coach"] if roles.empty?
@@ -488,17 +546,22 @@ Dir.mktmpdir("pco-loop-50-") do |dir|
     executed_record_turns += 1
 
     if turn["stage_id"] == stage_id && turn["artifact_id"].to_s != "" && turn["review_session_id"].to_s != ""
+      result_status = status == "template_used" ? "DEGRADED" : "PASS"
       record_result(
         results: results,
         ledger: ledger,
         suite_run_id: suite_run_id,
         case_id: case_id,
         case_type: "44 SOP 基准",
-        status: "PASS",
+        status: result_status,
         badcase: "Stage/SOP/Skill/Artifact/Review Session 可写入",
         evidence: "`#{turn["artifact_id"]}`",
         case_hash: hash,
-        source_ref: "loop-50:#{case_id}"
+        source_ref: "loop-50:#{case_id}",
+        expected_primary_skill: primary,
+        selected_skill: chosen_skill,
+        skill_status: status,
+        degrade_reason: skill_degrade_reason
       )
     else
       badcases << "#{case_id}: runtime turn did not match expected stage or artifact"
@@ -512,7 +575,11 @@ Dir.mktmpdir("pco-loop-50-") do |dir|
         badcase: "Stage/SOP 写入异常",
         evidence: "`#{turn.inspect}`",
         case_hash: hash,
-        source_ref: "loop-50:#{case_id}"
+        source_ref: "loop-50:#{case_id}",
+        expected_primary_skill: primary,
+        selected_skill: chosen_skill,
+        skill_status: status,
+        degrade_reason: skill_degrade_reason
       )
     end
   end
@@ -801,9 +868,10 @@ Dir.mktmpdir("pco-loop-50-") do |dir|
   pass_count = results.count { |row| row[:status] == "PASS" }
   skip_count = results.count { |row| row[:status] == "SKIP_PASS" }
   fail_count = results.count { |row| row[:status] == "FAIL" }
-  actual_executed_count = pass_count + fail_count
-  if release_gate && (pass_count != results.length || skip_count.positive? || fail_count.positive?)
-    badcases << "release gate requires a fresh full run: expected #{results.length} fresh PASS cases, got pass=#{pass_count}, skip=#{skip_count}, fail=#{fail_count}"
+  degraded_count = results.count { |row| row[:status] == "DEGRADED" }
+  actual_executed_count = pass_count + fail_count + degraded_count
+  if release_gate && (actual_executed_count != results.length || skip_count.positive? || fail_count.positive? || degraded_count.positive?)
+    badcases << "release gate requires a fresh full run without PASS skip and without DEGRADED outcomes: expected total=#{results.length}, got pass=#{pass_count}, fail=#{fail_count}, degraded=#{degraded_count}, skip=#{skip_count}"
   end
 
   FileUtils.mkdir_p(results_dir)
@@ -813,6 +881,7 @@ Dir.mktmpdir("pco-loop-50-") do |dir|
     "- Suite: `loop-50-cases`",
     "- 总用例数: `#{results.length}`",
     "- 通过: `#{pass_count}`",
+    "- 降级: `#{degraded_count}`",
     "- 跳过已通过: `#{skip_count}`",
     "- 失败: `#{fail_count}`",
     "- 本次实际执行: `#{actual_executed_count}`",

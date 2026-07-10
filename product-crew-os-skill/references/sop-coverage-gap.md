@@ -1,16 +1,21 @@
 # 44 SOP 覆盖缺口与可交付清单
 
-更新时间：`2026-07-06`
+更新时间：`2026-07-10`
 
-说明：用于 Release 前快速核验每张 SOP 是否有“意图路由 → skill 路由 → 流程执行 → artifact 与评审写入 -> 回归覆盖”。
+说明：用于 Release 前快速核验每张 SOP 是否有“意图路由 → skill 路由 → runtime smoke 写入 → artifact 与评审写入 -> 回归覆盖”。
+
+重要边界：本文件不是完整 workflow 状态机覆盖证明。44/44 runtime smoke 只能证明 `record-turn`、SQLite、Artifact、Review Ledger 和导出链路可写入，不代表 44 个 SOP 都已具备完整 Golden Case、完整 Stage Gate 编排或完整业务工作流状态机。
+
+完整实现边界请以 `workflow-implementation-coverage-v0.md` / `workflow-implementation-coverage-v0.yaml` 为准。
 
 ## 快照
 
 - SOP 总数：44
 - Stage 路由：44/44 覆盖（`prompt-eval-cases.yaml`）
 - Skill 映射：44/44 覆盖（`skill-dependency-registry.md`）
-- Loop 复测：44/44 通过（`run-loop-50-cases.rb`）
-- Runtime 证据：44/44 写入（同上）
+- Loop / Runtime Smoke：44/44 可写入（`run-sop-e2e-smoke.rb` / `run-loop-50-cases.rb`）
+- 完整状态机 / 主流程 Golden Case：实验审计记录保留，不作为当前主线门禁
+- 当前主线门禁：44 SOP 命中、Skill Router 命中、Runtime Smoke 写入、Review Ledger 可追踪
 - 还可优化的项：3
   - `25`：`measure-instrumentation-spec` fallback 兜底未内置主 skill
   - `30`：`develop-design-rationale` 主 skill 为建议能力，当前 fallback 运行

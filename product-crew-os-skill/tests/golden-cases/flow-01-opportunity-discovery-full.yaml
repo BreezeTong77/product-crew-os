@@ -1,0 +1,573 @@
+case_id: flow_01_opportunity_discovery_full
+fixture_type: synthetic_case
+real_runtime_claim: false
+main_flow_id: flow_01_opportunity_discovery
+main_flow_name: 机会发现完整主流程
+coverage_level: full_macro_flow_happy_path_with_negative_paths
+result_boundary: "只证明机会发现主流程可从想法接入走到低成本验证 Gate，不代表需求成立、PRD 通过、MVP 批准、合规认证或上线批准。"
+
+frontstage_policy:
+  visible_fields:
+    - current_judgment
+    - current_stage
+    - deliverables
+    - non_promises
+    - key_risks
+    - decision_options
+    - correction_entry
+    - next_action
+  hidden_by_default:
+    - sop_ids
+    - skill_calls
+    - gate_ids
+    - role_keys
+    - runtime_trace
+    - invocation_ledger
+    - raw_review_records
+    - persona_source_ref
+
+state_machine:
+  initial_state: idle
+  final_state: done
+  expected_path:
+    - domain_gate
+    - intent_routing
+    - stage_matched
+    - project_context_loading
+    - sop_composing
+    - skill_routing
+    - artifact_drafting
+    - evidence_checking
+    - review_open
+    - context_packet_building
+    - agent_reviewing
+    - review_summarizing
+    - user_deciding
+    - gate_checking
+    - memory_writing
+    - asset_pack_exporting
+    - done
+  transition_assertions:
+    - from: domain_gate
+      to: intent_routing
+      condition: "product_crew_os_applies == true"
+    - from: evidence_checking
+      to: review_open
+      condition: "business target, evidence uncertainty, workflow adoption, and metric baseline triggers are present"
+    - from: user_deciding
+      to: gate_checking
+      condition: "user decision is explicit: continue_to_low_cost_validation"
+    - from: gate_checking
+      to: memory_writing
+      condition: "gate_result in pass / conditional_pass / block / rollback"
+
+domain_intent_gate:
+  domain: product_work
+  intent: opportunity_discovery
+  confidence: 0.93
+  user_input_fixture: "我有一个新产品想法，想判断它值不值得继续做。"
+  candidates:
+    - canonical_stage_id: project_intake
+      confidence: 0.31
+    - canonical_stage_id: request_triage
+      confidence: 0.22
+    - canonical_stage_id: business_context
+      confidence: 0.19
+    - canonical_stage_id: evidence_inventory
+      confidence: 0.16
+  user_correction_needed: false
+
+sop_composition:
+  composition_id: COMP-FLOW-01-FULL
+  mode: standard
+  selected_sops:
+    - sop_id: "00"
+      canonical_stage_id: project_intake
+      output_artifact_id: project-card-v0
+      gate: "project has owner, target user, rough objective"
+    - sop_id: "01"
+      canonical_stage_id: request_triage
+      output_artifact_id: triage-note-v0
+      gate: "user knows current stage and next artifact"
+    - sop_id: "02"
+      canonical_stage_id: stakeholder_map
+      output_artifact_id: stakeholder-map-v0
+      gate: "decision makers and reviewers are named"
+    - sop_id: "03"
+      canonical_stage_id: business_context
+      output_artifact_id: business-context-v0
+      gate: "business problem and success pressure are clear"
+    - sop_id: "04"
+      canonical_stage_id: existing_workflow_mapping
+      output_artifact_id: current-state-workflow-v0
+      gate: "current actors, handoffs, pain points are visible"
+    - sop_id: "05"
+      canonical_stage_id: evidence_inventory
+      output_artifact_id: evidence-inventory-v0
+      gate: "claims are separated from evidence gaps"
+  not_selected:
+    - sop_id: "08"
+      canonical_stage_id: research_plan
+      reason: "属于用户研究主流程，机会发现 Gate 通过后才进入。"
+    - sop_id: "17"
+      canonical_stage_id: mvp_scope
+      reason: "未完成机会发现 Gate，不能提前收 MVP 范围。"
+    - sop_id: "26"
+      canonical_stage_id: prd_outline
+      reason: "机会尚未被验证，不能直接进入 PRD。"
+
+artifact_chain:
+  workspace_kind: project_workspace
+  artifacts:
+    - artifact_id: project-card-v0
+      file: artifacts/project-card.md
+      stage_id: project_intake
+      required_sections: [background, rough_goal, target_user, owner, known_files]
+    - artifact_id: triage-note-v0
+      file: artifacts/triage-note.md
+      stage_id: request_triage
+      required_sections: [domain_decision, current_stage, next_artifact, exit_if_non_product]
+    - artifact_id: stakeholder-map-v0
+      file: artifacts/stakeholder-map.md
+      stage_id: stakeholder_map
+      required_sections: [decision_makers, reviewers, authority, open_alignment_risks]
+    - artifact_id: business-context-v0
+      file: artifacts/business-context.md
+      stage_id: business_context
+      required_sections: [business_goal, pressure, expected_outcome, non_goals]
+    - artifact_id: current-state-workflow-v0
+      file: artifacts/current-state-workflow.md
+      stage_id: existing_workflow_mapping
+      required_sections: [actors, handoffs, current_tools, pain_points, workaround]
+    - artifact_id: evidence-inventory-v0
+      file: artifacts/evidence-inventory.md
+      stage_id: evidence_inventory
+      required_sections: [claims, evidence_refs, confidence, missing_evidence, next_validation]
+    - artifact_id: opportunity-gate-summary-v0
+      file: artifacts/opportunity-gate-summary.md
+      stage_id: evidence_inventory
+      required_sections: [gate_result, user_decision, pass_boundary, next_flow]
+
+skill_router_log:
+  - skill_call_id: SKILL-F01-001
+    stage_id: project_intake
+    expected_primary_skill: pm-workbench
+    selected_skill: pm-workbench
+    skill_status: primary_hit
+    fallback_used: false
+    degrade_reason:
+    output_artifact_id: project-card-v0
+  - skill_call_id: SKILL-F01-002
+    stage_id: request_triage
+    expected_primary_skill: pm-workbench
+    selected_skill: pm-workbench
+    skill_status: primary_hit
+    fallback_used: false
+    degrade_reason:
+    output_artifact_id: triage-note-v0
+  - skill_call_id: SKILL-F01-003
+    stage_id: stakeholder_map
+    expected_primary_skill: stakeholder-alignment-checker
+    selected_skill: stakeholder-alignment-checker
+    skill_status: primary_hit
+    fallback_used: false
+    degrade_reason:
+    output_artifact_id: stakeholder-map-v0
+  - skill_call_id: SKILL-F01-004
+    stage_id: business_context
+    expected_primary_skill: product-strategy
+    selected_skill: product-strategy
+    skill_status: primary_hit
+    fallback_used: false
+    degrade_reason:
+    output_artifact_id: business-context-v0
+  - skill_call_id: SKILL-F01-005
+    stage_id: existing_workflow_mapping
+    expected_primary_skill: user-story-mapping
+    selected_skill: user-story-mapping
+    skill_status: primary_hit
+    fallback_used: false
+    degrade_reason:
+    output_artifact_id: current-state-workflow-v0
+  - skill_call_id: SKILL-F01-006
+    stage_id: evidence_inventory
+    expected_primary_skill: pm-workbench
+    selected_skill: pm-workbench
+    skill_status: primary_hit
+    fallback_used: false
+    degrade_reason:
+    output_artifact_id: evidence-inventory-v0
+
+skill_status_contract:
+  primary_hit_definition: "Router selected the expected primary skill and no artifact-template degraded fallback was used in this fixture. It does not prove external skill execution quality, user validation, or business outcome."
+  fallback_hit_definition: "Router selected an allowed fallback skill; the flow may continue but the ledger must preserve fallback_used=true."
+  template_degraded_definition: "Only an artifact template was used. It may keep work moving, but it cannot count as primary skill success or full macro-flow completion."
+  required_ledger_fields:
+    - expected_primary_skill
+    - selected_skill
+    - skill_status
+    - fallback_used
+    - degrade_reason
+
+review_scope:
+  review_session_id: REVIEW-FLOW-01-FULL
+  required_roles: [Coach]
+  triggered_roles:
+    - Biz
+    - Research
+    - Data
+    - CS
+    - Customer
+  trigger_reasons:
+    Biz: "business target and priority pressure are present"
+    Research: "evidence is incomplete and must not be treated as conclusion"
+    Data: "baseline metrics and decision thresholds are required"
+    CS: "current workflow/adoption friction must be checked"
+    Customer: "external buyer/boss pressure appears in the fixture"
+  out_of_bounds_roles_not_called:
+    Design: "no user-facing screen, prototype, IA, or copy decision yet"
+    Tech: "no API, integration, architecture, permission, or estimate decision yet"
+    QA: "not in delivery or acceptance stage"
+    Legal: "no sensitive data, contract, audit, finance, or regulated messaging trigger"
+    Ops: "not in rollout, training, or enablement stage"
+
+context_packets:
+  - context_packet_id: CP-F01-BIZ
+    role_key: Biz
+    title: 业务负责人
+    display_name: 包总
+    role: business owner and commercial reviewer
+    personality: [目标感强, 直接, 讨厌空泛价值, 方向真的对时会帮你扛资源]
+    speaking_style: [先说业务判断, 少讲框架，多问这事能不能带来业务结果, 像负责结果的人在会前给你把关]
+    must_do: [check business objective and priority, ask what tradeoff the business is making, state approval condition]
+    must_not_do: [review UI details, review technical architecture]
+    memory_focus: [business target, resource promise, leadership decision]
+    persona_source_ref: config/crew-personas.yaml#personas.biz
+    stage_id: business_context
+    artifact_refs: [business-context-v0, opportunity-gate-summary-v0]
+    review_scope: "判断机会是否有明确业务目标和继续验证条件。"
+    evidence_boundary: "只能使用本 synthetic fixture 中列出的 business_context 和 evidence_inventory，不得补造外部市场数据。"
+    context_packet_quality: complete
+    persona_injection_status: complete
+  - context_packet_id: CP-F01-RESEARCH
+    role_key: Research
+    title: 用户研究员
+    display_name: 研希
+    role: research and evidence reviewer
+    personality: [耐心, 好奇, 尊重证据, 不轻易把猜测当结论]
+    speaking_style: [会提醒哪些是用户说的，哪些是我们猜的, 语气温和，但会卡样本和证据]
+    must_do: [separate quote, observation, and inference, identify research bias, recommend the next validation]
+    must_not_do: [approve business ROI, estimate engineering effort]
+    memory_focus: [user quotes, research conclusions, evidence gaps]
+    persona_source_ref: config/crew-personas.yaml#personas.research
+    stage_id: evidence_inventory
+    artifact_refs: [evidence-inventory-v0, opportunity-gate-summary-v0]
+    review_scope: "判断证据是否足以进入低成本验证，以及缺口是否清楚。"
+    evidence_boundary: "只能判断 evidence_inventory 中的证据等级，不能把假设说成用户结论。"
+    context_packet_quality: complete
+    persona_injection_status: complete
+  - context_packet_id: CP-F01-DATA
+    role_key: Data
+    title: 数据负责人
+    display_name: 陈数
+    role: data source, metrics, attribution, experiment, and instrumentation reviewer
+    personality: [精确, 谨慎, 不接受模糊指标, 但会帮你把指标落成表]
+    speaking_style: [会把一句目标拆成字段、口径、归因和更新频率, 语气像是在帮你避免会后返工]
+    must_do: [check source, owner, freshness, and field availability, define metric formula and attribution window, name instrumentation requirements]
+    must_not_do: [own UX decision, own legal judgment]
+    memory_focus: [metric definitions, data contracts, attribution decisions]
+    persona_source_ref: config/crew-personas.yaml#personas.data
+    stage_id: evidence_inventory
+    artifact_refs: [evidence-inventory-v0, opportunity-gate-summary-v0]
+    review_scope: "判断机会发现 Gate 的指标口径是否可追踪。"
+    evidence_boundary: "只允许定义验证口径和字段需求，不能声称已有真实线上指标。"
+    context_packet_quality: complete
+    persona_injection_status: complete
+  - context_packet_id: CP-F01-CS
+    role_key: CS
+    title: 客户成功 / CS
+    display_name: 阿笨
+    role: customer success, adoption, renewal, support, and frontline feedback reviewer
+    personality: [接地气, 记得客户原话, 不怕说难听的现实]
+    speaking_style: [用一线语言讲风险, 会说客户和一线现场到底会怎么反应]
+    must_do: [check whether the promise is believable to the user, surface adoption and objection risks, translate customer language into product wording]
+    must_not_do: [own technical feasibility, own compliance approval]
+    memory_focus: [customer objections, field adoption risks, sales/service promises]
+    persona_source_ref: config/crew-personas.yaml#personas.cs
+    stage_id: existing_workflow_mapping
+    artifact_refs: [current-state-workflow-v0, evidence-inventory-v0]
+    review_scope: "判断现有流程和一线采用阻力是否被看见。"
+    evidence_boundary: "只能使用 synthetic fixture 的 workflow mapping，不得补造客户原话。"
+    context_packet_quality: complete
+    persona_injection_status: complete
+  - context_packet_id: CP-F01-CUSTOMER
+    role_key: Customer
+    title: 客户（老板）
+    display_name: 黑老板
+    role: external customer decision-maker, buyer, or demanding stakeholder
+    personality: [目标明确, 要求高, 常把结果和时间压得很紧, 不关心内部实现难度]
+    speaking_style: [像真实客户或老板一样先问结果, 会提出高压诉求，但不替产品团队决定内部优先级, 会暴露采购、续约、验收或业务承诺压力]
+    must_do: [state the customer-side desired outcome, surface deal, acceptance, renewal, or boss-pressure concerns, make implicit external pressure explicit]
+    must_not_do: [own internal roadmap priority, approve technical feasibility, replace customer success adoption judgment]
+    memory_focus: [external customer demands, decision-maker objections, acceptance promises]
+    persona_source_ref: config/crew-personas.yaml#personas.customer
+    stage_id: stakeholder_map
+    artifact_refs: [stakeholder-map-v0, business-context-v0]
+    review_scope: "判断外部压力是否被正确记录为证据或假设。"
+    evidence_boundary: "只能表达 fixture 中的外部压力，不得替产品团队批准优先级。"
+    context_packet_quality: complete
+    persona_injection_status: complete
+
+invocation_ledger:
+  - invocation_id: INV-F01-BIZ
+    role_key: Biz
+    role_title: 业务负责人
+    display_name: 包总
+    stage_id: business_context
+    artifact_id: business-context-v0
+    context_packet_ref: CP-F01-BIZ
+    raw_review_record_ref: raw-review-records/flow-01-full/Biz.md
+    context_packet_quality: complete
+    persona_injection_status: complete
+    result: conditional_pass
+    real_invocation_performed: false
+    simulation_label: synthetic_fixture
+  - invocation_id: INV-F01-RESEARCH
+    role_key: Research
+    role_title: 用户研究员
+    display_name: 研希
+    stage_id: evidence_inventory
+    artifact_id: evidence-inventory-v0
+    context_packet_ref: CP-F01-RESEARCH
+    raw_review_record_ref: raw-review-records/flow-01-full/Research.md
+    context_packet_quality: complete
+    persona_injection_status: complete
+    result: conditional_pass
+    real_invocation_performed: false
+    simulation_label: synthetic_fixture
+  - invocation_id: INV-F01-DATA
+    role_key: Data
+    role_title: 数据负责人
+    display_name: 陈数
+    stage_id: evidence_inventory
+    artifact_id: opportunity-gate-summary-v0
+    context_packet_ref: CP-F01-DATA
+    raw_review_record_ref: raw-review-records/flow-01-full/Data.md
+    context_packet_quality: complete
+    persona_injection_status: complete
+    result: conditional_pass
+    real_invocation_performed: false
+    simulation_label: synthetic_fixture
+  - invocation_id: INV-F01-CS
+    role_key: CS
+    role_title: 客户成功 / CS
+    display_name: 阿笨
+    stage_id: existing_workflow_mapping
+    artifact_id: current-state-workflow-v0
+    context_packet_ref: CP-F01-CS
+    raw_review_record_ref: raw-review-records/flow-01-full/CS.md
+    context_packet_quality: complete
+    persona_injection_status: complete
+    result: pass
+    real_invocation_performed: false
+    simulation_label: synthetic_fixture
+  - invocation_id: INV-F01-CUSTOMER
+    role_key: Customer
+    role_title: 客户（老板）
+    display_name: 黑老板
+    stage_id: stakeholder_map
+    artifact_id: stakeholder-map-v0
+    context_packet_ref: CP-F01-CUSTOMER
+    raw_review_record_ref: raw-review-records/flow-01-full/Customer.md
+    context_packet_quality: complete
+    persona_injection_status: complete
+    result: pass
+    real_invocation_performed: false
+    simulation_label: synthetic_fixture
+
+measurement_plan:
+  metric_contract_status: candidate_validation_metrics_not_data_contract
+  sample_min: 10
+  metrics:
+    - metric_id: target_user_clarity_rate
+      numerator: "能说清目标用户和场景的有效样本数"
+      denominator: "有效样本总数"
+      threshold: ">= 8/10"
+      owner_role: Research
+      data_source: "访谈/材料标注"
+      field_availability: "candidate_fields_defined_no_live_table"
+      update_frequency: per_validation_batch
+      freshness_requirement: "within current validation batch"
+      attribution_window: "same interview or submitted material"
+      instrumentation_requirements:
+        - respondent_id
+        - target_user_named
+        - scenario_named
+        - evidence_source_ref
+      decision_action_if_pass: continue_to_low_cost_validation
+      decision_action_if_fail: return_to_project_intake
+    - metric_id: pain_and_workaround_rate
+      numerator: "同时存在明确痛点和已有 workaround 的有效样本数"
+      denominator: "有效样本总数"
+      threshold: ">= 6/10"
+      owner_role: Research
+      data_source: "访谈/现有流程证据"
+      field_availability: "candidate_fields_defined_no_live_table"
+      update_frequency: per_validation_batch
+      freshness_requirement: "within current validation batch"
+      attribution_window: "same interview, workflow note, or uploaded evidence source"
+      instrumentation_requirements:
+        - respondent_id
+        - pain_named
+        - workaround_named
+        - workflow_source_ref
+      decision_action_if_pass: continue_to_low_cost_validation
+      decision_action_if_fail: reframe_problem
+    - metric_id: business_pressure_clarity_rate
+      numerator: "能绑定成本、效率、收入、风险或体验压力的机会数"
+      denominator: "进入 Gate 的机会数"
+      threshold: ">= 1/1"
+      owner_role: Biz
+      data_source: "business-context artifact"
+      field_availability: "artifact_fields_required"
+      update_frequency: per_gate_review
+      freshness_requirement: "current artifact version"
+      attribution_window: "current gate session"
+      instrumentation_requirements:
+        - opportunity_id
+        - pressure_type
+        - owner_role
+        - artifact_version
+      decision_action_if_pass: continue_to_low_cost_validation
+      decision_action_if_fail: block_until_business_context
+    - metric_id: evidence_gap_named_rate
+      numerator: "已标注证据缺口和下一步验证动作的关键假设数"
+      denominator: "关键假设总数"
+      threshold: "100%"
+      owner_role: Data
+      data_source: "evidence-inventory artifact"
+      field_availability: "artifact_fields_required"
+      update_frequency: per_gate_review
+      freshness_requirement: "current artifact version"
+      attribution_window: "current evidence inventory version"
+      instrumentation_requirements:
+        - assumption_id
+        - evidence_ref
+        - confidence
+        - missing_evidence
+        - next_validation_action
+      decision_action_if_pass: continue_to_low_cost_validation
+      decision_action_if_fail: conditional_pass_with_evidence_fix
+
+gate_decision_mapping:
+  gate_id: GATE-FLOW-01-OPPORTUNITY-DISCOVERY
+  gate_result: conditional_pass
+  pass_boundary: "进入低成本验证，不进入 PRD/MVP/上线。"
+  continue_to_low_cost_validation:
+    required:
+      - "target_user_clarity_rate >= 8/10"
+      - "pain_and_workaround_rate >= 6/10"
+      - "business_pressure_clarity_rate >= 1/1"
+      - "evidence_gap_named_rate == 100%"
+    user_decision_required: true
+  block:
+    trigger_any:
+      - "domain != product_work"
+      - "no owner or target user"
+      - "no business/user pain evidence and user refuses validation"
+  rollback:
+    trigger_any:
+      - "user corrects domain or stage"
+      - "stakeholder authority is wrong"
+      - "evidence source is invalid or not authorized"
+
+negative_paths:
+  - path_id: F01-NON-PRODUCT-EXIT
+    trigger: "domain_intent_gate.domain != product_work"
+    expected_state_path: [domain_gate, done]
+    expected_result: exit_product_crew_os
+    must_not_call_skills: true
+    must_not_call_agents: true
+  - path_id: F01-EVIDENCE-GAP-BLOCK
+    trigger: "evidence_inventory has no source and user refuses validation"
+    expected_state_path: [evidence_checking, gate_checking, memory_writing, done]
+    expected_result: block
+    required_artifact_update: open-questions.md
+  - path_id: F01-USER-STAGE-CORRECTION
+    trigger: "user says this is already PRD review, not opportunity discovery"
+    expected_state_path: [user_deciding, stage_matched, sop_composing]
+    expected_result: rollback_to_corrected_stage
+    required_artifact_update: decision-log.md
+
+project_asset_pack:
+  required_files:
+    - project-home.md
+    - artifact-index.yaml
+    - timeline.md
+    - decision-log.md
+    - review-items.yaml
+    - conflict-matrix.md
+    - open-questions.md
+    - artifact-diff.md
+    - risk-log.md
+    - next-actions.md
+    - source-ledger.md
+    - event-log.jsonl
+    - agent-memory/README.md
+    - checkpoints/README.md
+    - export-manifest.yaml
+  event_log_must_include:
+    - event_type: stage_entered
+      stage_id: project_intake
+    - event_type: artifact_created
+      artifact_id: project-card-v0
+    - event_type: review_opened
+      review_session_id: REVIEW-FLOW-01-FULL
+    - event_type: gate_decided
+      gate_id: GATE-FLOW-01-OPPORTUNITY-DISCOVERY
+
+material_use_policy:
+  synthetic_case: true
+  contains_real_user_material: false
+  contains_real_customer_material: false
+  contains_real_colleague_material: false
+  requires_separate_consent_for:
+    - long_term_memory
+    - role_style_training
+    - template_reuse
+    - public_rule_package
+    - public_example
+    - product_marketing
+  deidentification_required_before_public_use: true
+
+anti_overclaim_assertions:
+  must_not_claim:
+    - "flow_01 完整 Golden Case 等于 10 大主流程全部完成"
+    - "opportunity discovery conditional_pass 等于 PRD 通过"
+    - "synthetic_fixture 等于真实线上子 Agent 调用"
+    - "primary_hit 等于外部用户业务验证成功"
+  allowed_claim:
+    - "flow_01_opportunity_discovery 已具备完整主流程 Golden Case"
+    - "10 大主流程完整编排计数可从 0/10 更新为 1/10"
+    - "其余 9 个主流程仍未完成完整编排"
+
+coverage_delta:
+  macro_flow_id: flow_01_opportunity_discovery
+  counter_name: macro_flow_orchestration_complete_count
+  before: "0/10"
+  delta: "+1"
+  after: "1/10"
+  qualifying_flow: flow_01_opportunity_discovery
+  remaining_macro_flows: 9
+  qualifying_rule: "implementation_status == complete AND completion_qualifies_as_full_macro_flow == true AND golden_case.status == complete"
+  flow_status_after_case: complete
+  full_macro_flows_complete_after_case: 1
+  macro_flows_total: 10
+  golden_case_files_after_case: 2
+  opportunity_discovery_stage_ids_covered:
+    - project_intake
+    - request_triage
+    - stakeholder_map
+    - business_context
+    - existing_workflow_mapping
+    - evidence_inventory
