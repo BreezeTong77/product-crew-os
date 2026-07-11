@@ -5,40 +5,19 @@
 [![SOP](https://img.shields.io/badge/SOP-44-orange)](product-crew-os-skill/references/workflow-sop-library.md)
 [![Bundled Skills](https://img.shields.io/badge/bundled%20skills-49-orange)](product-crew-os-skill/references/bundled-skill-index.md)
 
-面向产品经理的 Workflow-first AI 工作系统。
+一间给产品经理用的 AI 产品办公室。
 
-它不把产品工作变成一群 Agent 聊天，而是由一个主控教练带着用户推进：先判断当前该做什么，再命中 SOP、调用能力、沉淀项目文件；需要评审时，再拉对应角色进来。
+Product Crew OS 不把产品工作变成一群 Agent 聊天。用户只和一个主控产品教练对话；主控负责判断当前阶段、命中 SOP、调用能力、安排必要评审，并把结果沉淀成可继续编辑的项目文件。
+
+它解决的不是“AI 能不能写文档”，而是产品经理在 0-1 推进时常遇到的事：不知道下一步该做什么、需求没有被充分反驳、决策和评审无法追溯、做完的项目经验无法复用。
 
 ```text
-用户输入
--> 判断是否属于产品任务
--> Stage / SOP 路由
--> Skill 执行
--> Artifact Workspace
--> 必要时评审
--> 用户确认
--> Stage Gate 和下一步
+Workflow + Skill + Review + Artifact Workspace
 ```
 
-## 适合什么场景
+## 开始使用
 
-- 从想法开始，判断问题、机会和验证方式。
-- 整理需求、确定 MVP、写 PRD、做评审。
-- 把评审、决策、风险和下一步沉淀成可继续编辑的项目文件。
-- 为团队接入自己的 SOP、Skill、角色模板或外部工具。
-
-## 已包含什么
-
-- 44 个产品工作 SOP：输入、动作、产物、评审和阶段门都有明确约定。
-- 49 个随包 PM Skill：由 Router 选择，用户也可以用自己的 Skill 覆盖。
-- 本地 Runtime：SQLite 记录项目、产物版本、评审、决策、事件和 Gate。
-- Artifact Workspace：输出 Markdown、YAML、JSON 等可追溯项目文件，可作为 Obsidian Vault 打开。
-- 评审契约：真实调用、模拟视角和运行时受限必须明确区分；没有完整 Context Packet、原始评审记录和运行 ID，不能作为 Gate 依据。
-- RAG 证据约束：支持本地文本和图片资料接入；低置信 OCR、未授权或未索引来源不能作为 Gate 证据。
-
-## 快速开始
-
-安装或复制 `product-crew-os-skill/` 后，直接用自然语言开始：
+直接把真实工作交给它：
 
 ```text
 我有一个产品想法，先帮我判断值不值得做。
@@ -52,17 +31,138 @@
 客户提了一个需求，帮我判断是真需求还是伪需求。
 ```
 
-Product Crew OS 只处理产品工作或自身配置。翻译、闲聊、普通代码问题等，会在输入范围门退出，不强行进入 SOP。
+它会告诉你：现在在哪个阶段、该产出什么、需要谁来评审、下一步由谁确认。
+
+## 你会得到什么
+
+| 场景 | 结果 |
+| --- | --- |
+| 只有想法 | 问题定义、机会判断、验证计划 |
+| 需求很乱 | 证据清单、真伪需求判断、调研计划 |
+| 开始做方案 | MVP 范围、方案对比、流程图、原型 brief |
+| 写 PRD | PRD 草稿、自审、评审记录 |
+| 交付研发 | 任务拆解、验收标准、测试场景 |
+| 上线和复盘 | 上线清单、监控指标、复盘和下一版计划 |
+| 项目沉淀 | 项目首页、决策、风险、评审项和 Markdown 项目包 |
+
+## 它怎么工作
+
+用户看见的是当前状态和下一步；后台则保留路由、评审、产物、Gate 和记忆记录。
+
+```mermaid
+flowchart TB
+  U["用户输入\n想法 / PRD / 截图 / 评审 / 日常问题"] --> PARSE["输入解析\n文本、截图、链接、附件"]
+  PARSE --> DG{"输入范围门\n是否属于产品工作或系统配置？"}
+  DG -- "否" --> EXIT["退出 Product Crew OS\n交给对应能力继续回答"]
+  DG -- "是" --> COACH["主控产品教练"]
+
+  COACH --> STATE["读取项目上下文\nproject-state / artifact-index / decision-log"]
+  STATE --> ROUTE["阶段与 SOP 路由\n规则 + 语义检索 + 宿主可选分类"]
+  ROUTE --> SKILL["能力路由\n主 Skill / fallback / 用户自有 Skill"]
+  SKILL --> WORK["执行工作包\nSkill + 模板 + 可选 MCP"]
+  WORK --> ART["Artifact Workspace\nMarkdown / YAML / JSON / Mermaid"]
+
+  ART --> REVIEW{"当前阶段需要评审？"}
+  REVIEW -- "否" --> GATE["Stage Gate\n通过 / 阻塞 / 回退"]
+  REVIEW -- "是" --> PACKET["Context Packet\n阶段 / artifact / 决策 / 风险 / 记忆快照"]
+  PACKET --> CREW["可配置团队独立评审\n业务 / 技术 / 设计 / 研究 / 数据 / 测试等"]
+  CREW --> RECORD["评审记录\nraw review / review items / 冲突"]
+  RECORD --> USER{"用户决策\n采纳 / 拒绝 / 暂缓 / 补证据"}
+  USER -- "修改" --> ART
+  USER -- "确认" --> GATE
+
+  GATE --> MEMORY["项目记忆与事件日志"]
+  MEMORY --> NEXT["下一步动作"]
+  NEXT --> U
+
+  WORK -. "用户授权后" .-> MCP["外部工具 / MCP\nFigma / Pencil / Jira 等"]
+  MEMORY --> EVAL["质量回流\n回归测试 / 路由评估 / Bad Case"]
+  EVAL --> ROUTE
+```
+
+## 可配置团队与评审
+
+默认体验只有主控教练在前台。业务、技术、设计、数据、测试、法务、运营等角色只在阶段门或评审需要时进场。
+
+正式评审必须围绕一个明确的 artifact：
+
+```text
+锁定 artifact 版本
+-> 生成完整 Context Packet
+-> 角色独立评审
+-> 写 raw review / review items / conflict
+-> 主控收束问题
+-> 用户决定采纳、拒绝、暂缓或补证据
+-> 修改 artifact
+-> 相关角色复评
+-> 用户确认后关闭评审
+```
+
+子 Agent 只能给意见，不能替用户做最终决定。真实调用需要完整 Persona Context Packet、运行 ID 和原始评审记录；缺失时必须标为 `simulated` 或 `runtime_blocked`，不能作为 Gate 依据。
+
+## 项目资产与记忆隔离
+
+项目不是一段聊天记录，而是一套可回溯的资产：
+
+```text
+project-state.json      当前阶段、Gate、版本和下一步
+artifact-index.yaml     产物索引
+decision-log.md         采纳、拒绝和延期的原因
+review-items.yaml       评审项和状态
+raw-review-records/     角色原始评审
+risk-log.md             风险、阻塞和依赖
+agent-memory/           当前项目内的角色记忆摘要
+```
+
+Project Workspace 是项目事实源。Obsidian、Word、PDF、Notion、飞书等只是导出或镜像；Obsidian 不是必装依赖。
+
+```mermaid
+flowchart LR
+  INPUT["用户材料\n文字 / 截图 / 会议纪要"] --> EXTRACT["提取与结构化\nOCR / 解析 / 来源信息"]
+  EXTRACT --> CONSENT{"用户授权范围"}
+
+  CONSENT -- "仅本轮" --> LEDGER["source-ledger\n来源与引用记录"]
+  CONSENT -- "项目记忆" --> PROJECT["Project Workspace\n项目文件与决策"]
+  CONSENT -- "角色风格" --> ROLE["agent-memory\n仅写风格摘要"]
+
+  RULES["公共产品规则"] --> ROUTE["下一轮路由"]
+  LEDGER --> ROUTE
+  PROJECT --> ROUTE
+  ROLE --> ROUTE
+```
+
+公共产品规则、用户偏好和项目材料必须隔离。项目材料不能写入开源规则包；真实同事邮件、会议纪要或语气素材没有用户授权，不能进入长期记忆。
+
+## 已包含的能力
+
+- 44 个 SOP 卡片、路由和最小 Runtime 链路。
+- 49 个随包 PM Skill，以及用户自有 Skill 覆盖入口。
+- SQLite Runtime：记录项目、产物版本、决策、评审、调用台账和 Gate。
+- Artifact Workspace：输出 Markdown、YAML、JSON 等可追溯文件。
+- 本地文本、图片和截图资料接入；PaddleOCR 为主路径，Tesseract 为 fallback。
+- 本地质量测试：包校验、路由、Runtime、SOP、评审循环、Bad Case 和资料接入。
 
 ## 真实边界
 
-- 44 个 SOP 都有卡片、路由、测试样本和最小 Runtime 链路；这不等于 44 个 SOP 都已完成深度真实业务验证。
-- 内置 Skill 被选中不等于已经真实执行。只有宿主返回执行证据，才算可用于 Gate 的执行。
-- 子 Agent 是否能真实调用取决于宿主环境。不能调用时必须标记 `runtime_blocked` 或 `simulated`，不能冒充真实评审。
-- OCR、Embedding、向量库和外部 MCP 都是本地可选能力。缺依赖时必须显示不可用，不能假装已接入。
-- 项目材料、用户偏好和团队风格只进入独立 Project Workspace，不能写入公共规则包。
+- 44 个 SOP 都有卡片、路由和最小测试链路；不等于每个 SOP 都完成了深度真实业务验证。
+- Skill 被路由到不等于已经真实执行。只有宿主返回执行证据，才能作为 Gate 依据。
+- 子 Agent 是否能真实调用取决于宿主的 delegation 能力；不支持时不能假装已调用。
+- OCR、Embedding、向量库和外部 MCP 都依赖本地环境。依赖缺失时必须明确显示受限状态。
+- 低置信 OCR、未授权或未索引来源可以作为参考，但不能作为最终 Gate 证据。
 
-## 本地验证
+## 安装与验证
+
+### Codex
+
+复制完整 `product-crew-os-skill/` 到：
+
+```text
+~/.codex/skills/product-crew-os/
+```
+
+不要只复制 `SKILL.md`；`config/`、`references/`、`templates/`、`tests/` 和 `third_party/skills/` 都是能力的一部分。
+
+### 本地验证
 
 在仓库根目录运行：
 
@@ -76,7 +176,7 @@ ruby product-crew-os-skill/tests/run-loop-50-cases.rb --release-gate
 ruby product-crew-os-skill/tests/run-source-ingestion-runtime.rb
 ```
 
-这些测试分别检查：发布包完整性、路由和规则、SQLite 写入、44 SOP 最小链路、评审门禁、50 条回归 case，以及本地资料接入。测试通过不代表线上用户效果。
+测试验证本地规则、路由、运行时写入和门禁，不代表线上用户效果。
 
 ## 关键文档
 
