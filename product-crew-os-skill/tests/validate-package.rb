@@ -150,7 +150,7 @@ deployment_assets = coze_yaml["deployment_assets"] || {}
 end
 
 coze_openapi = YAML.load_file(File.join(skill_root, "integrations", "coze", "runtime-plugin-openapi.yaml"))
-%w[/v1/handshake /v1/routes /v1/rag/ingest /v1/rag/retrieve /v1/turns /v1/reviews/callback /v1/gates/finalize].each do |path|
+%w[/v1/handshake /v1/routes /v1/rag/ingest /v1/rag/retrieve /v1/rag/evidence /v1/turns /v1/reviews/callback /v1/gates/finalize].each do |path|
   errors << "coze OpenAPI missing path: #{path}" unless (coze_openapi["paths"] || {}).key?(path)
 end
 errors << "coze OpenAPI missing bearer auth" unless coze_openapi.dig("components", "securitySchemes", "bearerAuth", "scheme") == "bearer"

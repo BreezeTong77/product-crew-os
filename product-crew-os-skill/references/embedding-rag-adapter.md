@@ -65,6 +65,8 @@ OCR 主路径使用 `PaddleOCR`，原因是中文截图、PDF、版面结构和 
 - `language_hint`
 - `source_ref`
 
+发布包提供 `runtime/source_extractor.rb` 和 `runtime/setup-local-ocr.sh`，但不把宿主尚未安装的 OCR 引擎说成已可用。引擎不可用、语言包缺失、OCR 返回空文本或 provider 输出无法解析时，Runtime 必须返回 `runtime_blocked` / extraction error，不能写出伪造的文本或置信度。只有实际 OCR 返回的字段才会写入 RAG 元数据。
+
 OCR 置信度低于配置阈值时，只能作为低置信证据进入索引；涉及 Stage Gate 时必须提示用户复核，不能把低置信 OCR 当成确定事实。
 
 ## 3.2 语义结构化切分与 overlap

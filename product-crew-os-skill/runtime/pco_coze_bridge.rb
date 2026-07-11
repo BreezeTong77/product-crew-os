@@ -5,6 +5,7 @@ require "open3"
 require "rbconfig"
 require "securerandom"
 require "webrick"
+require_relative "source_extractor"
 
 # HTTP adapter for a Coze Workflow. It deliberately delegates all persistent
 # work to pco_runtime.rb so Coze cannot bypass route traces, packets, ledgers,
@@ -62,6 +63,8 @@ class CozeRuntimeBridge
       json(response, 201, rag_ingest(body(request)))
     when ["POST", "/v1/rag/retrieve"]
       json(response, 200, runtime("rag-retrieve", body(request), %w[query namespace top_k allowed_scopes consent_ref]))
+    when ["POST", "/v1/rag/evidence"]
+      json(response, 201, runtime("attach-rag-evidence", body(request), %w[project_id stage_run_id artifact_id source_refs usage]))
     when ["POST", "/v1/turns"]
       json(response, 201, record_turn(body(request)))
     when ["POST", "/v1/reviews/prepare"]
@@ -98,6 +101,7 @@ class CozeRuntimeBridge
       /v1/skills/host-callback
       /v1/rag/ingest
       /v1/rag/retrieve
+      /v1/rag/evidence
       /v1/turns
       /v1/reviews/prepare
       /v1/reviews/callback
@@ -268,6 +272,7 @@ class CozeRuntimeBridge
     standard_embedding_configured = TRUE_VALUES.include?(ENV.fetch("PCO_STAGE_ROUTER_EMBEDDING", "").downcase)
     delegate_configured = ENV.fetch("PCO_COZE_SUBAGENT_DELEGATE", "").to_s == "workflow_callback"
     vector_stats = persistent_vector_stats
+    ocr_capability = ProductCrewOS::SourceExtractor.new.capability
     capabilities = {
       route_trace_writer: { configured: true, evidence: "runtime route-intent writes routing/stage-route-decision.jsonl" },
       sop_router: { configured: true, evidence: "runtime stage router" },
@@ -276,11 +281,12 @@ class CozeRuntimeBridge
       artifact_writer: { configured: true, evidence: "runtime save-artifact" },
       real_embedding_provider: { configured: standard_embedding_configured, observed_per_turn: true, evidence: "route trace real_embedding_performed" },
       vector_index: { configured: standard_embedding_configured, observed_per_turn: true, chunks: vector_stats[:chunks], engine: vector_stats[:engine], evidence: "persistent pco_rules vectors and embedding_retrieval_events" },
+      local_ocr: { configured: ocr_capability["paddleocr"] || ocr_capability["tesseract"], required_for_standard_sop: false, engines: ocr_capability, evidence: "Runtime SourceExtractor capability probe; required only for image/PDF OCR ingestion" },
       subagent_delegate: { configured: delegate_configured, observed_per_turn: true, evidence: "Coze Bot callback with runtime_agent_id" },
       invocation_ledger: { configured: true, evidence: "agent_invocations" },
       raw_review_writer: { configured: true, evidence: "raw_review_records" }
     }
-    missing = capabilities.select { |_key, value| !value[:configured] }.keys
+    missing = capabilities.select { |_key, value| !value[:configured] && value.fetch(:required_for_standard_sop, true) }.keys
     {
       runtime_status: missing.empty? ? "ready_for_standard_sop" : "runtime_degraded",
       configured_capabilities: capabilities,

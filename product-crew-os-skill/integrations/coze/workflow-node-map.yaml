@@ -31,6 +31,12 @@ workflow:
       optional: true
       input: [content, source_type, extraction_method, source_ref, consent_ref]
       invariant: "Private namespace ingestion requires user authorization and consent_ref."
+    - key: rag_gate_evidence_attacher
+      type: plugin_api
+      operation_id: runtimeAttachRagEvidence
+      optional: true
+      input: [project_id, stage_run_id, artifact_id, source_refs]
+      invariant: "When an artifact uses a RAG source as stage evidence, it must be attached here. Low-confidence OCR, unknown PII classification, and unknown source_ref are ineligible and block the final gate."
     - key: coze_rag_mirror
       type: coze_database_write
       table: pco_rag_ingestions
@@ -101,3 +107,4 @@ hard_failures:
   - "raw review is absent or advice_only -> invalid_for_gate"
   - "user decision is absent -> awaiting_user_decision"
   - "private RAG source lacks consent_ref -> runtime_rejected"
+  - "attached RAG evidence is ineligible -> blocked_runtime_preflight"

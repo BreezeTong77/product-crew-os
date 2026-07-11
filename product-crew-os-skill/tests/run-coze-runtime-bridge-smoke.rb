@@ -225,6 +225,15 @@ Dir.mktmpdir("pco-coze-bridge-") do |dir|
     assert(errors, overreach_turn["gate_status"] == "blocked_runtime_preflight", "bridge allowed an overreaching skill to pass the gate")
     assert(errors, overreach_turn.dig("skill_execution", "overreach_detected") == true, "bridge did not record external skill overreach")
 
+    status, unindexed_evidence = request(port, :post, "/v1/rag/evidence", token, {
+      project_id: "coze_overreach",
+      stage_run_id: overreach_turn.fetch("stage_run_id"),
+      artifact_id: overreach_turn.fetch("artifact_id"),
+      source_refs: "fixture:not-indexed"
+    })
+    assert(errors, status == 201 && unindexed_evidence["gate_evidence_eligible"] == false, "bridge accepted an unindexed RAG source as gate evidence")
+    assert(errors, unindexed_evidence.fetch("evidence").first.fetch("reason") == "source_not_indexed", "bridge did not preserve the unindexed evidence reason")
+
     roles.each do |role|
       role_key = role.fetch("role_key")
       status, invalid_callback = request(port, :post, "/v1/reviews/callback", token, {

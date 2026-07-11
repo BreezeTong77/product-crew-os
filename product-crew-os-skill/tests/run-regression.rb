@@ -271,7 +271,7 @@ coze_bridge = File.read(File.join(skill_root, "runtime", "pco_coze_bridge.rb"))
   assert(errors, coze_bridge.include?(phrase), "coze runtime bridge missing #{phrase}")
 end
 coze_openapi = YAML.load_file(File.join(skill_root, "integrations", "coze", "runtime-plugin-openapi.yaml"))
-%w[/v1/handshake /v1/rag/ingest /v1/rag/retrieve /v1/turns /v1/reviews/callback /v1/gates/finalize].each do |path|
+%w[/v1/handshake /v1/rag/ingest /v1/rag/retrieve /v1/rag/evidence /v1/turns /v1/reviews/callback /v1/gates/finalize].each do |path|
   assert(errors, (coze_openapi["paths"] || {}).key?(path), "coze OpenAPI missing #{path}")
 end
 coze_node_map = YAML.load_file(File.join(skill_root, "integrations", "coze", "workflow-node-map.yaml"))
@@ -281,8 +281,12 @@ coze_node_keys = Array(coze_node_map.dig("workflow", "nodes")).map { |node| node
 end
 
 persistent_rag_store = File.read(File.join(skill_root, "runtime", "rag_store.rb"))
-%w[PersistentRagStore embedding_documents embedding_chunks rag_ingestion_jobs embedding_retrieval_events sqlite_json_cosine_fallback].each do |phrase|
+%w[PersistentRagStore embedding_documents embedding_chunks rag_ingestion_jobs embedding_retrieval_events sqlite_json_cosine_fallback evidence_status extraction_confidence gate_evidence_eligible index_hash].each do |phrase|
   assert(errors, persistent_rag_store.include?(phrase), "persistent RAG store missing #{phrase}")
+end
+source_extractor = File.read(File.join(skill_root, "runtime", "source_extractor.rb"))
+%w[SourceExtractor PaddleOCR Tesseract runtime_blocked_missing_ocr_engine ocr_confidence source_hash].each do |phrase|
+  assert(errors, source_extractor.include?(phrase), "source extraction runtime missing #{phrase}")
 end
 
 assert(errors, prompt_eval_cases.length == 44, "prompt eval should cover 44 SOP cases, found #{prompt_eval_cases.length}")

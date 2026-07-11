@@ -9,6 +9,7 @@ require "time"
 require "yaml"
 require_relative "stage_router"
 require_relative "skill_executor"
+require_relative "source_extractor"
 
 class ProductCrewRuntime
   PASSING_GATE_STATUSES = %w[pass conditional_pass].freeze
@@ -487,7 +488,25 @@ class ProductCrewRuntime
     decision
   end
 
-  def rag_ingest(namespace:, scope:, source_ref:, title:, content:, source_type: "markdown", extraction_method: "direct_structured_parser", consent_ref: "", public_package_allowed: nil, metadata: {}, emit: true)
+  def rag_ingest(namespace:, scope:, source_ref:, title:, content: nil, file_path: "", source_type: "markdown", extraction_method: "direct_structured_parser", language_hint: "chi_sim+eng", consent_ref: "", public_package_allowed: nil, metadata: {}, emit: true)
+    metadata = stringify_keys(metadata)
+    if !file_path.to_s.strip.empty?
+      extraction = ProductCrewOS::SourceExtractor.new.extract(
+        file_path: file_path,
+        source_ref: source_ref,
+        source_type: source_type,
+        language_hint: language_hint
+      )
+      content = extraction.fetch("content")
+      source_type = extraction.fetch("source_type")
+      extraction_method = extraction.fetch("extraction_method")
+      metadata = metadata.merge(extraction.reject { |key, _| %w[content source_ref source_type extraction_method].include?(key) })
+    else
+      raise "RAG content is required when file_path is not provided" if content.to_s.strip.empty?
+      metadata["extraction_confidence"] ||= 1.0 if extraction_method.to_s == "direct_structured_parser"
+      metadata["source_uri_hash"] ||= Digest::SHA256.hexdigest(source_ref.to_s)
+    end
+
     store = ProductCrewOS::PersistentRagStore.new(db_path: @db_path)
     payload = store.upsert_documents(
       namespace: namespace,
@@ -503,6 +522,33 @@ class ProductCrewRuntime
         metadata: metadata
       }]
     )
+    puts_json(payload) if emit
+    payload
+  end
+
+  def attach_rag_evidence(project_id:, stage_run_id:, artifact_id:, source_refs:, usage: "artifact_evidence", emit: true)
+    ensure_project!(project_id)
+    stage = query_one("SELECT stage_run_id FROM stages WHERE project_id = #{q(project_id)} AND stage_run_id = #{q(stage_run_id)};")
+    raise "stage run not found: #{stage_run_id}" unless stage
+    artifact = query_one("SELECT artifact_id FROM artifacts WHERE project_id = #{q(project_id)} AND artifact_id = #{q(artifact_id)};")
+    raise "artifact not found: #{artifact_id}" unless artifact
+
+    refs = split_roles(source_refs)
+    raise "source_refs is required" if refs.empty?
+    store = ProductCrewOS::PersistentRagStore.new(db_path: @db_path)
+    statuses = store.evidence_status(source_refs: refs)
+    now = timestamp
+    statuses.each do |status|
+      exec_sql(<<~SQL)
+        INSERT INTO rag_evidence_records
+          (evidence_id, project_id, stage_run_id, artifact_id, source_ref, usage, gate_evidence_eligible, reason, created_at)
+        VALUES
+          (#{q(id("ragev"))}, #{q(project_id)}, #{q(stage_run_id)}, #{q(artifact_id)}, #{q(status.fetch("source_ref"))}, #{q(usage)}, #{status.fetch("gate_evidence_eligible") ? 1 : 0}, #{q(status.fetch("reason"))}, #{q(now)});
+      SQL
+    end
+    blocked = statuses.reject { |status| status.fetch("gate_evidence_eligible") }
+    record_event(project_id, "rag_evidence_attached", { stage_run_id: stage_run_id, artifact_id: artifact_id, source_refs: refs, usage: usage, blocked_sources: blocked.map { |status| status.fetch("source_ref") } })
+    payload = { project_id: project_id, stage_run_id: stage_run_id, artifact_id: artifact_id, evidence: statuses, gate_evidence_eligible: blocked.empty? }
     puts_json(payload) if emit
     payload
   end
@@ -1045,6 +1091,14 @@ class ProductCrewRuntime
       control_issues: control.fetch("issues")
     )
     issues = Array(preflight.fetch("issues"))
+    rag_evidence_issues = query(<<~SQL).select { |record| record.fetch("gate_evidence_eligible").to_i.zero? }.map { |record| "rag_evidence_ineligible:#{record.fetch("source_ref")}:#{record.fetch("reason")}" }
+      SELECT source_ref, gate_evidence_eligible, reason
+      FROM rag_evidence_records
+      WHERE project_id = #{q(project_id)}
+        AND stage_run_id = #{q(stage_run_id)}
+        AND artifact_id = #{q(artifact_id)};
+    SQL
+    issues.concat(rag_evidence_issues)
     required_roles = control.fetch("all_review_roles")
     issues.concat(external_review_evidence_issues(project_id, session, required_roles)) unless required_roles.empty?
     issues << "user_confirmation_missing" unless user_confirmed
@@ -1152,6 +1206,21 @@ class ProductCrewRuntime
     ensure_column("review_items", "priority", "TEXT DEFAULT 'should_fix'")
     ensure_column("review_items", "evidence_level", "TEXT DEFAULT 'from_artifact'")
     ensure_column("review_items", "user_decision", "TEXT DEFAULT ''")
+    exec_sql(<<~SQL)
+      CREATE TABLE IF NOT EXISTS rag_evidence_records (
+        evidence_id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        stage_run_id TEXT NOT NULL,
+        artifact_id TEXT NOT NULL,
+        source_ref TEXT NOT NULL,
+        usage TEXT DEFAULT '',
+        gate_evidence_eligible INTEGER DEFAULT 0,
+        reason TEXT DEFAULT '',
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(project_id) REFERENCES projects(project_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_rag_evidence_records_stage_run ON rag_evidence_records(project_id, stage_run_id);
+    SQL
   end
 
   def ensure_column(table, column, definition)
@@ -1159,6 +1228,13 @@ class ProductCrewRuntime
     return if columns.include?(column)
 
     exec_sql("ALTER TABLE #{table} ADD COLUMN #{column} #{definition};")
+  end
+
+  def stringify_keys(value)
+    return value.map { |item| stringify_keys(item) } if value.is_a?(Array)
+    return value unless value.is_a?(Hash)
+
+    value.each_with_object({}) { |(key, item), result| result[key.to_s] = stringify_keys(item) }
   end
 
   def sqlite_args
@@ -2193,12 +2269,22 @@ when "rag-ingest"
     scope: options["scope"] || ProductCrewOS::PersistentRagStore::DEFAULT_SCOPE,
     source_ref: require_option(options, "source_ref"),
     title: require_option(options, "title"),
-    content: require_option(options, "content"),
+    content: options["content"],
+    file_path: options["file_path"].to_s,
     source_type: options["source_type"] || "markdown",
     extraction_method: options["extraction_method"] || "direct_structured_parser",
+    language_hint: options["language_hint"] || "chi_sim+eng",
     consent_ref: options["consent_ref"].to_s,
     public_package_allowed: options.key?("public_package_allowed") ? options["public_package_allowed"].to_s == "true" : nil,
     metadata: metadata
+  )
+when "attach-rag-evidence"
+  runtime.attach_rag_evidence(
+    project_id: require_option(options, "project_id"),
+    stage_run_id: require_option(options, "stage_run_id"),
+    artifact_id: require_option(options, "artifact_id"),
+    source_refs: require_option(options, "source_refs"),
+    usage: options["usage"] || "artifact_evidence"
   )
 when "rag-retrieve"
   runtime.rag_retrieve(
@@ -2263,6 +2349,6 @@ when "export-obsidian"
   )
 else
   warn "Usage: ruby runtime/pco_runtime.rb <command> [--db PATH] [--workspace PATH] ..."
-  warn "Commands: init-project, save-artifact, write-decision, write-agent-memory, build-context-packet, prepare-external-review, record-invocation, write-raw-review-record, route-intent, execute-skill, record-host-skill-execution, rag-ingest, rag-retrieve, record-review-decision, finalize-stage-gate, record-turn, export-obsidian"
+  warn "Commands: init-project, save-artifact, write-decision, write-agent-memory, build-context-packet, prepare-external-review, record-invocation, write-raw-review-record, route-intent, execute-skill, record-host-skill-execution, rag-ingest, rag-retrieve, attach-rag-evidence, record-review-decision, finalize-stage-gate, record-turn, export-obsidian"
   exit 1
 end

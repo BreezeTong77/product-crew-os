@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS embedding_documents (
   extraction_method TEXT DEFAULT '',
   extraction_confidence REAL DEFAULT 0,
   content_hash TEXT NOT NULL,
+  index_hash TEXT DEFAULT '',
   pii_level TEXT DEFAULT 'none',
   consent_ref TEXT DEFAULT '',
   public_package_allowed INTEGER DEFAULT 0,

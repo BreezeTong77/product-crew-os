@@ -103,7 +103,26 @@ Coze 资产：
 
 Bridge 的 `/v1/routes` 不再只是临时算一次 44 SOP 相似度：在真实 embedding 模式下，它会把 `pco_rules` 的 44 SOP 批量写入 `embedding_documents` / `embedding_chunks`，用内容哈希跳过未变更来源，并把每次查询写进 `embedding_retrieval_events`。架构目标是 `sqlite-vec`；当前发布包检测到扩展未连接时，Runtime 会明确返回实际引擎 `sqlite_json_cosine_fallback`，仍做持久向量存储和余弦检索，但不会把它伪称为 `sqlite-vec`。
 
-`/v1/rag/ingest` 只接收已经由 Coze 文件解析或 OCR 节点抽出的文本。`pco_rules` 可直接写入；项目、用户偏好和团队风格等私有 namespace 必须带 `consent_ref`，否则 Runtime 拒绝写入。
+`/v1/rag/ingest` 的 HTTP Bridge 只接收已经由 Coze 文件解析或 OCR 节点抽出的文本，避免远程请求读取 Runtime 主机上的任意文件；本地 CLI 才可以传入 `--file_path`，由 Runtime 实际调用 PaddleOCR 或 Tesseract。OCR 没有真实引擎、缺少语言包或返回空文本时会返回 `runtime_blocked`，不会入库。`pco_rules` 可直接写入；项目、用户偏好和团队风格等私有 namespace 必须带 `consent_ref`，否则 Runtime 拒绝写入。
+
+当 artifact 实际引用 RAG 来源作为阶段门证据时，工作流必须调用 `/v1/rag/evidence` 绑定 `stage_run_id + artifact_id + source_ref`。OCR 置信度低于阈值、私有材料没有完成 PII 分类、或来源不在索引中，都会被标为不可用并阻止最终 Gate；普通检索本身不会自动变成 Gate 证据。
+
+### 本地 OCR 部署
+
+图片和截图的本地 OCR 是可执行 adapter，但 PaddleOCR / Tesseract 是宿主依赖，不会被包装成“已随仓库安装”。推荐执行：
+
+```bash
+bash product-crew-os-skill/runtime/setup-local-ocr.sh
+```
+
+脚本把开源 PaddleOCR 安装到 `~/.local/share/product-crew-os/ocr-env`；`SourceExtractor` 会自动发现该路径。部署后可用真实但不含敏感信息的截图验证：
+
+```bash
+PCO_OCR_SMOKE_SOURCE=/absolute/path/to/screenshot.png \
+  ruby product-crew-os-skill/tests/run-source-ingestion-runtime.rb
+```
+
+没有 OCR 引擎时，测试和 Runtime 必须返回 `runtime_blocked_missing_ocr_engine`。没有提供 `PCO_OCR_SMOKE_SOURCE` 时，即使引擎已安装，测试也只报告“引擎可用、未做真实样本抽取”，不会虚报真实 OCR 成功。
 
 本地 HTTP 合约测试：
 

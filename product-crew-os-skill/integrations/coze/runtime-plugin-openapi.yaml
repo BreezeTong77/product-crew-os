@@ -130,6 +130,18 @@ paths:
                 consent_ref: { type: string, description: Required for private namespaces. }
       responses:
         '200': { description: Retrieval candidates with source refs, content: { application/json: { schema: { $ref: '#/components/schemas/RuntimeResponse' } } } }
+  /v1/rag/evidence:
+    post:
+      operationId: runtimeAttachRagEvidence
+      summary: Attach actually used RAG sources to a stage run and reject ineligible sources at the final gate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RagEvidenceRequest'
+      responses:
+        '201': { description: RAG evidence attached with gate eligibility, content: { application/json: { schema: { $ref: '#/components/schemas/RuntimeResponse' } } } }
   /v1/turns:
     post:
       operationId: runtimeRecordTurn
@@ -321,7 +333,22 @@ components:
         extraction_method: { type: string }
         consent_ref: { type: string }
         public_package_allowed: { type: boolean }
-        metadata: { type: object, additionalProperties: true }
+        metadata:
+          type: object
+          description: >-
+            Include extraction_confidence. OCR sources also require ocr_engine,
+            ocr_confidence, ocr_page_index, ocr_bbox_json, and language_hint.
+            Private sources without pii_level stay ineligible for a stage gate.
+          additionalProperties: true
+    RagEvidenceRequest:
+      type: object
+      required: [project_id, stage_run_id, artifact_id, source_refs]
+      properties:
+        project_id: { type: string }
+        stage_run_id: { type: string }
+        artifact_id: { type: string }
+        source_refs: { type: string, description: Comma-separated RAG source refs actually used in the artifact. }
+        usage: { type: string, default: artifact_evidence }
     PrepareReviewRequest:
       type: object
       required: [project_id, stage_id, artifact_id, required_roles]

@@ -13,6 +13,12 @@ module ProductCrewOS
   class PersistentRagStore
     DEFAULT_NAMESPACE = "pco_rules".freeze
     DEFAULT_SCOPE = "product_rule_memory".freeze
+    EXACT_STRUCTURED_EXTRACTION_METHODS = %w[
+      direct_structured_parser
+      direct_markdown_parser
+      structured_yaml_parser
+      structured_json_parser
+    ].freeze
 
     attr_reader :db_path, :provider
 
@@ -78,8 +84,9 @@ module ProductCrewOS
       validate_retrieval_scope!(namespace, consent_ref)
       query_embedding = provider.embed(query.to_s)
       rows = query(<<~SQL)
-        SELECT d.scope, d.consent_ref, d.source_ref, d.title, c.chunk_id, c.text, c.section_path,
-               c.metadata_json, c.vector_json, c.embedding_model
+        SELECT d.scope, d.consent_ref, d.source_ref, d.title, d.extraction_method, d.extraction_confidence,
+               d.pii_level, d.public_package_allowed, c.chunk_id, c.text, c.section_path, c.ocr_engine,
+               c.ocr_confidence, c.ocr_page_index, c.ocr_bbox_json, c.metadata_json, c.vector_json, c.embedding_model
         FROM embedding_chunks c
         JOIN embedding_documents d ON d.doc_id = c.doc_id
         WHERE d.namespace = #{q(namespace)}
@@ -95,6 +102,7 @@ module ProductCrewOS
         vector = JSON.parse(row.fetch("vector_json"))
         metadata = JSON.parse(row.fetch("metadata_json"))
         score = cosine(query_embedding.fetch("vector"), vector)
+        evidence = evidence_status_from_row(row, metadata)
         {
           "score" => score.round(4),
           "vector_score" => score.round(4),
@@ -104,6 +112,13 @@ module ProductCrewOS
           "source_ref" => row.fetch("source_ref"),
           "source_refs" => [row.fetch("source_ref")],
           "section_path" => row.fetch("section_path"),
+          "extraction_method" => row.fetch("extraction_method"),
+          "extraction_confidence" => row.fetch("extraction_confidence").to_f,
+          "pii_level" => row.fetch("pii_level"),
+          "ocr_engine" => row.fetch("ocr_engine"),
+          "ocr_confidence" => row.fetch("ocr_confidence").to_f,
+          "gate_evidence_eligible" => evidence.fetch("gate_evidence_eligible"),
+          "gate_evidence_reason" => evidence.fetch("reason"),
           "matched_terms" => [],
           "text" => row.fetch("text")
         }
@@ -120,6 +135,31 @@ module ProductCrewOS
         "vector_store" => vector_store_name,
         "candidates" => candidates
       }
+    end
+
+    def evidence_status(source_refs:)
+      refs = Array(source_refs).map(&:to_s).reject(&:empty?).uniq
+      return [] if refs.empty?
+
+      quoted_refs = refs.map { |source_ref| q(source_ref) }.join(",")
+      rows = query(<<~SQL)
+        SELECT namespace, source_ref, extraction_method, extraction_confidence, pii_level, public_package_allowed
+        FROM embedding_documents
+        WHERE source_ref IN (#{quoted_refs}) AND deleted_at = '';
+      SQL
+      by_source = rows.to_h { |row| [row.fetch("source_ref"), evidence_status_from_row(row, {})] }
+      refs.map do |source_ref|
+        by_source.fetch(source_ref) do
+          {
+            "source_ref" => source_ref,
+            "gate_evidence_eligible" => false,
+            "reason" => "source_not_indexed",
+            "extraction_method" => "",
+            "extraction_confidence" => 0.0,
+            "pii_level" => "unknown_unclassified"
+          }
+        end
+      end
     end
 
     def stats(namespace: DEFAULT_NAMESPACE)
@@ -141,6 +181,28 @@ module ProductCrewOS
       raise "RAG source_ref is required" if source_ref.strip.empty?
       raise "RAG content is required" if content.strip.empty?
 
+      metadata = stringify_keys(value.fetch("metadata", {}))
+      extraction_method = value.fetch("extraction_method", "direct_structured_parser").to_s
+      extraction_confidence = metadata.fetch("extraction_confidence", EXACT_STRUCTURED_EXTRACTION_METHODS.include?(extraction_method) ? 1.0 : nil)
+      raise "RAG extraction_confidence is required for #{extraction_method}" if extraction_confidence.nil?
+      extraction_confidence = Float(extraction_confidence)
+      raise "RAG extraction_confidence must be between 0 and 1" unless extraction_confidence.between?(0.0, 1.0)
+      if extraction_method == "ocr"
+        raise "RAG OCR metadata requires ocr_engine" if metadata.fetch("ocr_engine", "").to_s.strip.empty?
+        ocr_confidence = Float(metadata.fetch("ocr_confidence"))
+        raise "RAG OCR confidence must be between 0 and 1" unless ocr_confidence.between?(0.0, 1.0)
+      end
+      pii_level = metadata.fetch("pii_level", namespace == DEFAULT_NAMESPACE ? "public_rule" : "unknown_unclassified").to_s
+      source_uri_hash = metadata.fetch("source_uri_hash", Digest::SHA256.hexdigest(source_ref))
+      gate_evidence_eligible = gate_evidence_eligible?(namespace, extraction_method, extraction_confidence, pii_level, metadata)
+      gate_evidence_reason = gate_evidence_reason(namespace, extraction_method, extraction_confidence, pii_level, metadata)
+      index_hash = Digest::SHA256.hexdigest(JSON.generate({
+        content_hash: Digest::SHA256.hexdigest(content), extraction_method: extraction_method,
+        extraction_confidence: extraction_confidence, pii_level: pii_level, consent_ref: consent_ref,
+        public_package_allowed: public_package_allowed, source_uri_hash: source_uri_hash,
+        gate_evidence_eligible: gate_evidence_eligible
+      }))
+
       {
         "doc_id" => "ragdoc_#{Digest::SHA256.hexdigest("#{namespace}|#{source_ref}")[0, 24]}",
         "namespace" => namespace,
@@ -150,10 +212,23 @@ module ProductCrewOS
         "title" => value.fetch("title", source_ref),
         "content" => content,
         "content_hash" => Digest::SHA256.hexdigest(content),
+        "index_hash" => index_hash,
         "consent_ref" => consent_ref,
         "public_package_allowed" => public_package_allowed.nil? ? namespace == DEFAULT_NAMESPACE : public_package_allowed,
-        "extraction_method" => value.fetch("extraction_method", "direct_structured_parser"),
-        "metadata" => value.fetch("metadata", {})
+        "extraction_method" => extraction_method,
+        "extraction_confidence" => extraction_confidence,
+        "source_uri_hash" => source_uri_hash,
+        "source_mtime" => metadata.fetch("source_mtime", ""),
+        "pii_level" => pii_level,
+        "artifact_id" => metadata.fetch("artifact_id", ""),
+        "artifact_version" => metadata.fetch("artifact_version", ""),
+        "ocr_engine" => metadata.fetch("ocr_engine", ""),
+        "ocr_confidence" => metadata["ocr_confidence"],
+        "ocr_page_index" => metadata.fetch("ocr_page_index", -1),
+        "ocr_bbox_json" => metadata.fetch("ocr_bbox_json", {}),
+        "gate_evidence_eligible" => gate_evidence_eligible,
+        "gate_evidence_reason" => gate_evidence_reason,
+        "metadata" => metadata
       }
     end
 
@@ -164,15 +239,29 @@ module ProductCrewOS
         text = section.fetch("text").strip
         next if text.empty?
 
-        split_text_with_overlap(text).each_with_index do |chunk_text, index|
+        chunk_texts = split_text_with_overlap(text)
+        chunk_rows = chunk_texts.map do |chunk_text|
           content_hash = Digest::SHA256.hexdigest(chunk_text)
-          chunks << {
+          {
             "chunk_id" => "ragchunk_#{Digest::SHA256.hexdigest([document.fetch("namespace"), document.fetch("source_ref"), section.fetch("path"), content_hash].join("|"))[0, 24]}",
             "section_path" => section.fetch("path"),
             "text" => chunk_text,
-            "content_hash" => content_hash,
-            "metadata" => document.fetch("metadata").merge("chunk_sequence" => index, "source_title" => document.fetch("title"))
+            "content_hash" => content_hash
           }
+        end
+        chunk_rows.each_with_index do |chunk, index|
+          chunks << chunk.merge(
+            "metadata" => document.fetch("metadata").merge(
+              "chunk_sequence" => index,
+              "source_title" => document.fetch("title"),
+              "extraction_confidence" => document.fetch("extraction_confidence"),
+              "pii_level" => document.fetch("pii_level"),
+              "gate_evidence_eligible" => document.fetch("gate_evidence_eligible"),
+              "gate_evidence_reason" => document.fetch("gate_evidence_reason")
+            ),
+            "overlap_prev_chunk_id" => index.zero? ? "" : chunk_rows[index - 1].fetch("chunk_id"),
+            "overlap_next_chunk_id" => index == chunk_rows.length - 1 ? "" : chunk_rows[index + 1].fetch("chunk_id")
+          )
         end
       end
       chunks
@@ -215,7 +304,7 @@ module ProductCrewOS
 
     def unchanged?(document)
       existing = document_row(document.fetch("doc_id"))
-      existing && existing["content_hash"].to_s == document.fetch("content_hash") && existing["deleted_at"].to_s.empty?
+      existing && existing["index_hash"].to_s == document.fetch("index_hash") && existing["deleted_at"].to_s.empty?
     end
 
     def document_row(doc_id)
@@ -225,19 +314,25 @@ module ProductCrewOS
     def upsert_document_sql(document, now)
       <<~SQL
         INSERT INTO embedding_documents
-          (doc_id, namespace, scope, source_type, source_ref, owner, title, extraction_method, extraction_confidence, content_hash, pii_level, consent_ref, public_package_allowed, indexed_at, deleted_at, created_at, updated_at)
+          (doc_id, namespace, scope, source_type, source_uri_hash, source_ref, owner, title, artifact_id, artifact_version, extraction_method, extraction_confidence, content_hash, index_hash, pii_level, consent_ref, public_package_allowed, source_mtime, indexed_at, deleted_at, created_at, updated_at)
         VALUES
-          (#{q(document.fetch("doc_id"))}, #{q(document.fetch("namespace"))}, #{q(document.fetch("scope"))}, #{q(document.fetch("source_type"))}, #{q(document.fetch("source_ref"))}, 'Product Crew OS', #{q(document.fetch("title"))}, #{q(document.fetch("extraction_method"))}, 1.0, #{q(document.fetch("content_hash"))}, 'none', #{q(document.fetch("consent_ref"))}, #{document.fetch("public_package_allowed") ? 1 : 0}, #{q(now)}, '', #{q(now)}, #{q(now)})
+          (#{q(document.fetch("doc_id"))}, #{q(document.fetch("namespace"))}, #{q(document.fetch("scope"))}, #{q(document.fetch("source_type"))}, #{q(document.fetch("source_uri_hash"))}, #{q(document.fetch("source_ref"))}, 'Product Crew OS', #{q(document.fetch("title"))}, #{q(document.fetch("artifact_id"))}, #{q(document.fetch("artifact_version"))}, #{q(document.fetch("extraction_method"))}, #{document.fetch("extraction_confidence")}, #{q(document.fetch("content_hash"))}, #{q(document.fetch("index_hash"))}, #{q(document.fetch("pii_level"))}, #{q(document.fetch("consent_ref"))}, #{document.fetch("public_package_allowed") ? 1 : 0}, #{q(document.fetch("source_mtime"))}, #{q(now)}, '', #{q(now)}, #{q(now)})
         ON CONFLICT(doc_id) DO UPDATE SET
           namespace = excluded.namespace,
           scope = excluded.scope,
           source_type = excluded.source_type,
           source_ref = excluded.source_ref,
           title = excluded.title,
+          artifact_id = excluded.artifact_id,
+          artifact_version = excluded.artifact_version,
           extraction_method = excluded.extraction_method,
+          extraction_confidence = excluded.extraction_confidence,
           content_hash = excluded.content_hash,
+          index_hash = excluded.index_hash,
+          pii_level = excluded.pii_level,
           consent_ref = excluded.consent_ref,
           public_package_allowed = excluded.public_package_allowed,
+          source_mtime = excluded.source_mtime,
           indexed_at = excluded.indexed_at,
           deleted_at = '',
           updated_at = excluded.updated_at;
@@ -248,18 +343,18 @@ module ProductCrewOS
       metadata = JSON.generate(chunk.fetch("metadata"))
       <<~SQL
         INSERT INTO embedding_chunks
-          (chunk_id, doc_id, chunk_index, source_ref, section_path, parent_heading, chunk_strategy, text, metadata_json, source_type, extraction_method, token_count, char_count, embedding_provider, embedding_model, embedding_dim, vector_json, content_hash, stale, deleted_at, created_at, updated_at)
+          (chunk_id, doc_id, chunk_index, source_ref, section_path, parent_heading, chunk_strategy, overlap_prev_chunk_id, overlap_next_chunk_id, text, metadata_json, source_type, extraction_method, ocr_engine, ocr_confidence, ocr_page_index, ocr_bbox_json, token_count, char_count, embedding_provider, embedding_model, embedding_dim, vector_json, content_hash, stale, deleted_at, created_at, updated_at)
         VALUES
-          (#{q(chunk.fetch("chunk_id"))}, #{q(document.fetch("doc_id"))}, #{chunk.fetch("chunk_index")}, #{q(document.fetch("source_ref"))}, #{q(chunk.fetch("section_path"))}, #{q(chunk.fetch("section_path"))}, 'semantic_structured_overlap', #{q(chunk.fetch("text"))}, #{q(metadata)}, #{q(document.fetch("source_type"))}, #{q(document.fetch("extraction_method"))}, 0, #{chunk.fetch("text").length}, #{q(embedding.fetch("provider"))}, #{q(embedding.fetch("model"))}, #{embedding.fetch("embedding_dim")}, #{q(JSON.generate(embedding.fetch("vector")))}, #{q(chunk.fetch("content_hash"))}, 0, '', #{q(now)}, #{q(now)});
+          (#{q(chunk.fetch("chunk_id"))}, #{q(document.fetch("doc_id"))}, #{chunk.fetch("chunk_index")}, #{q(document.fetch("source_ref"))}, #{q(chunk.fetch("section_path"))}, #{q(chunk.fetch("section_path"))}, 'semantic_structured_overlap', #{q(chunk.fetch("overlap_prev_chunk_id"))}, #{q(chunk.fetch("overlap_next_chunk_id"))}, #{q(chunk.fetch("text"))}, #{q(metadata)}, #{q(document.fetch("source_type"))}, #{q(document.fetch("extraction_method"))}, #{q(document.fetch("ocr_engine"))}, #{document.fetch("ocr_confidence") || 0}, #{document.fetch("ocr_page_index")}, #{q(JSON.generate(document.fetch("ocr_bbox_json")))}, 0, #{chunk.fetch("text").length}, #{q(embedding.fetch("provider"))}, #{q(embedding.fetch("model"))}, #{embedding.fetch("embedding_dim")}, #{q(JSON.generate(embedding.fetch("vector")))}, #{q(chunk.fetch("content_hash"))}, 0, '', #{q(now)}, #{q(now)});
       SQL
     end
 
     def insert_job(job_id, document, batch_id, status, now)
       execute(<<~SQL)
         INSERT INTO rag_ingestion_jobs
-          (job_id, namespace, scope, source_ref, source_type, extraction_method, status, batch_id, idempotency_key, content_hash_after, started_at, created_at, updated_at)
+          (job_id, namespace, scope, source_ref, source_type, source_uri_hash, artifact_id, artifact_version, extraction_method, ocr_engine, status, batch_id, idempotency_key, content_hash_after, started_at, created_at, updated_at)
         VALUES
-          (#{q(job_id)}, #{q(document.fetch("namespace"))}, #{q(document.fetch("scope"))}, #{q(document.fetch("source_ref"))}, #{q(document.fetch("source_type"))}, #{q(document.fetch("extraction_method"))}, #{q(status)}, #{q(batch_id)}, #{q(Digest::SHA256.hexdigest("#{document.fetch("source_ref")}|#{document.fetch("content_hash")}|#{provider_model}"))}, #{q(document.fetch("content_hash"))}, #{q(now)}, #{q(now)}, #{q(now)});
+          (#{q(job_id)}, #{q(document.fetch("namespace"))}, #{q(document.fetch("scope"))}, #{q(document.fetch("source_ref"))}, #{q(document.fetch("source_type"))}, #{q(document.fetch("source_uri_hash"))}, #{q(document.fetch("artifact_id"))}, #{q(document.fetch("artifact_version"))}, #{q(document.fetch("extraction_method"))}, #{q(document.fetch("ocr_engine"))}, #{q(status)}, #{q(batch_id)}, #{q(Digest::SHA256.hexdigest("#{document.fetch("source_ref")}|#{document.fetch("index_hash")}|#{provider_model}"))}, #{q(document.fetch("content_hash"))}, #{q(now)}, #{q(now)}, #{q(now)});
       SQL
     end
 
@@ -314,6 +409,14 @@ module ProductCrewOS
     def ensure_schema!
       schema_path = File.expand_path("db/embedding-rag-schema.sql", __dir__)
       execute(File.read(schema_path))
+      ensure_column("embedding_documents", "index_hash", "TEXT DEFAULT ''")
+    end
+
+    def ensure_column(table, column, definition)
+      columns = query("PRAGMA table_info(#{table});").map { |row| row.fetch("name") }
+      return if columns.include?(column)
+
+      execute("ALTER TABLE #{table} ADD COLUMN #{column} #{definition};")
     end
 
     def execute(sql)
@@ -367,6 +470,39 @@ module ProductCrewOS
       return 0.0 if candidates.length < 2
 
       (candidates[0].fetch("score") - candidates[1].fetch("score")).round(4)
+    end
+
+    def gate_evidence_eligible?(namespace, extraction_method, extraction_confidence, pii_level, metadata)
+      return true if namespace == DEFAULT_NAMESPACE && pii_level == "public_rule"
+      return false if pii_level == "unknown_unclassified"
+      return false if extraction_confidence < 0.72
+
+      extraction_method != ""
+    end
+
+    def gate_evidence_reason(namespace, extraction_method, extraction_confidence, pii_level, metadata)
+      return "public_rule_namespace" if namespace == DEFAULT_NAMESPACE && pii_level == "public_rule"
+      return "pii_level_unclassified" if pii_level == "unknown_unclassified"
+      return "extraction_confidence_below_threshold" if extraction_confidence < 0.72
+      return "extraction_method_missing" if extraction_method.empty?
+
+      "source_metadata_sufficient"
+    end
+
+    def evidence_status_from_row(row, metadata)
+      extraction_method = row.fetch("extraction_method", "").to_s
+      extraction_confidence = row.fetch("extraction_confidence", 0).to_f
+      pii_level = row.fetch("pii_level", "unknown_unclassified").to_s
+      namespace = row.fetch("namespace", "").to_s
+      eligible = gate_evidence_eligible?(namespace, extraction_method, extraction_confidence, pii_level, metadata)
+      {
+        "source_ref" => row.fetch("source_ref"),
+        "gate_evidence_eligible" => eligible,
+        "reason" => gate_evidence_reason(namespace, extraction_method, extraction_confidence, pii_level, metadata),
+        "extraction_method" => extraction_method,
+        "extraction_confidence" => extraction_confidence,
+        "pii_level" => pii_level
+      }
     end
 
     def stringify_keys(value)
