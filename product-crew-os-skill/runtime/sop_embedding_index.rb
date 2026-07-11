@@ -1,17 +1,21 @@
 require "yaml"
 require_relative "embedding_provider"
+require_relative "rag_store"
 
 module ProductCrewOS
   class SopEmbeddingIndex
     attr_reader :provider
 
-    def initialize(prompt_eval_path:, provider: ProductCrewOS::EmbeddingProviders.build)
+    def initialize(prompt_eval_path:, provider: ProductCrewOS::EmbeddingProviders.build, db_path: nil)
       @prompt_eval_path = prompt_eval_path
       @provider = provider
       @cases = load_cases(prompt_eval_path)
+      @store = db_path.to_s.empty? ? nil : PersistentRagStore.new(db_path: db_path, provider: provider)
     end
 
     def retrieve(query, top_k: 3)
+      return retrieve_from_persistent_store(query, top_k) if @store
+
       texts = [query.to_s] + @cases.map { |entry| case_search_text(entry) }
       embeddings = @provider.embed_batch(texts)
       query_embedding = embeddings.first
@@ -39,6 +43,39 @@ module ProductCrewOS
     end
 
     private
+
+    def retrieve_from_persistent_store(query, top_k)
+      @store.upsert_documents(
+        namespace: PersistentRagStore::DEFAULT_NAMESPACE,
+        scope: PersistentRagStore::DEFAULT_SCOPE,
+        documents: @cases.map do |entry|
+          {
+            source_ref: "tests/prompt-eval-cases.yaml##{entry.fetch("case_id")}",
+            title: entry.fetch("stage_id"),
+            content: case_search_text(entry),
+            source_type: "yaml",
+            extraction_method: "structured_yaml_parser",
+            metadata: {
+              "stage_id" => entry.fetch("stage_id"),
+              "case_id" => entry.fetch("case_id"),
+              "macro_stage" => entry.fetch("macro_stage", "")
+            }
+          }
+        end
+      )
+      payload = @store.retrieve(
+        query: query,
+        namespace: PersistentRagStore::DEFAULT_NAMESPACE,
+        top_k: top_k,
+        allowed_scopes: [PersistentRagStore::DEFAULT_SCOPE],
+        used_for: "sop_routing"
+      )
+      payload.merge(
+        "candidates" => payload.fetch("candidates").map do |candidate|
+          candidate.slice("stage_id", "case_id", "score", "vector_score", "matched_terms", "source_refs")
+        end
+      )
+    end
 
     def load_cases(path)
       return [] unless File.exist?(path)

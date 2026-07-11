@@ -37,7 +37,7 @@ Product Crew OS must not treat a polished artifact as proof that the workflow ra
 - review evidence when roles are required: context packet, invocation ledger, raw review record, and review item
 - gate decision: gate status, conditions, and the user decision owner
 
-If the host has not connected `runtime/pco_runtime.rb`, Coze workflow nodes, database tables, or an equivalent adapter, the coach must say `runtime_not_connected` and continue only as advice or draft generation. Missing route trace, missing real embedding when standard user runtime requires it, route mismatch, `needs_clarification`, domain exit, required sub-agent not truly invoked, or `template_degraded` skill execution must block or degrade the Stage Gate; it cannot be reported as `conditional_pass`.
+If the host has not connected `runtime/pco_runtime.rb`, Coze workflow nodes, database tables, or an equivalent adapter, the coach must say `runtime_not_connected` and continue only as advice or draft generation. Missing route trace, SOP / Skill mismatch against the persisted route decision, missing Skill execution receipt, missing real embedding when standard user runtime requires it, `needs_clarification`, domain exit, required sub-agent not truly invoked, or `template_degraded` skill execution must return `blocked_runtime_preflight`; it cannot be reported as `conditional_pass`.
 
 ## Default Workflow
 
@@ -78,7 +78,7 @@ Use `references/subagent-natural-language.md` whenever a sub-agent speaks.
 Use `references/project-asset-pack.md` when creating, updating, exporting, or explaining project memory, project artifacts, Obsidian-compatible exports, Markdown project packages, decision logs, review items, timelines, or project knowledge retrieval.
 Use `references/project-memory-index-architecture.md` when discussing Obsidian sync, SQLite, FTS, vector search, RAG, database CRUD, long-term memory updates, or how to prevent project memory from being overwritten.
 Use `runtime/db/embedding-rag-schema.sql` when implementing persistent embedding document/chunk/retrieval-event storage.
-Use `runtime/pco_runtime.rb` when the user wants project memory to be executable, asks to create/update/export a real project workspace, or needs SQLite-backed project state, artifact versions, decisions, review items, agent memory, context packets, invocation logs, route trace, or Obsidian-compatible Vault output. Use its `record-turn` adapter for meaningful coach turns. `record-turn` runs or validates `route-intent` first and writes `routing/stage-route-decision.jsonl`; if the runtime preflight fails, the gate is downgraded to `blocked_runtime_preflight` rather than falsely reporting `conditional_pass`.
+Use `runtime/pco_runtime.rb` when the user wants project memory to be executable, asks to create/update/export a real project workspace, or needs SQLite-backed project state, artifact versions, decisions, review items, agent memory, context packets, invocation logs, route trace, or Obsidian-compatible Vault output. Use its `record-turn` adapter for meaningful coach turns. `record-turn` runs or validates `route-intent` first and writes `routing/stage-route-decision.jsonl`, but may only create a pending Stage Run. `pass / conditional_pass` is reserved for `finalize-stage-gate` on the same `stage_run_id`, after execution evidence, real reviews, and user confirmation are present.
 Use `references/skill-stage-router.md` to pick a stage-specific primary skill and fallback.
 Use `references/skill-dependency-registry.md` when explaining primary vs fallback, checking whether a routed skill is built-in, external, plugin-based, user-provided, or unavailable, and deciding how to continue when a skill is missing.
 Use `references/bundled-skill-index.md` after selecting a routed skill. If a matching bundled implementation exists under `third_party/skills/`, read that bundled skill's `SKILL.md` and relevant resources as the default implementation before falling back to templates.
@@ -154,6 +154,14 @@ Shortcut phrases may be offered as optional entries, but they must route back in
 Skill Router starts only after the input scope gate has either confirmed product work / Product Crew OS operation or found a high-confidence public `pco_rules` route. A missing SOP match is not enough to dispatch product skills: first hard-exit obvious non-product requests, then run explicit rules/aliases and public SOP retrieval in parallel. If the message is product-related but stage confidence is low, use local SOP retrieval to produce `candidate_routes`; when candidate quality is still weak, use `request_triage` or a clarifying question before selecting primary/fallback skills. Private project, user, or team-style retrieval still requires user authorization. If the message is not product-related, leave the Product Crew OS workflow and answer normally.
 
 Skill execution must be auditable. For each routed case, record `expected_primary_skill`, `actual_primary_skill`, `selected_skill`, `skill_status`, and `degrade_reason`. `artifact-template` keeps the workflow moving but is `template_degraded`, not a successful skill hit, and release gates must fail or mark degraded when template fallback is the final execution path.
+
+### Codex Native Skill Execution
+
+When the host is Codex and the routed implementation exists in `third_party/skills/`, the coach must use the bundled Skill as a **host-native execution**: load its `SKILL.md`, read only the relevant references/scripts/templates, and follow its method while producing the current Artifact. Do not require Ollama, DeepSeek, Coze, or a second model merely to execute a Skill that Codex already exposes locally.
+
+Record `host_native_executed` only after that activation actually happened. The evidence must include `host=codex`, `skill_id`, bundled `skill_path`, `skill_content_hash`, the bounded input Artifact/source refs, raw output or output Artifact ref, and timestamp. The host-native Skill may improve analysis and drafting, but it may not change Stage, decide Gate, write project memory, invoke review roles, or write external tools; those remain owned by Product Crew OS.
+
+If the routed capability is Figma/Pencil/MCP-based, or is not bundled, state the missing deployment plainly and ask for the required connector/authorization. Do not route an already-bundled Codex Skill through an unrelated model provider as a substitute for host-native activation.
 
 Common routing:
 

@@ -1,0 +1,103 @@
+schema_version: "0.1"
+integration: coze
+purpose: "Executable node order and persistence contract for the Coze Workflow."
+
+workflow:
+  entry: coach_bot_message
+  nodes:
+    - key: capability_handshake
+      type: plugin_api
+      operation_id: runtimeCapabilityHandshake
+      required_before_standard_sop: true
+      block_on_status: [runtime_not_connected, runtime_degraded]
+    - key: domain_and_sop_route
+      type: plugin_api
+      operation_id: runtimeRouteIntent
+      output: [route_decision_id, stage_id, candidate_routes, real_embedding_performed, source_refs]
+      invariant: "The Runtime persists 44 SOP vectors in pco_rules with content-hash incremental updates and retrieval events."
+    - key: coze_route_trace_mirror
+      type: coze_database_write
+      table: pco_route_traces
+      required: true
+    - key: source_extractor
+      type: coze_file_parser_or_ocr
+      optional: true
+      input: approved_project_source
+      output: [content, source_type, extraction_method, source_ref, consent_ref]
+      invariant: "Screenshot/image/PDF without a usable text layer must pass an OCR node before RAG ingestion."
+    - key: project_rag_ingestion
+      type: plugin_api
+      operation_id: runtimeRagIngest
+      optional: true
+      input: [content, source_type, extraction_method, source_ref, consent_ref]
+      invariant: "Private namespace ingestion requires user authorization and consent_ref."
+    - key: coze_rag_mirror
+      type: coze_database_write
+      table: pco_rag_ingestions
+      optional: true
+    - key: skill_execution
+      type: coze_skill_or_workflow
+      output: [selected_skill, skill_status, artifact_content, skill_execution]
+      forbidden_skill_status_for_gate: [template_degraded, unavailable, failed]
+      invariant: "When an external Skill actually executes, skill_execution must validate against SkillExecutionContract before runtimeRecordTurn. Skill may not alter stage, gate, project memory, or sub-Bot invocation."
+    - key: turn_and_artifact_writer
+      type: plugin_api
+      operation_id: runtimeRecordTurn
+      input_rule: "Pass route_decision_id and Skill execution evidence. Runtime derives required/triggered roles itself and returns complete Context Packets without simulating their reviews."
+    - key: coze_artifact_and_session_mirror
+      type: coze_database_write
+      tables: [pco_artifacts, pco_review_sessions]
+      required: true
+    - key: sub_bot_fan_out
+      type: coze_sub_bot_delegate
+      foreach: roles
+      input: context_packet
+      binding_file: sub-bot-bindings.private.yaml
+      require_runtime_agent_id: true
+    - key: real_review_callback
+      type: plugin_api
+      operation_id: runtimeRecordSubBotCallback
+      foreach: sub_bot_fan_out.results
+      required: true
+    - key: coze_invocation_and_raw_review_mirror
+      type: coze_database_write
+      tables: [pco_agent_invocations, pco_raw_review_records]
+      required: true
+    - key: review_item_and_conflict_collector
+      type: coze_structured_output
+      input: raw_review_records
+      output: [review_items, conflict_matrix, open_questions]
+    - key: review_item_writer
+      type: plugin_api
+      operation_id: runtimeWriteReviewItem
+      foreach: review_items
+    - key: user_decision_parser
+      type: coze_structured_output
+      input: [user_message, review_items, conflict_matrix]
+      output: [action, item_ids, user_confirmed, notes]
+      invariant: "No LLM may invent user_confirmed=true."
+    - key: decision_writer
+      type: plugin_api
+      operation_id: runtimeRecordReviewDecision
+    - key: stage_gate_finalizer
+      type: plugin_api
+      operation_id: runtimeFinalizeStageGate
+      invariant: "Only this node emits pass or conditional_pass."
+    - key: coze_gate_mirror
+      type: coze_database_write
+      table: pco_stage_gates
+      required: true
+    - key: obsidian_export
+      type: plugin_api
+      operation_id: runtimeExportObsidian
+      optional: true
+
+hard_failures:
+  - "route trace absent or stage mismatch -> blocked_runtime_preflight"
+  - "real_embedding_performed is false in standard SOP mode -> blocked_runtime_preflight"
+  - "skill_status is template_degraded -> blocked_runtime_preflight"
+  - "required role lacks a real runtime_agent_id -> blocked_runtime_preflight"
+  - "context_packet_quality is not complete -> invalid_for_gate"
+  - "raw review is absent or advice_only -> invalid_for_gate"
+  - "user decision is absent -> awaiting_user_decision"
+  - "private RAG source lacks consent_ref -> runtime_rejected"

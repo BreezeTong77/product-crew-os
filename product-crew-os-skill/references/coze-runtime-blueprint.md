@@ -195,3 +195,49 @@ Coze M1 最小闭环：
 - 不要把 raw meeting transcript 默认写入长期记忆。
 - 不要让 Obsidian 成为事实源。
 - 不要在未调用真实子 Bot 时声称已经调用。
+
+## 10. 可部署 Bridge 与 Coze 节点
+
+发布包现在提供了真实 HTTP Runtime Bridge：`runtime/pco_coze_bridge.rb`。它不是一个把 README 交给模型的中间层，而是受 token 保护的 API，实际调用 `pco_runtime.rb` 写 SQLite、Project Workspace、route trace、Context Packet、调用账本、raw review 与 Stage Gate。
+
+Coze 接入文件：
+
+| 文件 | 用途 |
+| --- | --- |
+| `integrations/coze/runtime-plugin-openapi.yaml` | 导入为 Coze API 插件；替换 public HTTPS Runtime 域名。 |
+| `integrations/coze/sub-bot-bindings.example.yaml` | 在私有配置中绑定 Product Crew OS role_key 到真实 Coze 子 Bot ID。 |
+| `integrations/coze/database-schema.yaml` | 创建 Coze Database 的审计镜像表。 |
+| `integrations/coze/workflow-node-map.yaml` | 按节点顺序连接 API、Database Write 和 Sub Bot Delegate。 |
+
+真实评审必须走下面这条回调链：
+
+```text
+/v1/routes -> route_decision_id
+-> /v1/turns(route_decision_id)
+-> standard_sop: Runtime-derived Review Session + complete Context Packets
+-> Coze Sub Bot Delegate
+-> /v1/reviews/callback(runtime_agent_id + raw_review)
+-> Review Item / User Decision
+-> /v1/gates/finalize
+```
+
+`/v1/turns` 在这个模式下不会预先生成模拟评审。`/v1/reviews/callback` 会拒绝没有 `runtime_agent_id` 或 persona 不完整的 Context Packet；`/v1/gates/finalize` 会拒绝 route trace、真实 embedding、真实回调、raw review 或用户决策缺失的情况。
+
+这里的 Coze Database 是 Workflow 可视化与运营审计镜像；Runtime SQLite + Project Workspace 仍然是 Gate 的事实源。镜像写入失败时，Workflow 必须标记 `runtime_degraded`，不能把 Coze UI 中的一段 Bot 文本当成已持久化执行证据。
+
+## 11. 持久 SOP 向量索引
+
+Bridge 的标准路由使用 `pco_rules` 持久索引，而不是只在当次对话临时计算 44 SOP：
+
+```text
+44 SOP prompt-eval source
+-> content_hash change detection
+-> batch embedding
+-> embedding_documents / embedding_chunks
+-> embedding_retrieval_events
+-> Stage Router candidate routes
+```
+
+当前 Runtime 会把实际向量引擎返回在 capability handshake 和 route trace 中。`sqlite-vec` 扩展未连接时，仍可使用 `sqlite_json_cosine_fallback` 完成真实持久向量检索；这是一种可用的单文件 SQLite fallback，但性能上不是 `sqlite-vec` 的替代宣称。团队版上线前可以在部署镜像接入 `sqlite-vec`、Qdrant 或 pgvector，并保持同一 source_ref / namespace / retrieval event 契约。
+
+项目材料进入向量索引必须先经过 Coze 的文件解析/OCR 节点，并调用 `/v1/rag/ingest`。只有 `pco_rules` 可以默认写入；`project`、`user_overlay`、`team_style_overlay` 必须包含用户授权对应的 `consent_ref`。

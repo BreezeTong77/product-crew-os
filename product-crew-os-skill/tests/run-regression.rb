@@ -29,6 +29,14 @@ end
 end
 assert(errors, (packet.dig("output_contract", "must_include") || []).include?("use configured persona voice"), "agent output contract must require configured persona voice")
 
+skill_execution_contract = JSON.parse(File.read(File.join(skill_root, "templates", "skill-execution-contract.json")))
+%w[skill_id execution_mode allowed_stage_ids capability_scope approved_actions observed_actions control_boundary output_evidence].each do |field|
+  assert(errors, skill_execution_contract.key?(field), "skill execution contract missing #{field}")
+end
+%w[may_change_stage may_decide_gate may_write_project_memory may_call_agents].each do |field|
+  assert(errors, skill_execution_contract.dig("control_boundary", field) == false, "skill execution contract must reserve #{field} for Product Crew OS")
+end
+
 persona_config = YAML.load_file(File.join(skill_root, "config", "crew-personas.yaml"))
 %w[biz research design tech data qa legal cs customer ops].each do |persona_key|
   persona = persona_config.dig("personas", persona_key) || {}
@@ -256,6 +264,25 @@ end
 host_runtime_compliance = File.read(File.join(skill_root, "references", "host-runtime-compliance.md"))
 %w[Capability Handshake real_embedding_provider subagent_delegate runtime_not_connected invalid_for_gate].each do |phrase|
   assert(errors, host_runtime_compliance.include?(phrase), "host runtime compliance missing #{phrase}")
+end
+
+coze_bridge = File.read(File.join(skill_root, "runtime", "pco_coze_bridge.rb"))
+%w[PCO_RUNTIME_TOKEN standard_sop route_decision_id runtime_agent_id raw_review finalize-stage-gate].each do |phrase|
+  assert(errors, coze_bridge.include?(phrase), "coze runtime bridge missing #{phrase}")
+end
+coze_openapi = YAML.load_file(File.join(skill_root, "integrations", "coze", "runtime-plugin-openapi.yaml"))
+%w[/v1/handshake /v1/rag/ingest /v1/rag/retrieve /v1/turns /v1/reviews/callback /v1/gates/finalize].each do |path|
+  assert(errors, (coze_openapi["paths"] || {}).key?(path), "coze OpenAPI missing #{path}")
+end
+coze_node_map = YAML.load_file(File.join(skill_root, "integrations", "coze", "workflow-node-map.yaml"))
+coze_node_keys = Array(coze_node_map.dig("workflow", "nodes")).map { |node| node["key"] }
+%w[sub_bot_fan_out real_review_callback stage_gate_finalizer].each do |node_key|
+  assert(errors, coze_node_keys.include?(node_key), "coze node map missing #{node_key}")
+end
+
+persistent_rag_store = File.read(File.join(skill_root, "runtime", "rag_store.rb"))
+%w[PersistentRagStore embedding_documents embedding_chunks rag_ingestion_jobs embedding_retrieval_events sqlite_json_cosine_fallback].each do |phrase|
+  assert(errors, persistent_rag_store.include?(phrase), "persistent RAG store missing #{phrase}")
 end
 
 assert(errors, prompt_eval_cases.length == 44, "prompt eval should cover 44 SOP cases, found #{prompt_eval_cases.length}")

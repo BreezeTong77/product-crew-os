@@ -75,9 +75,10 @@ class SemanticStageRouter
 
   attr_reader :prompt_eval_path
 
-  def initialize(prompt_eval_path:, embedding_mode: ENV["PCO_STAGE_ROUTER_EMBEDDING"].to_s)
+  def initialize(prompt_eval_path:, embedding_mode: ENV["PCO_STAGE_ROUTER_EMBEDDING"].to_s, vector_db_path: nil)
     @prompt_eval_path = prompt_eval_path
     @embedding_mode = embedding_mode.to_s
+    @vector_db_path = vector_db_path
     @last_retrieval_metadata = default_retrieval_metadata
     @cases = load_cases(prompt_eval_path)
     @cases_by_stage = @cases.each_with_object({}) do |entry, memo|
@@ -207,7 +208,7 @@ class SemanticStageRouter
   end
 
   def retrieve_embedding_candidates(text)
-    index = ProductCrewOS::SopEmbeddingIndex.new(prompt_eval_path: @prompt_eval_path)
+    index = ProductCrewOS::SopEmbeddingIndex.new(prompt_eval_path: @prompt_eval_path, db_path: @vector_db_path)
     payload = index.retrieve(text, top_k: 3)
     candidates = payload.fetch("candidates")
     @last_retrieval_metadata = {

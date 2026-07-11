@@ -66,6 +66,7 @@ Dir.mktmpdir("pco-review-loop-e2e-") do |dir|
     "--artifact-content", "评审对象：信息流首页原型和需求边界。",
     "--review-roles", "Tech,QA",
     "--gate-status", "blocked",
+    "--review-mode", "simulated_placeholder",
     "--gate-result", "等待用户决策后再关闭"
   )
   session_id = turn.fetch("review_session_id")
@@ -176,6 +177,7 @@ Dir.mktmpdir("pco-review-loop-e2e-") do |dir|
     "--artifact-content", "评审对象：技术负责人必须返回后才能过阶段门。",
     "--review-roles", "Tech",
     "--gate-status", "blocked",
+    "--review-mode", "simulated_placeholder",
     "--gate-result", "等待技术负责人返回"
   )
   timeout_session_id = timeout_turn.fetch("review_session_id")

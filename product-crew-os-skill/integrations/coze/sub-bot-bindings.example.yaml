@@ -1,0 +1,55 @@
+schema_version: "0.1"
+integration: coze
+purpose: "Bind protected Product Crew OS role keys to actual Coze sub-Bot IDs."
+
+# Copy this file outside the public repository, fill real IDs, and load it as
+# Coze workflow configuration. Never replace role_key/display_name with a
+# runtime nickname returned by Coze.
+bindings:
+  Biz:
+    coze_bot_id: "REPLACE_WITH_BIZ_BOT_ID"
+    invocation_node: "call_bot_biz"
+  Tech:
+    coze_bot_id: "REPLACE_WITH_TECH_BOT_ID"
+    invocation_node: "call_bot_tech"
+  Design:
+    coze_bot_id: "REPLACE_WITH_DESIGN_BOT_ID"
+    invocation_node: "call_bot_design"
+  Research:
+    coze_bot_id: "REPLACE_WITH_RESEARCH_BOT_ID"
+    invocation_node: "call_bot_research"
+  Data:
+    coze_bot_id: "REPLACE_WITH_DATA_BOT_ID"
+    invocation_node: "call_bot_data"
+  QA:
+    coze_bot_id: "REPLACE_WITH_QA_BOT_ID"
+    invocation_node: "call_bot_qa"
+  CS:
+    coze_bot_id: "REPLACE_WITH_CS_BOT_ID"
+    invocation_node: "call_bot_cs"
+  Customer:
+    coze_bot_id: "REPLACE_WITH_CUSTOMER_BOT_ID"
+    invocation_node: "call_bot_customer"
+  Legal:
+    coze_bot_id: "REPLACE_WITH_LEGAL_BOT_ID"
+    invocation_node: "call_bot_legal"
+  Ops:
+    coze_bot_id: "REPLACE_WITH_OPS_BOT_ID"
+    invocation_node: "call_bot_ops"
+
+callback_contract:
+  required_fields:
+    - project_id
+    - session_id
+    - role_key
+    - stage_id
+    - artifact_id
+    - context_packet_id
+    - runtime_agent_id
+    - raw_review
+    - conclusion
+  invariants:
+    - "role_key is the stable Product Crew OS role key."
+    - "runtime_agent_id comes from the actual Coze sub-Bot invocation."
+    - "runtime_nickname is audit-only and must not overwrite configured role identity."
+    - "The callback must call /v1/reviews/callback before any stage gate can be finalized."

@@ -1,0 +1,19 @@
+{
+  "contract_ref": "project:skill-run:example",
+  "skill_id": "deliver-prd",
+  "execution_mode": "external_workflow",
+  "allowed_stage_ids": ["prd_v0_draft"],
+  "capability_scope": ["需求组织", "专业写作", "一致性检查"],
+  "approved_actions": ["read_artifacts", "draft_artifact"],
+  "observed_actions": ["read_artifacts", "draft_artifact"],
+  "control_boundary": {
+    "may_change_stage": false,
+    "may_decide_gate": false,
+    "may_write_project_memory": false,
+    "may_call_agents": false
+  },
+  "output_evidence": {
+    "artifact_name": "prd-v0.md",
+    "source_ref": "skill:deliver-prd:run-001"
+  }
+}

@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS projects (
   owner TEXT DEFAULT '',
   current_stage_id TEXT DEFAULT 'project_intake',
   current_macro_stage TEXT DEFAULT 'opportunity_discovery',
+  last_gate_passed_stage_id TEXT DEFAULT '',
   status TEXT DEFAULT 'active',
   workspace_path TEXT NOT NULL,
   created_at TEXT NOT NULL,
@@ -18,10 +19,15 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE TABLE IF NOT EXISTS stages (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id TEXT NOT NULL,
+  stage_run_id TEXT DEFAULT '',
   stage_id TEXT NOT NULL,
   macro_stage TEXT DEFAULT '',
   status TEXT DEFAULT 'in_progress',
+  requested_gate_status TEXT DEFAULT 'not_ready',
   gate_status TEXT DEFAULT 'not_ready',
+  route_decision_id TEXT DEFAULT '',
+  artifact_id TEXT DEFAULT '',
+  skill_run_id TEXT DEFAULT '',
   started_at TEXT NOT NULL,
   completed_at TEXT DEFAULT '',
   FOREIGN KEY (project_id) REFERENCES projects(project_id)
@@ -46,7 +52,29 @@ CREATE TABLE IF NOT EXISTS skill_runs (
   skill_name TEXT NOT NULL,
   fallback_skill_name TEXT DEFAULT '',
   status TEXT DEFAULT 'planned',
+  execution_mode TEXT DEFAULT 'catalog_selected',
+  contract_status TEXT DEFAULT 'not_provided',
+  contract_ref TEXT DEFAULT '',
+  capability_scope TEXT DEFAULT '',
+  observed_actions_json TEXT DEFAULT '[]',
+  overreach_detected INTEGER DEFAULT 0,
+  execution_id TEXT DEFAULT '',
   output_ref TEXT DEFAULT '',
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (project_id) REFERENCES projects(project_id)
+);
+
+CREATE TABLE IF NOT EXISTS skill_execution_records (
+  execution_id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  stage_id TEXT NOT NULL,
+  skill_id TEXT NOT NULL,
+  runtime_model_id TEXT NOT NULL,
+  host_run_id TEXT NOT NULL,
+  raw_output TEXT NOT NULL,
+  observed_actions_json TEXT DEFAULT '[]',
+  source_ref TEXT DEFAULT '',
+  path TEXT DEFAULT '',
   created_at TEXT NOT NULL,
   FOREIGN KEY (project_id) REFERENCES projects(project_id)
 );

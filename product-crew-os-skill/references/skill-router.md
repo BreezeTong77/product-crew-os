@@ -29,3 +29,7 @@ Routing rule:
 5. Convert review results into artifact edits.
 6. If no installed skill fits, use the artifact template and clearly state the missing capability.
 7. If the user has a preferred skill, tool, or software workflow, adapt to it instead of forcing the default stack.
+
+## Codex Host Rule
+
+在 Codex 中，内置于 `third_party/skills/` 的 Skill 是宿主原生能力，不需要再部署 Ollama 或第二个模型。命中后主控必须读取并实际遵循该 Skill 的 `SKILL.md`，把它的专业方法用于当前 Artifact；然后记录 `host_native_executed` 证据。只有 Figma/Pencil 等 MCP 能力、用户自带私有 Skill、或本包不存在的 fallback，才需要额外部署、授权或显式降级。

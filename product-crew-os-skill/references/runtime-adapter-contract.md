@@ -28,6 +28,7 @@ Product Crew OS 不能单靠 Markdown 规则包强制任意宿主自动调用子
 -> Stage Router
 -> SOP Router
 -> Skill Router
+-> Skill Execution Contract
 -> Artifact Writer
 -> Review Router
 -> Review Session Writer
@@ -41,14 +42,15 @@ Product Crew OS 不能单靠 Markdown 规则包强制任意宿主自动调用子
 
 ### 2.1 Runtime Preflight / 运行时预检
 
-`record-turn` 不能只相信主控传入的 `stage_id`。在写入 SOP、Skill、Artifact 和 Stage Gate 前，runtime 必须先执行或验证 `route-intent`：
+`record-turn` 不能相信主控或 Coze 传入的 `stage_id`、`sop_id`、`primary_skill` 或 `review_roles`。在写入 SOP、Skill、Artifact 和 Stage Run 前，runtime 必须先执行或验证 `route-intent`，并以持久化 route decision 为控制面真源：
 
 ```text
 record-turn
 -> route-intent
 -> 写 routing/stage-route-decision.jsonl
 -> 校验 product_crew_os_applies / stage_id / route_status / skill_status
--> 预检通过才允许 pass / conditional_pass
+-> 只创建待评审 / 待用户确认的 Stage Run
+-> finalize-stage-gate（携带同一 stage_run_id）才可能 pass / conditional_pass
 ```
 
 如果出现下列任一情况，runtime 可以继续保存草稿 artifact 和审阅痕迹，但 Stage Gate 必须降级为 `blocked_runtime_preflight`：
@@ -57,6 +59,9 @@ record-turn
 - `route-intent` 判断为非产品任务。
 - route 结果仍为 `needs_clarification`。
 - route `stage_id` 与 `record-turn` 传入 stage 不一致。
+- route `sop` 与传入 SOP 不一致，或传入 Skill 不是 route primary / fallback。
+- 没有经验证的 Skill Execution Contract 与 execution receipt。
+- Required / Triggered Roles 被调用方省略、设为 `none` 或用模拟评审替代。
 - 标准用户运行要求真实 embedding，但 route decision 中 `real_embedding_performed != true`。
 - 标准 SOP 要求真实子 Agent，但 Required / Triggered roles 没有真实 invocation。
 - skill 执行状态为 `template_degraded`。
@@ -107,6 +112,7 @@ ruby product-crew-os-skill/runtime/pco_runtime.rb record-turn \
 | `raw_review_records` | 每个角色的原始评审输出和证据 |
 | `review_items` | 评审项与建议 |
 | `events` | 指标事件 |
+| `stages.stage_run_id` | 本轮不可变执行 ID；最终 Gate 必须锁定到它，不能按同 stage 的最新记录关闭 |
 | Project Workspace | 项目首页、时间线、决策、评审、来源、团队记忆 |
 
 ## 3. 子 Agent 调用协议
@@ -151,7 +157,38 @@ Runtime 必须记录以下核心事件，便于回归和评估：
 | `stage_gate_decision` | 检查阶段门是否明确 |
 | `obsidian_exported` | 检查可视化项目包是否导出 |
 
-如果没有 `stage_route_decision` 和 `routing/stage-route-decision.jsonl`，任何 `conditional_pass` 都应视为无效。
+如果没有 `stage_route_decision`、有效 Skill execution receipt、完整 Required / Triggered Roles 的真实评审，或用户确认，任何 `conditional_pass` 都应视为无效。
+
+### 2.2 Skill Execution Contract / 外部 Skill 执行契约
+
+外部 Skill 可以保留自己的专业方法、推理链和文档工作流；Product Crew OS 不把它压缩成固定几步或固定格式。但正式执行必须带契约，防止 Skill 替代 SOP、Gate、用户决策或团队评审。
+
+```text
+SOP 选择 Skill 与目标
+-> Contract 约束权限与证据
+-> Skill 运行专业工作流
+-> Runtime 校验实际动作与输出证据
+-> Artifact / Review / 用户决策 / Stage Gate
+```
+
+契约至少声明：`skill_id`、`allowed_stage_ids`、`capability_scope`、`approved_actions`、实际 `observed_actions` 和输出证据。它不要求 Skill 使用固定 PRD 模板，但必须返回一个可归档 Artifact 名称和来源引用。
+
+以下控制权始终属于 Product Crew OS，契约值必须为 `false`：
+
+- `may_change_stage`
+- `may_decide_gate`
+- `may_write_project_memory`
+- `may_call_agents`
+
+外部工具动作可以在 `approved_actions` 中精确授权，例如 `figma.write_nodes`、`jira.create_issue`；未授权或禁止动作会令 `skill_contract_invalid`，通过类 Gate 自动降为 `blocked_runtime_preflight`。
+
+示例见 [Skill Execution Contract 模板](../templates/skill-execution-contract.json)。
+
+### 2.3 Codex Native Skill Contract
+
+若宿主是 Codex，且路由目标是已打包的 `third_party/skills/*/SKILL.md`，它可作为 `host_native` 执行，不要求额外 LLM provider。有效证据为：Codex 实际加载的 `skill_path`、内容 hash、输入 Artifact/source refs、输出 Artifact/raw output ref 和执行时间。
+
+`host_native` 仍受同一控制边界约束：Skill 不能自行改 Stage、决定 Gate、写项目记忆、召唤评审角色或写外部工具。MCP 写入仍须先征得用户授权。
 
 ## 5. Note Adapter / 笔记工具适配
 

@@ -56,11 +56,21 @@ required_files = [
   "references/workflow-implementation-coverage-v0.md",
   "references/workflow-implementation-coverage-v0.yaml",
   "integrations/coze/workflow-blueprint.yaml",
+  "integrations/coze/runtime-plugin-openapi.yaml",
+  "integrations/coze/sub-bot-bindings.example.yaml",
+  "integrations/coze/database-schema.yaml",
+  "integrations/coze/workflow-node-map.yaml",
+  "integrations/coze/Dockerfile",
+  "integrations/coze/docker-compose.yml",
+  "integrations/coze/.env.example",
+  "integrations/coze/deploy.md",
   "runtime/README.md",
   "runtime/create_demo_vault.rb",
   "runtime/db/embedding-rag-schema.sql",
   "runtime/db/schema.sql",
   "runtime/pco_runtime.rb",
+  "runtime/pco_coze_bridge.rb",
+  "runtime/rag_store.rb",
   "runtime/embedding_provider.rb",
   "runtime/sop_embedding_index.rb",
   "runtime/stage_router.rb",
@@ -98,6 +108,8 @@ required_files = [
   "tests/run-local-open-source-embedding-provider-contract.rb",
   "tests/run-routing-eval.rb",
   "tests/run-review-loop-e2e.rb",
+  "tests/run-coze-runtime-bridge-smoke.rb",
+  "tests/run-persistent-sop-vector-index.rb",
   "tests/run-runtime-smoke.rb",
   "tests/run-sop-e2e-smoke.rb",
   "tests/run-loop-50-cases.rb"
@@ -132,6 +144,37 @@ coze_yaml = YAML.load_file(File.join(skill_root, "integrations", "coze", "workfl
 errors << "coze workflow missing capability_handshake" unless coze_yaml.key?("capability_handshake")
 errors << "coze workflow missing embedding_recall node" unless Array(coze_yaml["workflow_nodes"]).any? { |node| node["key"] == "embedding_recall" }
 errors << "coze workflow missing runtime_preflight node" unless Array(coze_yaml["workflow_nodes"]).any? { |node| node["key"] == "runtime_preflight" }
+deployment_assets = coze_yaml["deployment_assets"] || {}
+%w[runtime_bridge_entrypoint openapi_plugin_contract sub_bot_binding_template coze_database_schema workflow_node_map].each do |key|
+  errors << "coze workflow missing deployment asset: #{key}" if deployment_assets[key].to_s.empty?
+end
+
+coze_openapi = YAML.load_file(File.join(skill_root, "integrations", "coze", "runtime-plugin-openapi.yaml"))
+%w[/v1/handshake /v1/routes /v1/rag/ingest /v1/rag/retrieve /v1/turns /v1/reviews/callback /v1/gates/finalize].each do |path|
+  errors << "coze OpenAPI missing path: #{path}" unless (coze_openapi["paths"] || {}).key?(path)
+end
+errors << "coze OpenAPI missing bearer auth" unless coze_openapi.dig("components", "securitySchemes", "bearerAuth", "scheme") == "bearer"
+
+coze_node_map = YAML.load_file(File.join(skill_root, "integrations", "coze", "workflow-node-map.yaml"))
+node_keys = Array(coze_node_map.dig("workflow", "nodes")).map { |node| node["key"] }
+%w[capability_handshake domain_and_sop_route turn_and_artifact_writer sub_bot_fan_out real_review_callback stage_gate_finalizer].each do |node_key|
+  errors << "coze node map missing node: #{node_key}" unless node_keys.include?(node_key)
+end
+
+bridge = File.read(File.join(skill_root, "runtime", "pco_coze_bridge.rb"))
+%w[PCO_RUNTIME_TOKEN record_real_review_callback finalize-stage-gate standard_sop route_decision_id runtime_agent_id].each do |phrase|
+  errors << "coze runtime bridge missing #{phrase}" unless bridge.include?(phrase)
+end
+
+runtime_implementation = File.read(File.join(skill_root, "runtime", "pco_runtime.rb"))
+%w[prepare_external_review finalize_stage_gate context_packet_quality persona_injection_status rag_ingest rag_retrieve].each do |phrase|
+  errors << "runtime missing external Coze review guard: #{phrase}" unless runtime_implementation.include?(phrase)
+end
+
+rag_store = File.read(File.join(skill_root, "runtime", "rag_store.rb"))
+%w[PersistentRagStore semantic_structured_overlap rag_ingestion_jobs embedding_retrieval_events consent_ref sqlite_json_cosine_fallback].each do |phrase|
+  errors << "persistent RAG store missing #{phrase}" unless rag_store.include?(phrase)
+end
 
 bundled_skill_dir = File.join(skill_root, "third_party", "skills")
 bundled_skill_files = Dir[File.join(bundled_skill_dir, "*", "SKILL.md")]

@@ -1,0 +1,123 @@
+schema_version: "0.1"
+integration: coze
+purpose: "Coze Database mirror tables for Workflow inspection. SQLite Runtime remains the source of truth."
+
+# Create these tables in the Coze space and connect the listed write nodes.
+# The mirror lets Coze operators inspect execution. It must not replace the
+# runtime database or Project Workspace files used by gate validation.
+tables:
+  - name: pco_projects
+    primary_key: project_id
+    fields:
+      - { name: project_id, type: text, required: true }
+      - { name: name, type: text, required: true }
+      - { name: current_stage_id, type: text }
+      - { name: status, type: text }
+      - { name: updated_at, type: datetime }
+  - name: pco_route_traces
+    primary_key: route_decision_id
+    fields:
+      - { name: route_decision_id, type: text, required: true }
+      - { name: project_id, type: text, required: true }
+      - { name: stage_id, type: text }
+      - { name: sop_id, type: text }
+      - { name: retrieval_mode, type: text }
+      - { name: real_embedding_performed, type: boolean }
+      - { name: confidence, type: number }
+      - { name: source_refs_json, type: text }
+      - { name: created_at, type: datetime }
+  - name: pco_artifacts
+    primary_key: artifact_id
+    fields:
+      - { name: artifact_id, type: text, required: true }
+      - { name: project_id, type: text, required: true }
+      - { name: stage_id, type: text }
+      - { name: sop_id, type: text }
+      - { name: name, type: text }
+      - { name: version, type: number }
+      - { name: status, type: text }
+      - { name: runtime_path, type: text }
+      - { name: created_at, type: datetime }
+  - name: pco_review_sessions
+    primary_key: review_session_id
+    fields:
+      - { name: review_session_id, type: text, required: true }
+      - { name: project_id, type: text, required: true }
+      - { name: stage_id, type: text }
+      - { name: artifact_id, type: text }
+      - { name: required_roles_json, type: text }
+      - { name: status, type: text }
+      - { name: created_at, type: datetime }
+  - name: pco_agent_invocations
+    primary_key: invocation_id
+    fields:
+      - { name: invocation_id, type: text, required: true }
+      - { name: review_session_id, type: text }
+      - { name: project_id, type: text, required: true }
+      - { name: role_key, type: text, required: true }
+      - { name: runtime_agent_id, type: text, required: true }
+      - { name: context_packet_id, type: text, required: true }
+      - { name: real_invocation_performed, type: boolean, required: true }
+      - { name: result, type: text }
+      - { name: created_at, type: datetime }
+  - name: pco_raw_review_records
+    primary_key: raw_review_record_id
+    fields:
+      - { name: raw_review_record_id, type: text, required: true }
+      - { name: invocation_id, type: text, required: true }
+      - { name: review_session_id, type: text, required: true }
+      - { name: role_key, type: text, required: true }
+      - { name: conclusion, type: text }
+      - { name: runtime_path, type: text }
+      - { name: created_at, type: datetime }
+  - name: pco_review_items
+    primary_key: review_item_id
+    fields:
+      - { name: review_item_id, type: text, required: true }
+      - { name: review_session_id, type: text }
+      - { name: project_id, type: text, required: true }
+      - { name: role_key, type: text }
+      - { name: priority, type: text }
+      - { name: status, type: text }
+      - { name: user_decision, type: text }
+      - { name: source_ref, type: text }
+  - name: pco_stage_gates
+    primary_key: gate_event_id
+    fields:
+      - { name: gate_event_id, type: text, required: true }
+      - { name: project_id, type: text, required: true }
+      - { name: stage_id, type: text }
+      - { name: artifact_id, type: text }
+      - { name: gate_status, type: text }
+      - { name: blocking_reason, type: text }
+      - { name: created_at, type: datetime }
+  - name: pco_rag_ingestions
+    primary_key: rag_ingestion_id
+    fields:
+      - { name: rag_ingestion_id, type: text, required: true }
+      - { name: namespace, type: text, required: true }
+      - { name: scope, type: text, required: true }
+      - { name: source_ref, type: text, required: true }
+      - { name: extraction_method, type: text }
+      - { name: consent_ref, type: text }
+      - { name: vector_store, type: text }
+      - { name: status, type: text }
+      - { name: created_at, type: datetime }
+  - name: pco_retrieval_events
+    primary_key: retrieval_event_id
+    fields:
+      - { name: retrieval_event_id, type: text, required: true }
+      - { name: namespace, type: text, required: true }
+      - { name: retrieval_mode, type: text }
+      - { name: real_embedding_performed, type: boolean }
+      - { name: source_refs_json, type: text }
+      - { name: selected_stage, type: text }
+      - { name: created_at, type: datetime }
+
+workflow_write_rules:
+  - "Write pco_route_traces immediately after /v1/routes."
+  - "Write pco_artifacts and pco_review_sessions from /v1/turns."
+  - "Write pco_agent_invocations and pco_raw_review_records only after /v1/reviews/callback succeeds."
+  - "Write pco_review_items after the collector persists each item."
+  - "Write pco_stage_gates only from /v1/gates/finalize, never from an LLM decision node."
+  - "Write pco_rag_ingestions and pco_retrieval_events only from successful Runtime API responses."

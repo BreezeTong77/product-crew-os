@@ -1,0 +1,88 @@
+schema_version: "0.1"
+# This is an execution registry, not the Skill Router. A routed Skill may only
+# be reported as executed when it has a driver here and the driver returns proof.
+defaults:
+  ollama_model: "qwen2.5:3b"
+  prompt_max_chars: 24000
+skills:
+  assumption-mapper:
+    driver: host_callback_required
+    allowed_stages: [assumption_mapping]
+    reason: "This bundled Skill provides methodology only; it has no package-owned executable driver."
+    deployment_notice:
+      title: "需要部署宿主 LLM 回调"
+      user_message: "该 Skill 是方法论指令，不是本地脚本。请先在当前宿主配置真实 LLM / Workflow 节点加载其 SKILL.md，并将原始输出和执行证据回传 Product Crew OS。"
+      required_steps: ["配置宿主 LLM 或 Workflow 节点", "加载对应 SKILL.md", "回传原始输出、模型标识和执行时间", "由 Product Crew OS 归档 Artifact 后再评审"]
+      authorization_required: false
+  product-discovery:
+    driver: command
+    source: "third_party/skills/alirez-product-discovery/scripts/assumption_mapper.py"
+    allowed_stages: [research_plan]
+    input_schema: assumption_list
+    output_type: prioritized_assumption_test_plan
+  trustworthy-experiments:
+    driver: command
+    source: "third_party/skills/turner-trustworthy-experiments/scripts/sample_size.py"
+    allowed_stages: [research_plan, validation_plan]
+    input_schema: experiment_sample_size
+    output_type: sample_size_estimate
+  scope-cutting:
+    driver: host_callback_required
+    allowed_stages: [mvp_scope]
+    reason: "Methodology skill: the host must load SKILL.md into an actual LLM or workflow node and return a contract-backed result."
+    deployment_notice:
+      title: "需要部署范围裁剪 Skill 回调"
+      user_message: "范围裁剪需要真实宿主模型执行该 Skill。请先部署 LLM / Workflow 回调；未部署时系统只能保留草稿，不能声称 Skill 已运行。"
+      required_steps: ["配置可调用模型的宿主节点", "加载 scope-cutting 的 SKILL.md", "回传原始输出和模型/运行标识", "提交 Skill Execution Contract"]
+      authorization_required: false
+  pencil-design:
+    driver: mcp_required
+    allowed_stages: [low_fi_prototype]
+    reason: "Requires an installed Pencil CLI or MCP adapter and explicit user authorization."
+    deployment_notice:
+      title: "需要部署 Pencil MCP / CLI 并获得写入授权"
+      user_message: "原型产物需要调用 Pencil。请先安装并连接 Pencil MCP 或 CLI；在创建、修改或导出外部设计文件前，系统会再次向用户确认写入授权。"
+      required_steps: ["安装并连接 Pencil MCP 或 CLI", "在宿主 capability handshake 中确认可用", "用户确认目标工作区与写入范围", "回传外部对象 ID、预览或导出引用"]
+      authorization_required: true
+  figma:figma-generate-diagram:
+    driver: mcp_required
+    allowed_stages: [core_flow_diagram]
+    reason: "Requires an installed Figma MCP connector and explicit user authorization."
+    deployment_notice:
+      title: "需要部署 Figma MCP 并获得写入授权"
+      user_message: "流程图需要调用 Figma MCP。请先连接 Figma 工作区；创建或修改 Figma 文件前，系统会再次确认用户授权。"
+      required_steps: ["安装并连接 Figma MCP", "确认目标 Figma 工作区", "用户确认写入范围", "回传文件 URL、节点 ID 或导出引用"]
+      authorization_required: true
+  figma:figma-use:
+    driver: mcp_required
+    allowed_stages: [low_fi_prototype]
+    reason: "Requires an installed Figma MCP connector and explicit user authorization."
+    deployment_notice:
+      title: "需要部署 Figma MCP 并获得写入授权"
+      user_message: "原型写入需要调用 Figma MCP。请先连接 Figma 工作区；未授权时只能保留本地原型说明。"
+      required_steps: ["安装并连接 Figma MCP", "确认目标 Figma 工作区", "用户确认写入范围", "回传文件 URL、节点 ID 或导出引用"]
+      authorization_required: true
+  deliver-launch-checklist:
+    driver: missing_capability
+    reason: "No bundled external Skill implementation exists for this fallback."
+    deployment_notice:
+      title: "需要提供上线清单能力"
+      user_message: "当前包没有可执行的上线清单外部 Skill。请接入用户自有 Skill、宿主 Workflow，或明确使用 Product Crew OS 的 Artifact 模板。"
+      required_steps: ["接入外部 Skill 或宿主 Workflow", "声明输入输出与执行证据", "通过 Skill Execution Contract 接回 PCO"]
+      authorization_required: false
+  develop-design-rationale:
+    driver: missing_capability
+    reason: "No bundled external Skill implementation exists for this fallback."
+    deployment_notice:
+      title: "需要提供设计说明能力"
+      user_message: "当前包没有可执行的设计说明外部 Skill。请接入用户自有 Skill、宿主 Workflow，或明确使用 Product Crew OS 的 Artifact 模板。"
+      required_steps: ["接入外部 Skill 或宿主 Workflow", "声明输入输出与执行证据", "通过 Skill Execution Contract 接回 PCO"]
+      authorization_required: false
+  measure-instrumentation-spec:
+    driver: missing_capability
+    reason: "No bundled external Skill implementation exists for this fallback."
+    deployment_notice:
+      title: "需要提供埋点设计能力"
+      user_message: "当前包没有可执行的埋点设计外部 Skill。请接入用户自有 Skill、宿主 Workflow，或明确使用 Product Crew OS 的 Artifact 模板。"
+      required_steps: ["接入外部 Skill 或宿主 Workflow", "声明输入输出与执行证据", "通过 Skill Execution Contract 接回 PCO"]
+      authorization_required: false

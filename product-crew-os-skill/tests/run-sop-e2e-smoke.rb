@@ -72,6 +72,8 @@ Dir.mktmpdir("pco-sop-e2e-") do |dir|
 
   fallback_used = 0
   template_used = 0
+  expected_review_sessions = 0
+  expected_review_role_outputs = 0
 
   cases.each do |test_case|
     expected = test_case.fetch("expected")
@@ -96,6 +98,9 @@ Dir.mktmpdir("pco-sop-e2e-") do |dir|
     artifact_name = Array(expected.fetch("required_artifacts")).first || "#{stage_id}.md"
     roles = (Array(expected["required_roles"]) + Array(expected["triggered_roles"])).uniq
     roles = ["Coach"] if roles.empty?
+    external_roles = roles.reject { |role| role == "Coach" }
+    expected_review_sessions += 1 if external_roles.any?
+    expected_review_role_outputs += external_roles.length
     content_path = File.join(dir, "#{stage_id}.md")
     File.write(content_path, <<~MARKDOWN)
       ## SOP E2E Smoke Artifact
@@ -131,7 +136,8 @@ Dir.mktmpdir("pco-sop-e2e-") do |dir|
       "--artifact-name", artifact_name,
       "--artifact-content-file", content_path,
       "--artifact-status", "draft",
-      "--gate-status", "conditional_pass",
+      "--gate-status", "blocked",
+      "--review-mode", "simulated_placeholder",
       "--gate-result", expected.fetch("stage_gate"),
       "--review-roles", roles.join(","),
       "--source-ref", "prompt-eval:#{test_case.fetch("case_id")}"
@@ -154,26 +160,28 @@ Dir.mktmpdir("pco-sop-e2e-") do |dir|
 	    "skill_runs" => 44,
 	    "artifacts" => 44,
 	    "artifact_versions" => 44,
-	    "review_sessions" => 44
+	    "review_sessions" => expected_review_sessions
 	  }
   expected_counts.each do |table, expected_count|
     actual_count = query_count(db, table)
     raise "#{table} expected #{expected_count}, got #{actual_count}" unless actual_count == expected_count
   end
 
-	  %w[context_packets agent_invocations raw_review_records review_items fts_documents events].each do |table|
+	  %w[context_packets agent_invocations raw_review_records review_items].each do |table|
 	    actual_count = query_count(db, table)
-	    raise "#{table} expected at least 44, got #{actual_count}" if actual_count < 44
+	    raise "#{table} expected at least #{expected_review_role_outputs}, got #{actual_count}" if actual_count < expected_review_role_outputs
 	  end
+	  raise "fts_documents expected at least 44" if query_count(db, "fts_documents") < 44
+	  raise "events expected at least 44" if query_count(db, "events") < 44
 
   {
     "stage_detected" => 44,
     "skill_selected" => 44,
 	    "stage_gate_decision" => 44,
-	    "agent_summoned" => 44,
-	    "memory_snapshot_built" => 44,
-	    "review_session_opened" => 44,
-	    "raw_review_record_written" => 44
+	    "agent_summoned" => expected_review_role_outputs,
+	    "memory_snapshot_built" => expected_review_role_outputs,
+	    "review_session_opened" => expected_review_sessions,
+	    "raw_review_record_written" => expected_review_role_outputs
 	  }.each do |event_type, minimum_count|
     actual_count = event_count(db, event_type)
     raise "#{event_type} expected at least #{minimum_count}, got #{actual_count}" if actual_count < minimum_count
@@ -186,6 +194,8 @@ Dir.mktmpdir("pco-sop-e2e-") do |dir|
   template_count = query_value(db, "SELECT COUNT(*) AS count FROM skill_runs WHERE status = 'template_used';", "count")
   raise "expected fallback_used count #{fallback_used}, got #{fallback_count}" unless fallback_count == fallback_used
   raise "expected template_used count #{template_used}, got #{template_count}" unless template_count == template_used
+  passing_gate_count = query_value(db, "SELECT COUNT(*) AS count FROM stages WHERE gate_status IN ('pass', 'conditional_pass');", "count")
+  raise "simulation smoke must not produce passing gates, got #{passing_gate_count}" unless passing_gate_count.zero?
 
   known_roles = %w[Coach Biz Research CS Customer Design Tech Data QA Legal Ops].map { |role| "'#{role}'" }.join(",")
   misbound_role_count = query_value(db, "SELECT COUNT(*) AS count FROM agent_invocations WHERE role_key IN (#{known_roles}) AND display_name = role_key;", "count")

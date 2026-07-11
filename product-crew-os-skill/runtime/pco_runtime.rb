@@ -8,6 +8,7 @@ require "securerandom"
 require "time"
 require "yaml"
 require_relative "stage_router"
+require_relative "skill_executor"
 
 class ProductCrewRuntime
   PASSING_GATE_STATUSES = %w[pass conditional_pass].freeze
@@ -54,6 +55,58 @@ class ProductCrewRuntime
     write_project_state(project_id)
     refresh_all_ledgers(project_id)
     puts_json(project_id: project_id, workspace: project_dir, db: @db_path)
+  end
+
+  def execute_skill(skill_id:, input_json:, emit: true)
+    input = input_json.to_s.strip.empty? ? {} : JSON.parse(input_json)
+    result = ProductCrewSkillExecutor.new(skill_root: File.expand_path("..", __dir__)).execute(skill_id: skill_id, input: input)
+    puts_json(result) if emit
+    result
+  rescue JSON::ParserError
+    raise "skill input_json must be valid JSON"
+  end
+
+  # Evidence path for methodology Skills executed by a real host LLM/workflow.
+  def record_host_skill_execution(project_id:, stage_id:, skill_id:, runtime_model_id:, host_run_id:, raw_output:, observed_actions_json: "[]", source_ref: "", emit: true)
+    ensure_project!(project_id)
+    raise "raw_output is required" if raw_output.to_s.strip.empty?
+    raise "runtime_model_id is required" if runtime_model_id.to_s.strip.empty?
+    raise "host_run_id is required" if host_run_id.to_s.strip.empty?
+    observed_actions = JSON.parse(observed_actions_json.to_s.empty? ? "[]" : observed_actions_json)
+    raise "observed_actions_json must be an array" unless observed_actions.is_a?(Array)
+
+    execution_id = id("skill_exec")
+    now = timestamp
+    rel_path = File.join("skill-executions", "#{execution_id}.md")
+    abs_path = File.join(project_dir(project_id), rel_path)
+    FileUtils.mkdir_p(File.dirname(abs_path))
+    File.write(abs_path, <<~MARKDOWN)
+      # Host Skill Execution
+
+      - Execution ID: `#{execution_id}`
+      - Skill: `#{skill_id}`
+      - Stage: `#{stage_id}`
+      - Runtime model: `#{runtime_model_id}`
+      - Host run: `#{host_run_id}`
+      - Source: `#{source_ref}`
+      - Observed actions: `#{observed_actions.join(", ")}`
+
+      ## Raw Output
+
+      #{raw_output}
+    MARKDOWN
+    exec_sql(<<~SQL)
+      INSERT INTO skill_execution_records
+        (execution_id, project_id, stage_id, skill_id, runtime_model_id, host_run_id, raw_output, observed_actions_json, source_ref, path, created_at)
+      VALUES
+        (#{q(execution_id)}, #{q(project_id)}, #{q(stage_id)}, #{q(skill_id)}, #{q(runtime_model_id)}, #{q(host_run_id)}, #{q(raw_output)}, #{q(JSON.generate(observed_actions))}, #{q(source_ref)}, #{q(rel_path)}, #{q(now)});
+    SQL
+    record_event(project_id, "host_skill_execution_recorded", { execution_id: execution_id, stage_id: stage_id, skill_id: skill_id, runtime_model_id: runtime_model_id, host_run_id: host_run_id, path: rel_path })
+    payload = { execution_id: execution_id, project_id: project_id, stage_id: stage_id, skill_id: skill_id, path: abs_path, source_ref: source_ref }
+    puts_json(payload) if emit
+    payload
+  rescue JSON::ParserError
+    raise "observed_actions_json must be valid JSON"
   end
 
   def save_artifact(project_id:, name:, stage_id:, sop_id: "", artifact_type: "markdown", status: "draft", content_file: nil, content: nil, source_ref: "", emit: true)
@@ -188,6 +241,12 @@ class ProductCrewRuntime
 
   def write_raw_review_record(project_id:, session_id:, role_key:, artifact_id:, context_packet_id:, invocation_id:, conclusion: "advice_only", raw_review:, emit: true)
     ensure_project!(project_id)
+    if %w[pass conditional_pass block].include?(conclusion.to_s)
+      invocation = query_one("SELECT real_invocation_performed, role_key, context_packet_id FROM agent_invocations WHERE project_id = #{q(project_id)} AND invocation_id = #{q(invocation_id)};")
+      unless invocation && invocation["real_invocation_performed"].to_i == 1 && invocation["role_key"].to_s == role_key.to_s && invocation["context_packet_id"].to_s == context_packet_id.to_s && complete_context_packet_for_role?(project_id, context_packet_id, role_key)
+        raise "gate-valid raw review requires a real invocation and complete persona context packet for #{role_key}"
+      end
+    end
     now = timestamp
     record_id = id("rr")
     rel_path = File.join("raw-review-records", session_id, "#{safe_file_stem(role_key)}.md")
@@ -238,7 +297,7 @@ class ProductCrewRuntime
     puts_json(memory_id: memory_id, delta_id: delta_id)
   end
 
-  def build_context_packet(project_id:, role_key:, stage_id: "", artifact_id: "", review_question: "", token_budget: 2000, emit: true)
+  def build_context_packet(project_id:, role_key:, stage_id: "", artifact_id: "", review_question: "", review_scope: "", evidence_boundary: "", token_budget: 2000, emit: true)
     ensure_project!(project_id)
     now = timestamp
     packet_id = id("ctx")
@@ -250,12 +309,20 @@ class ProductCrewRuntime
     rel_path = File.join("context-packets", "#{packet_id}.yaml")
     abs_path = File.join(project_dir(project_id), rel_path)
     FileUtils.mkdir_p(File.dirname(abs_path))
+    persona_payload = persona_context(role_key)
+    artifact_snapshot = artifact_context_snapshot(project_id, artifact, token_budget)
+    resolved_review_scope = review_scope.to_s.empty? ? "仅评审当前 artifact 的阶段门风险、证据缺口与本角色职责范围。" : review_scope.to_s
+    resolved_evidence_boundary = evidence_boundary.to_s.empty? ? "只能依据当前 artifact、已记录决策、风险、项目内角色记忆和明确 source_ref；不能把未提供的外部事实当作证据。" : evidence_boundary.to_s
+    packet_quality = complete_context_packet?(persona_payload, artifact, resolved_review_scope, resolved_evidence_boundary) ? "complete" : "incomplete"
     packet = {
       "schema_version" => "0.1",
       "packet_kind" => "agent_context_packet",
       "packet_id" => packet_id,
       "project_id" => project_id,
       "stage_id" => stage_id.empty? && artifact ? artifact["stage_id"] : stage_id,
+      "context_packet_quality" => packet_quality,
+      "persona_injection_status" => packet_quality == "complete" ? "complete" : "missing_or_incomplete",
+      "persona" => persona_payload,
       "invocation" => {
         "real_invocation_required" => true,
         "real_invocation_performed" => false,
@@ -269,11 +336,14 @@ class ProductCrewRuntime
         "version" => artifact["current_version"],
         "status" => artifact["status"],
         "path" => artifact["path"],
-        "summary" => artifact["summary"]
+        "summary" => artifact["summary"],
+        "snapshot" => artifact_snapshot
       } : {},
       "review" => {
         "role_key" => role_key,
         "review_question" => review_question,
+        "review_scope" => resolved_review_scope,
+        "evidence_boundary" => resolved_evidence_boundary,
         "expected_decision" => "pass | conditional_pass | block | advice_only"
       },
       "context" => {
@@ -309,13 +379,28 @@ class ProductCrewRuntime
         memory_sources: packet["memory_snapshot"]["memory_sources"]
       }
     )
-    payload = { packet_id: packet_id, path: abs_path, relative_path: rel_path }
+    payload = {
+      packet_id: packet_id,
+      path: abs_path,
+      relative_path: rel_path,
+      context_packet_quality: packet_quality,
+      persona_injection_status: packet.fetch("persona_injection_status"),
+      packet: packet
+    }
     puts_json(payload) if emit
     payload
   end
 
   def record_invocation(project_id:, role_key:, role_title: "", display_name: "", session_id: "", stage_id: "", artifact_id: "", trigger_reason: "", runtime_agent_id: "", runtime_nickname: "", context_packet_id: "", real: false, invocation_status: "", timeout_seconds: 0, required_for_gate: false, result: "", emit: true)
     ensure_project!(project_id)
+    if real
+      raise "real invocation requires runtime_agent_id" if runtime_agent_id.to_s.strip.empty?
+      raise "real invocation requires context_packet_id" if context_packet_id.to_s.strip.empty?
+      unless complete_context_packet_for_role?(project_id, context_packet_id, role_key)
+        raise "real invocation requires a complete persona context packet for #{role_key}"
+      end
+    end
+    result = "invalid_for_gate" if !real && required_for_gate
     now = timestamp
     invocation_id = id("inv")
     resolved_role_title = role_title.to_s.empty? ? persona_role_title(role_key) : role_title
@@ -381,7 +466,10 @@ class ProductCrewRuntime
   end
 
   def route_intent(user_input:, project_id: "", emit: true)
-    router = SemanticStageRouter.new(prompt_eval_path: File.expand_path("../tests/prompt-eval-cases.yaml", __dir__))
+    router = SemanticStageRouter.new(
+      prompt_eval_path: File.expand_path("../tests/prompt-eval-cases.yaml", __dir__),
+      vector_db_path: @db_path
+    )
     decision = router.route(user_input)
     route_decision_id = id("route")
     decision = decision.merge(
@@ -397,6 +485,40 @@ class ProductCrewRuntime
     end
     puts_json(decision) if emit
     decision
+  end
+
+  def rag_ingest(namespace:, scope:, source_ref:, title:, content:, source_type: "markdown", extraction_method: "direct_structured_parser", consent_ref: "", public_package_allowed: nil, metadata: {}, emit: true)
+    store = ProductCrewOS::PersistentRagStore.new(db_path: @db_path)
+    payload = store.upsert_documents(
+      namespace: namespace,
+      scope: scope,
+      consent_ref: consent_ref,
+      public_package_allowed: public_package_allowed,
+      documents: [{
+        source_ref: source_ref,
+        title: title,
+        content: content,
+        source_type: source_type,
+        extraction_method: extraction_method,
+        metadata: metadata
+      }]
+    )
+    puts_json(payload) if emit
+    payload
+  end
+
+  def rag_retrieve(query:, namespace: ProductCrewOS::PersistentRagStore::DEFAULT_NAMESPACE, top_k: 3, allowed_scopes: [], consent_ref: "", emit: true)
+    store = ProductCrewOS::PersistentRagStore.new(db_path: @db_path)
+    payload = store.retrieve(
+      query: query,
+      namespace: namespace,
+      top_k: top_k,
+      allowed_scopes: allowed_scopes,
+      consent_ref: consent_ref,
+      used_for: "runtime_rag_retrieve"
+    )
+    puts_json(payload) if emit
+    payload
   end
 
   def record_review_decision(project_id:, session_id:, action:, item_ids: "", user_confirmed: false, notes: "", emit: true)
@@ -470,24 +592,26 @@ class ProductCrewRuntime
     project = project(project_id)
     root = File.expand_path(output_dir)
     project_root = File.join(root, "Projects", safe_slug(project.fetch("name")))
-    flow_dirs = FLOW_DIRS.values.uniq
-    (flow_dirs + ["_项目账本", File.join("_项目账本", "review-sessions"), File.join("_项目账本", "raw-review-records"), File.join("_项目账本", "routing"), "_团队记忆", "_导出", File.join("_导出", "word"), File.join("_导出", "pdf"), File.join("_导出", "release-notes")]).each do |dir|
+    ["_项目账本", File.join("_项目账本", "review-sessions"), File.join("_项目账本", "raw-review-records"), File.join("_项目账本", "skill-executions"), File.join("_项目账本", "routing"), "_团队记忆", "_导出", File.join("_导出", "word"), File.join("_导出", "pdf"), File.join("_导出", "release-notes")].each do |dir|
       FileUtils.mkdir_p(File.join(project_root, dir))
     end
-    write_obsidian_home(project_id, project_root)
     export_artifacts(project_id, project_root)
     export_ledgers(project_id, project_root)
     export_team_memory(project_id, project_root)
+    remove_empty_flow_dirs(project_root)
+    write_obsidian_export_manifest(project_id, project_root)
+    write_obsidian_home(project_id, project_root)
     record_event(project_id, "obsidian_exported", { output_dir: project_root })
     puts_json(project_id: project_id, obsidian_vault: root, project_path: project_root)
   end
 
-  def record_turn(project_id:, stage_id:, macro_stage: "", sop_id: "", user_input: "", route_confidence: "runtime", route_decision_id: "", primary_skill:, fallback_skill: "", skill_status: "completed", artifact_name:, artifact_content_file: nil, artifact_content: nil, artifact_status: "draft", gate_status: "conditional_pass", gate_result: "", review_roles: "", source_ref: "")
+  def record_turn(project_id:, stage_id:, macro_stage: "", sop_id: "", user_input: "", route_confidence: "runtime", route_decision_id: "", primary_skill:, fallback_skill: "", skill_status: "completed", skill_contract_json: "", skill_execution_id: "", artifact_name:, artifact_content_file: nil, artifact_content: nil, artifact_status: "draft", gate_status: "conditional_pass", gate_result: "", review_roles: "", source_ref: "", review_mode: "standard_sop", review_question: "", review_scope: "", evidence_boundary: "")
     ensure_project!(project_id)
+    review_mode = review_mode.to_s
+    raise "unknown review_mode: #{review_mode}" unless %w[standard_sop simulated_placeholder external_callback none].include?(review_mode)
     now = timestamp
     sop_run_id = id("sop")
-    sop_id = stage_id if sop_id.empty?
-    macro_stage = infer_macro_stage(stage_id) if macro_stage.empty?
+    requested_roles = split_roles(review_roles)
     route_decision =
       if route_decision_id.to_s.empty? && !user_input.to_s.strip.empty?
         route_intent(user_input: user_input, project_id: project_id, emit: false)
@@ -495,19 +619,59 @@ class ProductCrewRuntime
         find_route_decision(project_id, route_decision_id)
       end
     route_decision_id = route_decision["route_decision_id"].to_s if route_decision && route_decision_id.to_s.empty?
+    sop_id = stage_id if sop_id.empty?
+    macro_stage = infer_macro_stage(stage_id) if macro_stage.empty?
+    control = resolve_turn_control(
+      route_decision: route_decision,
+      stage_id: stage_id,
+      sop_id: sop_id,
+      primary_skill: primary_skill,
+      fallback_skill: fallback_skill,
+      caller_roles: requested_roles,
+      review_mode: review_mode
+    )
+    skill_execution = validate_skill_execution_contract(
+      skill_contract_json: skill_contract_json,
+      stage_id: stage_id,
+      skill_name: primary_skill,
+      artifact_name: artifact_name
+    )
+    skill_execution = attach_host_execution_evidence(skill_execution, project_id: project_id, stage_id: stage_id, skill_name: primary_skill, execution_id: skill_execution_id)
     runtime_preflight = runtime_preflight_result(
       stage_id: stage_id,
       route_decision: route_decision,
       route_decision_id: route_decision_id,
       skill_status: skill_status,
-      review_roles: review_roles
+      skill_execution: skill_execution,
+      review_roles: control.fetch("all_review_roles").join(","),
+      review_mode: review_mode,
+      control_issues: control.fetch("issues")
     )
-    effective_gate_status = gate_status
+    effective_gate_status = gate_status.to_s
     effective_gate_result = gate_result
-    if passing_gate_status?(gate_status) && runtime_preflight.fetch("status") != "passed"
+    if runtime_preflight.fetch("status") != "passed"
       effective_gate_status = "blocked_runtime_preflight"
       effective_gate_result = [gate_result, "Runtime preflight blocked stage gate: #{runtime_preflight.fetch("issues").join(", ")}"].reject { |value| value.to_s.strip.empty? }.join("\n")
+    elsif control.fetch("all_review_roles").any?
+      effective_gate_status = review_mode == "simulated_placeholder" ? "simulation_not_gate_valid" : "awaiting_external_review"
+      effective_gate_result = [gate_result, "Required review callbacks pending for: #{control.fetch("all_review_roles").join(", ")}"].reject { |value| value.to_s.strip.empty? }.join("\n")
+    elsif passing_gate_status?(gate_status)
+      effective_gate_status = "awaiting_user_decision"
+      effective_gate_result = [gate_result, "User confirmation is required before a stage gate can pass."].reject { |value| value.to_s.strip.empty? }.join("\n")
+    elsif effective_gate_status.empty?
+      effective_gate_status = "in_progress"
     end
+    stage_runtime_status =
+      if effective_gate_status.start_with?("blocked_") || effective_gate_status == "simulation_not_gate_valid"
+        "blocked"
+      elsif effective_gate_status == "awaiting_external_review"
+        "review_pending"
+      elsif effective_gate_status == "awaiting_user_decision"
+        "awaiting_user_decision"
+      else
+        "in_progress"
+      end
+    stage_run_id = sop_run_id
 
     exec_sql(<<~SQL)
       UPDATE projects
@@ -517,9 +681,9 @@ class ProductCrewRuntime
       WHERE project_id = #{q(project_id)};
 
       INSERT INTO stages
-        (project_id, stage_id, macro_stage, status, gate_status, started_at, completed_at)
+        (project_id, stage_run_id, stage_id, macro_stage, status, requested_gate_status, gate_status, route_decision_id, started_at, completed_at)
       VALUES
-        (#{q(project_id)}, #{q(stage_id)}, #{q(macro_stage)}, 'completed', #{q(effective_gate_status)}, #{q(now)}, #{q(now)});
+        (#{q(project_id)}, #{q(stage_run_id)}, #{q(stage_id)}, #{q(macro_stage)}, #{q(stage_runtime_status)}, #{q(gate_status)}, #{q(effective_gate_status)}, #{q(route_decision_id)}, #{q(now)}, '');
 
       INSERT INTO sop_runs
         (run_id, project_id, stage_id, sop_id, user_input, route_confidence, result, created_at)
@@ -573,9 +737,15 @@ class ProductCrewRuntime
     skill_run_id = id("skill")
     exec_sql(<<~SQL)
       INSERT INTO skill_runs
-        (run_id, project_id, stage_id, skill_name, fallback_skill_name, status, output_ref, created_at)
+        (run_id, project_id, stage_id, skill_name, fallback_skill_name, status, execution_mode, contract_status, contract_ref, capability_scope, observed_actions_json, overreach_detected, execution_id, output_ref, created_at)
       VALUES
-        (#{q(skill_run_id)}, #{q(project_id)}, #{q(stage_id)}, #{q(primary_skill)}, #{q(fallback_skill)}, #{q(skill_status)}, #{q(artifact[:artifact_id])}, #{q(now)});
+        (#{q(skill_run_id)}, #{q(project_id)}, #{q(stage_id)}, #{q(primary_skill)}, #{q(fallback_skill)}, #{q(skill_status)}, #{q(skill_execution.fetch("execution_mode"))}, #{q(skill_execution.fetch("contract_status"))}, #{q(skill_execution.fetch("contract_ref"))}, #{q(skill_execution.fetch("capability_scope").join(","))}, #{q(JSON.generate(skill_execution.fetch("observed_actions")))}, #{skill_execution.fetch("overreach_detected") ? 1 : 0}, #{q(skill_execution.fetch("execution_id"))}, #{q(artifact[:artifact_id])}, #{q(now)});
+    SQL
+    exec_sql(<<~SQL)
+      UPDATE stages
+      SET artifact_id = #{q(artifact[:artifact_id])},
+          skill_run_id = #{q(skill_run_id)}
+      WHERE project_id = #{q(project_id)} AND stage_run_id = #{q(stage_run_id)};
     SQL
     record_event(
       project_id,
@@ -586,25 +756,54 @@ class ProductCrewRuntime
         selected_skill: primary_skill,
         fallback_skill: fallback_skill,
         status: skill_status,
+        skill_execution: skill_execution,
         output_ref: artifact[:artifact_id]
       }
     )
 
     role_outputs = []
-    requested_roles = split_roles(review_roles)
-    roles = requested_roles.empty? ? ["Coach"] : requested_roles
+    required_review_roles = control.fetch("required_review_roles")
+    triggered_review_roles = control.fetch("triggered_review_roles")
+    roles = control.fetch("all_review_roles")
     review_session = nil
-    unless requested_roles.empty?
+    unless roles.empty?
       review_session = open_review_session(
         project_id: project_id,
         stage_id: stage_id,
         artifact_id: artifact[:artifact_id],
         artifact_version: artifact[:version],
-        required_roles: roles,
+        required_roles: required_review_roles,
+        triggered_roles: triggered_review_roles,
+        status: %w[standard_sop external_callback none].include?(review_mode) ? "awaiting_external_callbacks" : "review_open",
         emit: false
       )
     end
-    roles.each do |role_key|
+    if %w[standard_sop external_callback none].include?(review_mode)
+      roles.each do |role_key|
+        packet = build_context_packet(
+          project_id: project_id,
+          role_key: role_key,
+          stage_id: stage_id,
+          artifact_id: artifact[:artifact_id],
+          review_question: review_question.to_s.empty? ? "Review #{artifact_name} for #{stage_id}." : review_question,
+          review_scope: review_scope,
+          evidence_boundary: evidence_boundary,
+          token_budget: 1200,
+          emit: false
+        )
+        role_outputs << {
+          role_key: role_key,
+          packet_id: packet[:packet_id],
+          context_packet_quality: packet[:context_packet_quality],
+          persona_injection_status: packet[:persona_injection_status],
+          invocation_id: "",
+          review_item_id: "",
+          raw_review_record_id: "",
+          packet: packet[:packet]
+        }
+      end
+    elsif review_mode == "simulated_placeholder"
+      roles.each do |role_key|
       display_name = persona_display_name(role_key)
       packet = build_context_packet(
         project_id: project_id,
@@ -628,8 +827,8 @@ class ProductCrewRuntime
         context_packet_id: packet[:packet_id],
         real: false,
         invocation_status: "completed",
-        required_for_gate: requested_roles.include?(role_key),
-        result: requested_roles.include?(role_key) ? "invalid_for_gate" : "advice_only",
+        required_for_gate: roles.include?(role_key),
+        result: roles.include?(role_key) ? "invalid_for_gate" : "advice_only",
         emit: false
       )
       review_item = write_review_item(
@@ -671,7 +870,8 @@ class ProductCrewRuntime
         raw_review_record_id: raw_review ? raw_review[:record_id] : ""
       }
     end
-    update_review_session_status(project_id, review_session[:session_id], "awaiting_user_decision") if review_session
+    end
+    update_review_session_status(project_id, review_session[:session_id], "awaiting_user_decision") if review_session && review_mode == "simulated_placeholder"
 
     record_event(
       project_id,
@@ -683,9 +883,15 @@ class ProductCrewRuntime
         sop_id: sop_id,
         primary_skill: primary_skill,
         fallback_skill: fallback_skill,
+        skill_execution: skill_execution,
         artifact_id: artifact[:artifact_id],
+        stage_run_id: stage_run_id,
         gate_status: effective_gate_status,
         route_decision_id: route_decision_id,
+        review_mode: review_mode,
+        requested_roles: requested_roles,
+        resolved_required_roles: required_review_roles,
+        resolved_triggered_roles: triggered_review_roles,
         runtime_preflight: runtime_preflight
       }
     )
@@ -694,6 +900,7 @@ class ProductCrewRuntime
       "stage_gate_decision",
       {
         sop_run_id: sop_run_id,
+        stage_run_id: stage_run_id,
         stage_id: stage_id,
         gate_status: effective_gate_status,
         gate_result: effective_gate_result,
@@ -706,6 +913,7 @@ class ProductCrewRuntime
     puts_json(
       project_id: project_id,
       sop_run_id: sop_run_id,
+      stage_run_id: stage_run_id,
       skill_run_id: skill_run_id,
       artifact_id: artifact[:artifact_id],
       review_session_id: review_session ? review_session[:session_id] : "",
@@ -713,9 +921,197 @@ class ProductCrewRuntime
       gate_status: effective_gate_status,
       route_decision_id: route_decision_id,
       trace_status: route_decision ? route_decision.fetch("trace_status", "") : "missing",
+      review_mode: review_mode,
       runtime_preflight: runtime_preflight,
+      skill_execution: skill_execution,
+      required_review_roles: required_review_roles,
+      triggered_review_roles: triggered_review_roles,
       roles: role_outputs
     )
+  end
+
+  # Used by host runtimes that call independent sub-agents outside this process.
+  # It creates only the review session and complete packets; it never creates a
+  # simulated invocation, review item, or raw review record.
+  def prepare_external_review(project_id:, stage_id:, artifact_id:, required_roles:, review_question: "", review_scope: "", evidence_boundary: "", token_budget: 2000, emit: true)
+    ensure_project!(project_id)
+    roles = Array(required_roles).flat_map { |role| split_roles(role) }.reject { |role| role == "Coach" }
+    raise "external review requires at least one non-Coach role" if roles.empty?
+
+    artifact = query_one("SELECT * FROM artifacts WHERE project_id = #{q(project_id)} AND artifact_id = #{q(artifact_id)};")
+    raise "artifact not found: #{artifact_id}" unless artifact
+
+    session = open_review_session(
+      project_id: project_id,
+      stage_id: stage_id,
+      artifact_id: artifact_id,
+      artifact_version: artifact.fetch("current_version"),
+      required_roles: roles,
+      status: "awaiting_external_callbacks",
+      emit: false
+    )
+    packets = roles.map do |role_key|
+      packet = build_context_packet(
+        project_id: project_id,
+        role_key: role_key,
+        stage_id: stage_id,
+        artifact_id: artifact_id,
+        review_question: review_question,
+        review_scope: review_scope,
+        evidence_boundary: evidence_boundary,
+        token_budget: token_budget,
+        emit: false
+      )
+      {
+        role_key: role_key,
+        context_packet_id: packet.fetch(:packet_id),
+        context_packet_quality: packet.fetch(:context_packet_quality),
+        persona_injection_status: packet.fetch(:persona_injection_status),
+        packet: packet.fetch(:packet)
+      }
+    end
+    record_event(
+      project_id,
+      "external_review_prepared",
+      {
+        session_id: session.fetch(:session_id),
+        stage_id: stage_id,
+        artifact_id: artifact_id,
+        required_roles: roles,
+        context_packet_ids: packets.map { |packet| packet.fetch(:context_packet_id) }
+      }
+    )
+    refresh_all_ledgers(project_id)
+    payload = {
+      review_session_id: session.fetch(:session_id),
+      artifact_id: artifact_id,
+      stage_id: stage_id,
+      required_roles: roles,
+      packets: packets
+    }
+    puts_json(payload) if emit
+    payload
+  end
+
+  def finalize_stage_gate(project_id:, stage_id:, artifact_id:, stage_run_id:, review_session_id: "", requested_gate_status: "conditional_pass", gate_result: "", user_confirmed: false, decision_note: "", emit: true)
+    ensure_project!(project_id)
+    raise "stage_run_id is required" if stage_run_id.to_s.strip.empty?
+    stage = query_one("SELECT * FROM stages WHERE project_id = #{q(project_id)} AND stage_run_id = #{q(stage_run_id)};")
+    raise "stage run not found: #{stage_run_id}" unless stage
+    raise "stage run stage mismatch" if stage["stage_id"].to_s != stage_id.to_s
+    raise "stage run artifact mismatch" if stage["artifact_id"].to_s != artifact_id.to_s
+    artifact = query_one("SELECT * FROM artifacts WHERE project_id = #{q(project_id)} AND artifact_id = #{q(artifact_id)};")
+    raise "artifact not found: #{artifact_id}" unless artifact
+
+    session = review_session_id.to_s.empty? ? nil : query_one("SELECT * FROM review_sessions WHERE project_id = #{q(project_id)} AND session_id = #{q(review_session_id)};")
+    raise "review session not found: #{review_session_id}" if !review_session_id.to_s.empty? && !session
+    raise "review session artifact mismatch" if session && session["artifact_id"].to_s != artifact_id.to_s
+    raise "review session stage mismatch" if session && session["stage_id"].to_s != stage_id.to_s
+
+    if session && user_confirmed
+      record_review_decision(
+        project_id: project_id,
+        session_id: session.fetch("session_id"),
+        action: "close",
+        user_confirmed: true,
+        notes: decision_note,
+        emit: false
+      )
+      session = query_one("SELECT * FROM review_sessions WHERE project_id = #{q(project_id)} AND session_id = #{q(review_session_id)};")
+    end
+
+    sop_run = query_one("SELECT sop_id FROM sop_runs WHERE project_id = #{q(project_id)} AND run_id = #{q(stage_run_id)};")
+    skill_run = query_one("SELECT * FROM skill_runs WHERE project_id = #{q(project_id)} AND run_id = #{q(stage.fetch("skill_run_id"))};")
+    route_decision = find_route_decision(project_id, stage.fetch("route_decision_id"))
+    control = resolve_turn_control(
+      route_decision: route_decision,
+      stage_id: stage_id,
+      sop_id: sop_run ? sop_run.fetch("sop_id") : "",
+      primary_skill: skill_run ? skill_run.fetch("skill_name") : "",
+      fallback_skill: skill_run ? skill_run.fetch("fallback_skill_name") : "",
+      caller_roles: [],
+      review_mode: "standard_sop"
+    )
+    skill_status = skill_run ? skill_run.fetch("status") : ""
+    skill_execution = skill_run ? skill_execution_for_run(skill_run) : latest_skill_execution_for_stage(project_id, stage_id)
+    preflight = runtime_preflight_result(
+      stage_id: stage_id,
+      route_decision: route_decision,
+      route_decision_id: stage.fetch("route_decision_id"),
+      skill_status: skill_status,
+      skill_execution: skill_execution,
+      review_roles: control.fetch("all_review_roles").join(","),
+      review_mode: "standard_sop",
+      control_issues: control.fetch("issues")
+    )
+    issues = Array(preflight.fetch("issues"))
+    required_roles = control.fetch("all_review_roles")
+    issues.concat(external_review_evidence_issues(project_id, session, required_roles)) unless required_roles.empty?
+    issues << "user_confirmation_missing" unless user_confirmed
+    issues << "user_decision_missing_or_review_not_closed" if session && session["status"].to_s != "closed_by_user"
+
+    reviewer_blocks = session ? query("SELECT role_key FROM raw_review_records WHERE project_id = #{q(project_id)} AND session_id = #{q(session.fetch("session_id"))} AND conclusion = 'block';").map { |record| record.fetch("role_key") }.uniq : []
+    issues.concat(reviewer_blocks.map { |role| "reviewer_block:#{role}" }) unless reviewer_blocks.empty?
+
+    review_pending = issues.any? { |issue| issue.start_with?("real_subagent_invocation_missing") || issue.start_with?("context_packet_incomplete") || issue.start_with?("raw_review_") || issue == "review_session_missing" }
+    runtime_blocked = issues.any? { |issue| !issue.start_with?("reviewer_block:") && issue != "user_confirmation_missing" && issue != "user_decision_missing_or_review_not_closed" && !review_pending }
+    effective_gate_status =
+      if issues.empty? && PASSING_GATE_STATUSES.include?(requested_gate_status.to_s)
+        requested_gate_status.to_s
+      elsif issues.any? { |issue| issue.start_with?("reviewer_block:") }
+        "blocked_by_review"
+      elsif runtime_blocked
+        "blocked_runtime_preflight"
+      elsif review_pending
+        "awaiting_external_review"
+      elsif issues.include?("user_confirmation_missing") || issues.include?("user_decision_missing_or_review_not_closed")
+        "awaiting_user_decision"
+      else
+        "blocked_runtime_preflight"
+      end
+    effective_gate_result = [gate_result, issues.empty? ? "Runtime evidence complete." : "Runtime preflight blocked stage gate: #{issues.join(", ")}"].reject { |value| value.to_s.strip.empty? }.join("\n")
+
+    exec_sql(<<~SQL)
+      UPDATE stages
+      SET status = #{q(PASSING_GATE_STATUSES.include?(effective_gate_status) ? "completed" : (effective_gate_status == "awaiting_external_review" ? "review_pending" : (effective_gate_status == "awaiting_user_decision" ? "awaiting_user_decision" : "blocked")))},
+          gate_status = #{q(effective_gate_status)},
+          completed_at = #{q(PASSING_GATE_STATUSES.include?(effective_gate_status) ? timestamp : "")}
+      WHERE project_id = #{q(project_id)} AND stage_run_id = #{q(stage_run_id)};
+
+      UPDATE projects
+      SET last_gate_passed_stage_id = CASE
+        WHEN #{PASSING_GATE_STATUSES.include?(effective_gate_status) ? 1 : 0} = 1 THEN #{q(stage_id)}
+        ELSE last_gate_passed_stage_id
+      END,
+          updated_at = #{q(timestamp)}
+      WHERE project_id = #{q(project_id)};
+    SQL
+    record_event(
+      project_id,
+      "stage_gate_finalized",
+      {
+        stage_id: stage_id,
+        stage_run_id: stage_run_id,
+        artifact_id: artifact_id,
+        review_session_id: review_session_id,
+        gate_status: effective_gate_status,
+        runtime_preflight: preflight.merge("issues" => issues),
+        user_confirmed: user_confirmed
+      }
+    )
+    refresh_all_ledgers(project_id)
+    payload = {
+      project_id: project_id,
+      stage_id: stage_id,
+      stage_run_id: stage_run_id,
+      artifact_id: artifact_id,
+      review_session_id: review_session_id,
+      gate_status: effective_gate_status,
+      gate_result: effective_gate_result,
+      runtime_preflight: preflight.merge("issues" => issues)
+    }
+    puts_json(payload) if emit
+    payload
   end
 
   private
@@ -727,6 +1123,20 @@ class ProductCrewRuntime
   end
 
   def migrate_schema!
+    ensure_column("projects", "last_gate_passed_stage_id", "TEXT DEFAULT ''")
+    ensure_column("stages", "stage_run_id", "TEXT DEFAULT ''")
+    ensure_column("stages", "requested_gate_status", "TEXT DEFAULT 'not_ready'")
+    ensure_column("stages", "route_decision_id", "TEXT DEFAULT ''")
+    ensure_column("stages", "artifact_id", "TEXT DEFAULT ''")
+    ensure_column("stages", "skill_run_id", "TEXT DEFAULT ''")
+    exec_sql("CREATE UNIQUE INDEX IF NOT EXISTS idx_stages_stage_run_id ON stages(stage_run_id) WHERE stage_run_id != '';")
+    ensure_column("skill_runs", "execution_mode", "TEXT DEFAULT 'catalog_selected'")
+    ensure_column("skill_runs", "contract_status", "TEXT DEFAULT 'not_provided'")
+    ensure_column("skill_runs", "contract_ref", "TEXT DEFAULT ''")
+    ensure_column("skill_runs", "capability_scope", "TEXT DEFAULT ''")
+    ensure_column("skill_runs", "observed_actions_json", "TEXT DEFAULT '[]'")
+    ensure_column("skill_runs", "overreach_detected", "INTEGER DEFAULT 0")
+    ensure_column("skill_runs", "execution_id", "TEXT DEFAULT ''")
     ensure_column("agent_invocations", "role_title", "TEXT DEFAULT ''")
     ensure_column("agent_invocations", "runtime_nickname", "TEXT DEFAULT ''")
     ensure_column("agent_invocations", "session_id", "TEXT DEFAULT ''")
@@ -804,7 +1214,7 @@ class ProductCrewRuntime
 
   def create_project_workspace(project_id, name)
     root = project_dir(project_id)
-    dirs = %w[artifacts context-packets review-sessions raw-review-records routing agent-memory checkpoints exports]
+    dirs = %w[artifacts context-packets review-sessions raw-review-records skill-executions routing agent-memory checkpoints exports]
     dirs.each { |dir| FileUtils.mkdir_p(File.join(root, dir)) }
     write_if_missing(File.join(root, "project-home.md"), "# #{name}\n\n- Project ID: `#{project_id}`\n- Source of truth: Product Crew OS Runtime\n")
     write_if_missing(File.join(root, "timeline.md"), "# Timeline\n")
@@ -945,8 +1355,161 @@ class ProductCrewRuntime
     nil
   end
 
-  def runtime_preflight_result(stage_id:, route_decision:, route_decision_id:, skill_status:, review_roles: "")
+  def latest_route_decision_for_stage(project_id, stage_id)
+    query("SELECT payload_json FROM events WHERE project_id = #{q(project_id)} AND event_type = 'stage_route_decision' ORDER BY created_at DESC;").each do |event|
+      payload = JSON.parse(event.fetch("payload_json"))
+      return payload if payload["stage_id"].to_s == stage_id.to_s
+    rescue JSON::ParserError
+      next
+    end
+    nil
+  end
+
+  def latest_skill_status_for_stage(project_id, stage_id)
+    query_one("SELECT status FROM skill_runs WHERE project_id = #{q(project_id)} AND stage_id = #{q(stage_id)} ORDER BY created_at DESC LIMIT 1;")&.fetch("status", "") || ""
+  end
+
+  def latest_skill_execution_for_stage(project_id, stage_id)
+    row = query_one(<<~SQL)
+      SELECT execution_mode, contract_status, contract_ref, capability_scope, observed_actions_json, overreach_detected, execution_id
+      FROM skill_runs
+      WHERE project_id = #{q(project_id)} AND stage_id = #{q(stage_id)}
+      ORDER BY created_at DESC LIMIT 1;
+    SQL
+    skill_execution_for_run(row)
+  end
+
+  def skill_execution_for_run(row)
+    return {
+      "execution_mode" => "catalog_selected",
+      "contract_status" => "not_provided",
+      "contract_ref" => "",
+      "capability_scope" => [],
+      "observed_actions" => [],
+      "overreach_detected" => false,
+      "issues" => ["persisted_skill_execution_contract_missing"],
+      "gate_valid" => false
+    } unless row
+
+    observed_actions = JSON.parse(row["observed_actions_json"].to_s.empty? ? "[]" : row["observed_actions_json"])
     issues = []
+    issues << "persisted_skill_execution_contract_missing" unless row["contract_status"].to_s == "validated"
+    issues << "persisted_execution_mode_not_gate_valid" unless %w[external_workflow native_capability].include?(row["execution_mode"].to_s)
+    issues << "persisted_overreach_detected" if row["overreach_detected"].to_i == 1
+    if %w[external_workflow native_capability].include?(row["execution_mode"].to_s) && row["execution_id"].to_s.empty?
+      issues << "persisted_host_execution_evidence_missing"
+    end
+    {
+      "execution_mode" => row["execution_mode"].to_s,
+      "contract_status" => row["contract_status"].to_s,
+      "contract_ref" => row["contract_ref"].to_s,
+      "capability_scope" => row["capability_scope"].to_s.split(",").reject(&:empty?),
+      "observed_actions" => observed_actions,
+      "overreach_detected" => row["overreach_detected"].to_i == 1,
+      "execution_id" => row["execution_id"].to_s,
+      "issues" => issues,
+      "gate_valid" => issues.empty?
+    }
+  rescue JSON::ParserError
+    {
+      "execution_mode" => "invalid",
+      "contract_status" => "invalid",
+      "contract_ref" => "",
+      "capability_scope" => [],
+      "observed_actions" => [],
+      "overreach_detected" => true,
+      "issues" => ["persisted_observed_actions_invalid_json"],
+      "gate_valid" => false
+    }
+  end
+
+  def external_review_evidence_issues(project_id, session, required_roles)
+    return ["review_session_missing"] unless session
+
+    required_roles.flat_map do |role_key|
+      invocation = query_one(<<~SQL)
+        SELECT invocation_id, context_packet_id, real_invocation_performed, result
+        FROM agent_invocations
+        WHERE project_id = #{q(project_id)}
+          AND session_id = #{q(session.fetch("session_id"))}
+          AND role_key = #{q(role_key)}
+        ORDER BY created_at DESC LIMIT 1;
+      SQL
+      issues = []
+      if !invocation || invocation["real_invocation_performed"].to_i != 1
+        issues << "real_subagent_invocation_missing role=#{role_key}"
+        next issues
+      end
+      unless complete_context_packet_for_role?(project_id, invocation["context_packet_id"], role_key)
+        issues << "context_packet_incomplete role=#{role_key}"
+      end
+      raw_review = query_one(<<~SQL)
+        SELECT conclusion FROM raw_review_records
+        WHERE project_id = #{q(project_id)}
+          AND session_id = #{q(session.fetch("session_id"))}
+          AND role_key = #{q(role_key)}
+          AND invocation_id = #{q(invocation.fetch("invocation_id"))}
+        ORDER BY created_at DESC LIMIT 1;
+      SQL
+      if !raw_review
+        issues << "raw_review_missing role=#{role_key}"
+      elsif raw_review["conclusion"].to_s == "advice_only"
+        issues << "raw_review_invalid_for_gate role=#{role_key}"
+      end
+      issues
+    end
+  end
+
+  # Route output is the control plane. Hosts may request extra reviewers, but
+  # they cannot replace the routed SOP, Skill, or required reviewer set.
+  def resolve_turn_control(route_decision:, stage_id:, sop_id:, primary_skill:, fallback_skill:, caller_roles:, review_mode:)
+    empty = {
+      "required_review_roles" => [],
+      "triggered_review_roles" => [],
+      "all_review_roles" => [],
+      "issues" => []
+    }
+    return empty.merge("issues" => ["route_trace_missing"]) unless route_decision
+
+    issues = []
+    expected_sop = route_decision["sop"].to_s
+    issues << "sop_route_mismatch expected=#{expected_sop} actual=#{sop_id}" unless expected_sop.empty? || expected_sop == sop_id.to_s
+
+    primary_candidates = skill_candidates(route_decision["primary_skill"])
+    fallback_candidates = skill_candidates(route_decision["fallback_skill"])
+    selected_primary = primary_skill.to_s
+    if !primary_candidates.empty? && !primary_candidates.include?(selected_primary) && !fallback_candidates.include?(selected_primary)
+      issues << "skill_route_mismatch expected=#{(primary_candidates + fallback_candidates).join('|')} actual=#{selected_primary}"
+    end
+    if fallback_candidates.any? && !fallback_skill.to_s.empty? && !fallback_candidates.include?(fallback_skill.to_s)
+      issues << "fallback_skill_route_mismatch expected=#{fallback_candidates.join('|')} actual=#{fallback_skill}"
+    end
+
+    required_roles = Array(route_decision["required_roles"]).map(&:to_s).reject { |role| role.empty? || role == "Coach" }.uniq
+    triggered_roles = Array(route_decision["triggered_roles"]).map(&:to_s).reject { |role| role.empty? || role == "Coach" || required_roles.include?(role) }.uniq
+    requested_extras = Array(caller_roles).map(&:to_s).reject { |role| role.empty? || role == "Coach" || required_roles.include?(role) || triggered_roles.include?(role) }
+    unknown_roles = requested_extras.reject { |role| persona_by_role_key.key?(role) }
+    issues.concat(unknown_roles.map { |role| "review_role_not_configured role=#{role}" })
+    requested_extras -= unknown_roles
+    all_roles = (required_roles + triggered_roles + requested_extras).uniq
+    issues << "review_mode_none_with_required_roles" if review_mode.to_s == "none" && all_roles.any?
+    issues << "simulated_review_not_gate_valid" if review_mode.to_s == "simulated_placeholder" && all_roles.any?
+
+    {
+      "required_review_roles" => required_roles,
+      "triggered_review_roles" => triggered_roles,
+      "all_review_roles" => all_roles,
+      "issues" => issues
+    }
+  end
+
+  def skill_candidates(value)
+    value.to_s.split(/\s*\/\s*/).map(&:strip).reject(&:empty?).uniq
+  end
+
+  def runtime_preflight_result(stage_id:, route_decision:, route_decision_id:, skill_status:, skill_execution:, review_roles: "", review_mode: "standard_sop", control_issues: [])
+    issues = []
+    issues.concat(Array(control_issues))
     if route_decision.nil?
       issues << "route_trace_missing"
     elsif route_decision.fetch("product_crew_os_applies", false) != true
@@ -960,10 +1523,11 @@ class ProductCrewRuntime
       issues << "real_embedding_missing"
     end
     required_review_roles = split_roles(review_roles).reject { |role| role == "Coach" }
-    if require_real_subagents? && !required_review_roles.empty?
+    if require_real_subagents? && %w[none simulated_placeholder].include?(review_mode.to_s) && !required_review_roles.empty?
       issues << "real_subagent_invocation_missing roles=#{required_review_roles.join(",")}"
     end
     issues << "template_degraded_skill_not_gate_valid" if skill_status.to_s == "template_degraded"
+    issues.concat(skill_execution.fetch("issues").map { |issue| "skill_contract_#{issue}" }) unless skill_execution.fetch("gate_valid")
     {
       "status" => issues.empty? ? "passed" : "blocked",
       "issues" => issues,
@@ -975,8 +1539,81 @@ class ProductCrewRuntime
       "real_embedding_performed" => route_decision ? route_decision["real_embedding_performed"] == true : false,
       "real_subagents_required" => require_real_subagents?,
       "required_review_roles" => required_review_roles,
+      "review_mode" => review_mode,
       "confidence" => route_decision ? route_decision["confidence"] : nil
     }
+  end
+
+  def attach_host_execution_evidence(skill_execution, project_id:, stage_id:, skill_name:, execution_id:)
+    result = skill_execution.dup
+    result["execution_id"] = execution_id.to_s
+    return result unless %w[external_workflow native_capability].include?(result.fetch("execution_mode"))
+
+    record = query_one(<<~SQL)
+      SELECT execution_id, project_id, stage_id, skill_id
+      FROM skill_execution_records
+      WHERE execution_id = #{q(execution_id)};
+    SQL
+    issue =
+      if execution_id.to_s.empty?
+        "host_execution_evidence_missing"
+      elsif !record
+        "host_execution_evidence_not_found"
+      elsif record["project_id"].to_s != project_id.to_s || record["stage_id"].to_s != stage_id.to_s || record["skill_id"].to_s != skill_name.to_s
+        "host_execution_evidence_mismatch"
+      end
+    if issue
+      result["issues"] = Array(result["issues"]) + [issue]
+      result["gate_valid"] = false
+    end
+    result
+  end
+
+  # The contract preserves a skill's internal method while reserving workflow control for PCO.
+  def validate_skill_execution_contract(skill_contract_json:, stage_id:, skill_name:, artifact_name:)
+    default = {
+      "execution_mode" => "catalog_selected",
+      "contract_status" => "not_provided",
+      "contract_ref" => "",
+      "capability_scope" => [],
+      "observed_actions" => [],
+      "overreach_detected" => false,
+      "issues" => ["skill_execution_contract_missing"],
+      "gate_valid" => false
+    }
+    return default if skill_contract_json.to_s.strip.empty?
+
+    contract = JSON.parse(skill_contract_json)
+    mode = contract["execution_mode"].to_s
+    issues = []
+    issues << "unknown_execution_mode" unless %w[external_workflow native_capability].include?(mode)
+    issues << "skill_id_mismatch" unless contract["skill_id"].to_s == skill_name.to_s
+    issues << "stage_not_allowed" unless Array(contract["allowed_stage_ids"]).map(&:to_s).include?(stage_id.to_s)
+    boundary = contract["control_boundary"].is_a?(Hash) ? contract["control_boundary"] : {}
+    %w[may_change_stage may_decide_gate may_write_project_memory may_call_agents].each do |key|
+      issues << "forbidden_#{key}" unless boundary[key] == false
+    end
+    observed_actions = Array(contract["observed_actions"]).map(&:to_s).uniq
+    approved_actions = Array(contract["approved_actions"]).map(&:to_s).uniq
+    forbidden_actions = %w[change_stage decide_gate write_project_memory call_agent]
+    issues << "forbidden_observed_action" if (observed_actions & forbidden_actions).any?
+    issues << "unapproved_observed_action" if (observed_actions - approved_actions).any?
+    evidence = contract["output_evidence"].is_a?(Hash) ? contract["output_evidence"] : {}
+    issues << "output_artifact_missing" if evidence["artifact_name"].to_s != artifact_name.to_s
+    issues << "source_ref_missing" if evidence["source_ref"].to_s.strip.empty?
+    issues << "no_professional_scope" if Array(contract["capability_scope"]).empty?
+    {
+      "execution_mode" => mode.empty? ? "invalid" : mode,
+      "contract_status" => issues.empty? ? "validated" : "invalid",
+      "contract_ref" => contract["contract_ref"].to_s,
+      "capability_scope" => Array(contract["capability_scope"]).map(&:to_s),
+      "observed_actions" => observed_actions,
+      "overreach_detected" => issues.any? { |issue| issue.start_with?("forbidden_") || issue.include?("observed_action") },
+      "issues" => issues,
+      "gate_valid" => issues.empty?
+    }
+  rescue JSON::ParserError
+    default.merge("execution_mode" => "invalid", "contract_status" => "invalid", "issues" => ["invalid_json"], "gate_valid" => false)
   end
 
   def passing_gate_status?(gate_status)
@@ -1059,6 +1696,66 @@ class ProductCrewRuntime
 
   def persona(role_key)
     persona_by_role_key.fetch(role_key.to_s, {})
+  end
+
+  def persona_context(role_key)
+    source_ref = "config/crew-personas.yaml##{role_key}"
+    configured = persona(role_key)
+    {
+      "role_key" => configured.fetch("role_key", role_key.to_s),
+      "title" => configured.fetch("title", ""),
+      "display_name" => configured.fetch("display_name", ""),
+      "role" => configured.fetch("role", ""),
+      "personality" => configured.fetch("personality", ""),
+      "speaking_style" => configured.fetch("speaking_style", ""),
+      "must_do" => Array(configured["must_do"]),
+      "must_not_do" => Array(configured["must_not_do"]),
+      "memory_focus" => Array(configured["memory_focus"]),
+      "persona_source_ref" => source_ref
+    }
+  end
+
+  def complete_context_packet?(persona_payload, artifact, review_scope, evidence_boundary)
+    scalar_fields = %w[role_key title display_name role personality speaking_style persona_source_ref]
+    arrays_present = %w[must_do must_not_do memory_focus].all? { |field| Array(persona_payload[field]).any? }
+    scalar_fields.all? { |field| !persona_payload[field].to_s.strip.empty? } &&
+      arrays_present &&
+      !artifact.nil? &&
+      !review_scope.to_s.strip.empty? &&
+      !evidence_boundary.to_s.strip.empty?
+  end
+
+  def artifact_context_snapshot(project_id, artifact, token_budget)
+    return {} unless artifact
+
+    path = File.join(project_dir(project_id), artifact.fetch("path"))
+    body = File.exist?(path) ? File.read(path) : ""
+    max_chars = [[token_budget.to_i, 400].max * 4, 12_000].min
+    {
+      "content" => body[0, max_chars],
+      "truncated" => body.length > max_chars,
+      "source_ref" => "artifact:#{artifact.fetch("artifact_id")}:v#{artifact.fetch("current_version")}"
+    }
+  end
+
+  def context_packet(project_id, packet_id)
+    row = query_one("SELECT path FROM context_packets WHERE project_id = #{q(project_id)} AND packet_id = #{q(packet_id)};")
+    return nil unless row
+
+    path = File.join(project_dir(project_id), row.fetch("path"))
+    return nil unless File.exist?(path)
+
+    YAML.load_file(path)
+  end
+
+  def complete_context_packet_for_role?(project_id, packet_id, role_key)
+    packet = context_packet(project_id, packet_id)
+    return false unless packet
+
+    packet["project_id"].to_s == project_id.to_s &&
+      packet.dig("persona", "role_key").to_s == role_key.to_s &&
+      packet["context_packet_quality"].to_s == "complete" &&
+      packet["persona_injection_status"].to_s == "complete"
   end
 
   def persona_display_name(role_key)
@@ -1220,6 +1917,10 @@ class ProductCrewRuntime
       "- Stage: `#{project["current_stage_id"]}`",
       "- Status: `#{project["status"]}`",
       "",
+      "## 本次导出",
+      "",
+      "- [[_项目账本/导出清单|查看实际写入的阶段与证据]]",
+      "",
       "## Artifacts",
       ""
     ]
@@ -1243,6 +1944,43 @@ class ProductCrewRuntime
     end
   end
 
+  def remove_empty_flow_dirs(project_root)
+    FLOW_DIRS.values.uniq.each do |flow_dir|
+      path = File.join(project_root, flow_dir)
+      Dir.rmdir(path) if File.directory?(path) && Dir.empty?(path)
+    end
+  end
+
+  def write_obsidian_export_manifest(project_id, project_root)
+    artifacts = query("SELECT name, stage_id, status FROM artifacts WHERE project_id = #{q(project_id)} ORDER BY updated_at DESC;")
+    grouped = artifacts.group_by do |artifact|
+      flow_key = FLOW_DIRS.key?(artifact["stage_id"]) ? artifact["stage_id"] : infer_macro_stage(artifact["stage_id"])
+      FLOW_DIRS.fetch(flow_key, "01_机会发现")
+    end
+    lines = [
+      "# 导出清单",
+      "",
+      "本文件只列出本次实际写入内容的阶段目录；未执行的阶段不会创建空目录。",
+      "",
+      "- Project: `#{project_id}`",
+      "- Exported at: `#{timestamp}`",
+      "- Artifact count: `#{artifacts.length}`",
+      ""
+    ]
+    if grouped.empty?
+      lines << "本次尚无 artifact；仅保留项目账本和导出基础目录。"
+    else
+      lines << "## 实际写入阶段"
+      lines << ""
+      grouped.each do |flow_dir, entries|
+        lines << "### #{flow_dir}"
+        entries.each { |artifact| lines << "- `#{artifact["stage_id"]}`: [[#{artifact["name"]}]] (`#{artifact["status"]}`)" }
+        lines << ""
+      end
+    end
+    File.write(File.join(project_root, "_项目账本", "导出清单.md"), lines.join("\n"))
+  end
+
   def export_ledgers(project_id, project_root)
     mapping = {
       "artifact-index.yaml" => "artifact-index.yaml",
@@ -1263,6 +2001,7 @@ class ProductCrewRuntime
     end
     copy_directory(File.join(project_dir(project_id), "review-sessions"), File.join(project_root, "_项目账本", "review-sessions"))
     copy_directory(File.join(project_dir(project_id), "raw-review-records"), File.join(project_root, "_项目账本", "raw-review-records"))
+    copy_directory(File.join(project_dir(project_id), "skill-executions"), File.join(project_root, "_项目账本", "skill-executions"))
     copy_directory(File.join(project_dir(project_id), "routing"), File.join(project_root, "_项目账本", "routing"))
   end
 
@@ -1381,6 +2120,19 @@ when "build-context-packet"
     stage_id: options["stage_id"].to_s,
     artifact_id: options["artifact_id"].to_s,
     review_question: options["review_question"].to_s,
+    review_scope: options["review_scope"].to_s,
+    evidence_boundary: options["evidence_boundary"].to_s,
+    token_budget: (options["token_budget"] || "2000").to_i
+  )
+when "prepare-external-review"
+  runtime.prepare_external_review(
+    project_id: require_option(options, "project_id"),
+    stage_id: require_option(options, "stage_id"),
+    artifact_id: require_option(options, "artifact_id"),
+    required_roles: require_option(options, "required_roles"),
+    review_question: options["review_question"].to_s,
+    review_scope: options["review_scope"].to_s,
+    evidence_boundary: options["evidence_boundary"].to_s,
     token_budget: (options["token_budget"] || "2000").to_i
   )
 when "record-invocation"
@@ -1418,6 +2170,44 @@ when "route-intent"
     project_id: options["project_id"].to_s,
     user_input: require_option(options, "user_input")
   )
+when "execute-skill"
+  runtime.execute_skill(
+    skill_id: require_option(options, "skill_id"),
+    input_json: options["input_json"].to_s
+  )
+when "record-host-skill-execution"
+  runtime.record_host_skill_execution(
+    project_id: require_option(options, "project_id"),
+    stage_id: require_option(options, "stage_id"),
+    skill_id: require_option(options, "skill_id"),
+    runtime_model_id: require_option(options, "runtime_model_id"),
+    host_run_id: require_option(options, "host_run_id"),
+    raw_output: require_option(options, "raw_output"),
+    observed_actions_json: options["observed_actions_json"].to_s,
+    source_ref: options["source_ref"].to_s
+  )
+when "rag-ingest"
+  metadata = options["metadata_json"].to_s.empty? ? {} : JSON.parse(options["metadata_json"])
+  runtime.rag_ingest(
+    namespace: options["namespace"] || ProductCrewOS::PersistentRagStore::DEFAULT_NAMESPACE,
+    scope: options["scope"] || ProductCrewOS::PersistentRagStore::DEFAULT_SCOPE,
+    source_ref: require_option(options, "source_ref"),
+    title: require_option(options, "title"),
+    content: require_option(options, "content"),
+    source_type: options["source_type"] || "markdown",
+    extraction_method: options["extraction_method"] || "direct_structured_parser",
+    consent_ref: options["consent_ref"].to_s,
+    public_package_allowed: options.key?("public_package_allowed") ? options["public_package_allowed"].to_s == "true" : nil,
+    metadata: metadata
+  )
+when "rag-retrieve"
+  runtime.rag_retrieve(
+    query: require_option(options, "query"),
+    namespace: options["namespace"] || ProductCrewOS::PersistentRagStore::DEFAULT_NAMESPACE,
+    top_k: (options["top_k"] || "3").to_i,
+    allowed_scopes: options["allowed_scopes"].to_s.split(/[,\n;]/).map(&:strip).reject(&:empty?),
+    consent_ref: options["consent_ref"].to_s
+  )
 when "record-review-decision"
   runtime.record_review_decision(
     project_id: require_option(options, "project_id"),
@@ -1426,6 +2216,18 @@ when "record-review-decision"
     item_ids: options["item_ids"].to_s,
     user_confirmed: options["user_confirmed"].to_s == "true",
     notes: options["notes"].to_s
+  )
+when "finalize-stage-gate"
+  runtime.finalize_stage_gate(
+    project_id: require_option(options, "project_id"),
+    stage_id: require_option(options, "stage_id"),
+    artifact_id: require_option(options, "artifact_id"),
+    stage_run_id: require_option(options, "stage_run_id"),
+    review_session_id: options["review_session_id"].to_s,
+    requested_gate_status: options["requested_gate_status"] || "conditional_pass",
+    gate_result: options["gate_result"].to_s,
+    user_confirmed: options["user_confirmed"].to_s == "true",
+    decision_note: options["decision_note"].to_s
   )
 when "record-turn"
   runtime.record_turn(
@@ -1439,6 +2241,8 @@ when "record-turn"
     primary_skill: require_option(options, "primary_skill"),
     fallback_skill: options["fallback_skill"].to_s,
     skill_status: options["skill_status"] || "completed",
+    skill_contract_json: options["skill_contract_json"].to_s,
+    skill_execution_id: options["skill_execution_id"].to_s,
     artifact_name: require_option(options, "artifact_name"),
     artifact_content_file: options["artifact_content_file"],
     artifact_content: options["artifact_content"],
@@ -1446,7 +2250,11 @@ when "record-turn"
     gate_status: options["gate_status"] || "conditional_pass",
     gate_result: options["gate_result"].to_s,
     review_roles: options["review_roles"].to_s,
-    source_ref: options["source_ref"].to_s
+    source_ref: options["source_ref"].to_s,
+    review_mode: options["review_mode"] || "standard_sop",
+    review_question: options["review_question"].to_s,
+    review_scope: options["review_scope"].to_s,
+    evidence_boundary: options["evidence_boundary"].to_s
   )
 when "export-obsidian"
   runtime.export_obsidian(
@@ -1455,6 +2263,6 @@ when "export-obsidian"
   )
 else
   warn "Usage: ruby runtime/pco_runtime.rb <command> [--db PATH] [--workspace PATH] ..."
-  warn "Commands: init-project, save-artifact, write-decision, write-review-item, write-agent-memory, build-context-packet, record-invocation, write-raw-review-record, route-intent, record-review-decision, record-turn, export-obsidian"
+  warn "Commands: init-project, save-artifact, write-decision, write-agent-memory, build-context-packet, prepare-external-review, record-invocation, write-raw-review-record, route-intent, execute-skill, record-host-skill-execution, rag-ingest, rag-retrieve, record-review-decision, finalize-stage-gate, record-turn, export-obsidian"
   exit 1
 end

@@ -462,6 +462,8 @@ badcases = []
 fixes = []
 executed_record_turns = 0
 executed_invocations = 0
+executed_review_sessions = 0
+executed_review_role_outputs = 0
 
 Dir.mktmpdir("pco-loop-50-") do |dir|
   db = File.join(dir, "product-crew-os.sqlite3")
@@ -538,14 +540,21 @@ Dir.mktmpdir("pco-loop-50-") do |dir|
       "--artifact-name", artifact_name,
       "--artifact-content-file", content_path,
       "--artifact-status", "draft",
-      "--gate-status", "conditional_pass",
+      "--gate-status", "blocked",
+      "--review-mode", "simulated_placeholder",
       "--gate-result", expected.fetch("stage_gate"),
       "--review-roles", roles.join(","),
       "--source-ref", "loop-50:#{case_id}"
     )
     executed_record_turns += 1
+    if turn["review_session_id"].to_s != ""
+      executed_review_sessions += 1
+      executed_review_role_outputs += Array(turn["roles"]).length
+    end
 
-    if turn["stage_id"] == stage_id && turn["artifact_id"].to_s != "" && turn["review_session_id"].to_s != ""
+    requires_external_review = roles.any? { |role| role != "Coach" }
+    session_matches_route = requires_external_review ? turn["review_session_id"].to_s != "" : turn["review_session_id"].to_s.empty?
+    if turn["stage_id"] == stage_id && turn["artifact_id"].to_s != "" && session_matches_route
       result_status = status == "template_used" ? "DEGRADED" : "PASS"
       record_result(
         results: results,
@@ -705,11 +714,15 @@ Dir.mktmpdir("pco-loop-50-") do |dir|
     "--artifact-name", "Raw Review Visibility Check",
     "--artifact-content", "This artifact validates raw review visibility.",
     "--review-roles", "Tech",
-    "--gate-status", "conditional_pass",
+    "--gate-status", "blocked",
+    "--review-mode", "simulated_placeholder",
     "--gate-result", "raw review should be visible"
   )
   executed_record_turns += 1
-  raw_review_path = Dir[File.join(workspace, "memory", "projects", project_id, "raw-review-records", session.fetch("review_session_id"), "*.md")].first
+  executed_review_sessions += 1 if session.fetch("review_session_id").to_s != ""
+  executed_review_role_outputs += Array(session["roles"]).length
+  raw_review_path = File.join(workspace, "memory", "projects", project_id, "raw-review-records", session.fetch("review_session_id"), "Tech.md")
+  raw_review_path = nil unless File.exist?(raw_review_path)
   raw_review_ok = raw_review_path && File.read(raw_review_path).include?("Raw Review: 张工 / Tech") && File.read(raw_review_path).include?("原始评审记录")
   record_result(
     results: results,
@@ -841,11 +854,11 @@ Dir.mktmpdir("pco-loop-50-") do |dir|
     "sop_runs" => executed_record_turns,
     "skill_runs" => executed_record_turns,
     "artifacts" => executed_record_turns,
-    "review_sessions" => executed_record_turns,
-    "raw_review_records" => executed_record_turns,
-    "agent_invocations" => executed_record_turns + executed_invocations,
-    "review_items" => executed_record_turns,
-    "context_packets" => executed_record_turns + executed_invocations
+    "review_sessions" => executed_review_sessions,
+    "raw_review_records" => executed_review_role_outputs,
+    "agent_invocations" => executed_review_role_outputs + executed_invocations,
+    "review_items" => executed_review_role_outputs,
+    "context_packets" => executed_review_role_outputs + executed_invocations
   }
   expected_counts.each do |table, minimum|
     next if minimum.zero?
@@ -897,7 +910,7 @@ Dir.mktmpdir("pco-loop-50-") do |dir|
     "",
     "## 测试方法",
     "",
-    "本轮采用 loop 方法：每个 case 都按 `输入 -> 预期 Stage/SOP/Skill/Agent/Artifact/Gate -> Runtime 写入 -> 断言 -> 记录证据 -> Bad Case 归档` 执行。44 个用例来自标准 SOP 基准集，6 个用例来自近期真实测试暴露的高风险 Bad Case。默认启用本地 SQLite 测试账本，已通过且指纹未变化的 case 会标记为 `SKIP_PASS`。",
+    "本轮采用 loop 方法：每个 case 都按 `输入 -> 预期 Stage/SOP/Skill/Agent/Artifact/Gate -> Runtime 写入 -> 断言 -> 记录证据 -> Bad Case 归档` 执行。44 个 SOP 基准用例显式使用 `simulated_placeholder`，只验证路由、持久化和模拟留痕，且不得产生通过类 Gate；它们不等于真实 Skill 或真实子 Agent 已执行。6 个用例来自近期真实测试暴露的高风险 Bad Case。默认启用本地 SQLite 测试账本，已通过且指纹未变化的 case 会标记为 `SKIP_PASS`。",
     "",
     "## 50 个用例结果",
     "",
@@ -907,7 +920,7 @@ Dir.mktmpdir("pco-loop-50-") do |dir|
     ""
   ]
   if badcases.empty?
-    report << "- 本轮未发现新的失败 Bad Case。近期已知 Bad Case 已被回归锁定：运行时昵称污染角色名、raw review 不可见、非产品任务强行套 SOP。"
+    report << "- 本轮未发现新的失败 Bad Case。近期已知 Bad Case 已被回归锁定：运行时昵称污染角色名、raw review 不可见、非产品任务强行套 SOP、无执行回执或漏评审仍可通过。"
   else
     badcases.each { |badcase| report << "- #{badcase}" }
   end
@@ -922,7 +935,7 @@ Dir.mktmpdir("pco-loop-50-") do |dir|
     fixes.uniq.each { |fix| report << "- #{fix}" }
   end
   if fail_count == 0 && executed_record_turns.positive?
-    report << "- 本次执行的 SOP 均可写入 runtime，并产生 stage、skill、artifact、context packet、invocation ledger、review item 和 raw review record。"
+    report << "- 本次 SOP 基准均可写入 runtime，并产生 stage、skill、artifact、context packet、invocation ledger、review item 和 raw review record；其中评审留痕为显式模拟，不可作为真实调用或 Gate 通过依据。"
   elsif fail_count == 0 && skip_count.positive?
     report << "- 本轮未重复执行已通过 case；结果由测试账本中的 PASS 记录和当前指纹共同确认。"
   end
