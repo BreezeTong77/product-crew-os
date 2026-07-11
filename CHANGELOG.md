@@ -4,7 +4,22 @@ Product Crew OS 的重要变更都会记录在这里。
 
 ## Unreleased
 
-- 无待发布内容（待提交后清单会归入 v0.1.2）。
+- 无待发布内容。
+
+## v0.1.3 - 2026-07-11
+
+### 核心更新
+
+- 收紧 Stage Gate：没有真实 Skill 执行证据、完整 Required 评审和用户确认，不能通过。
+- 模板输出改为 `template_degraded`，不再可以伪装成 Skill 成功或通过 Gate。
+- 路由决策、Required / Triggered 角色和 Stage Run 采用持久化控制面，调用方不能绕过既定边界。
+- RAG 资料接入新增本地 OCR、来源元数据和 Gate evidence 绑定；不合格来源会阻塞最终 Gate。
+- 新增本地资料接入、持久 SOP 向量索引和 Coze Runtime Bridge 的验证。
+
+### 文档调整
+
+- README 收紧为产品定位、真实能力、边界和验证入口。
+- 新增 `releases/v0.1.3.md`。
 
 ## v0.1.2 - 2026-07-05
 
