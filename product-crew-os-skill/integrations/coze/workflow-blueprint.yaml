@@ -101,15 +101,10 @@ workflow_nodes:
     input: [stage_id, sop_id, user_skill_overlay]
     output: [primary_skill, fallback_skill, selected_skill]
   - key: skill_execution
-    input: [selected_skill, user_message, project_state, stage_id, sop_id, input_artifact_refs]
-    output: [draft_output, source_refs, skill_execution]
-    invariant: "A real external Skill run must return SkillExecutionContract. It may keep its own professional workflow, but may_change_stage, may_decide_gate, may_write_project_memory, and may_call_agents are always false."
-    execution_rule: "For registered command skills, call runtimeExecuteSkill first and copy execution_proof into skill_execution. For host_callback_required or mcp_required, do not report completed until the host callback or MCP action ledger exists."
-  - key: host_skill_execution_callback
-    input: [project_id, stage_id, selected_skill, runtime_model_id, host_run_id, raw_output, observed_actions]
-    output: [skill_execution_id]
-    operation_id: runtimeRecordHostSkillExecution
-    invariant: "For external_workflow or native_capability, runtimeRecordTurn must receive this skill_execution_id. Missing or mismatched evidence blocks the Stage Gate."
+    input: [selected_skill, user_message, project_state, stage_id, sop_id, input_artifact_refs, skill_input]
+    output: [draft_output, source_refs, graph_issued_skill_receipt]
+    invariant: "LangGraph is the sole Skill executor and receipt issuer. A Skill may keep its own professional workflow, but may_change_stage, may_decide_gate, may_write_project_memory, and may_call_agents are always false."
+    execution_rule: "Call runtimeRecordTurn with bounded skill_input only. Do not send skill_execution, execution_id, or a claimed success result. LangGraph executes primary/fallback Skill, stores raw output, then signs the receipt. Missing deployment or MCP authorization blocks the Stage Gate."
   - key: artifact_writer
     input: [draft_output, stage_id, sop_id]
     output: [artifact_id, artifact_version, artifact_path]

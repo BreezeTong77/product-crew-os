@@ -110,14 +110,15 @@ paths:
       operationId: runtimeRecordTurn
       description: >-
         Continues only from a persisted route decision for the same project.
-        Missing or fake Skill evidence can create a draft but cannot pass a Gate.
+        LangGraph runs the routed Skill itself and issues the only accepted receipt.
+        Caller-provided Skill success claims are rejected.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [project_id, user_input, route_decision_id, skill_execution]
+              required: [project_id, user_input, route_decision_id]
               properties:
                 project_id: { type: string }
                 user_input: { type: string }
@@ -125,9 +126,9 @@ paths:
                 thread_id: { type: string }
                 retrieval_evidence: { type: object, additionalProperties: true }
                 require_real_embedding: { type: boolean }
-                skill_execution:
+                skill_input:
                   type: object
-                  required: [skill_id, execution_id, output_ref, execution_mode, contract_valid, may_change_stage, may_decide_gate, may_write_project_memory, may_call_agents]
+                  description: Bounded data for the routed Skill, such as assumptions or source references. This is input, not a success receipt.
                   additionalProperties: true
       responses:
         '200': { $ref: '#/components/responses/RuntimeResponse' }

@@ -26,10 +26,12 @@ REQUIRED = [
     "integrations/coze/runtime-plugin-openapi.yaml",
     "integrations/coze/workflow-blueprint.yaml",
     "integrations/coze/Dockerfile",
+    "integrations/coze/env.example",
     "tests/prompt-eval-cases.yaml",
     "tests/run-langgraph-runtime-e2e.py",
     "tests/run-python-runtime-adapters-e2e.py",
     "tests/run-release-gate.py",
+    "tests/run-real-ollama-skill-integration.py",
 ]
 
 
@@ -52,7 +54,7 @@ def main() -> int:
     if runtime_ruby:
         errors.append("Ruby runtime files remain: " + ", ".join(path.name for path in runtime_ruby))
     workflow = (ROOT / "runtime" / "langgraph_runtime" / "workflow.py").read_text(encoding="utf-8")
-    for term in ("StateGraph", "SqliteSaver", "interrupt", "Command", "revise_artifact", "export_project_assets", "PCO_LANGGRAPH_DELEGATE_SECRET"):
+    for term in ("StateGraph", "SqliteSaver", "interrupt", "Command", "execute_skill", "skill_receipt_invalid_or_not_graph_issued", "revise_artifact", "export_project_assets", "PCO_LANGGRAPH_DELEGATE_SECRET"):
         if term not in workflow:
             errors.append(f"LangGraph workflow missing {term}")
     blueprint = yaml.safe_load((ROOT / "integrations" / "coze" / "workflow-blueprint.yaml").read_text(encoding="utf-8"))
@@ -66,6 +68,11 @@ def main() -> int:
     missing_paths = expected_paths - set((openapi.get("paths") or {}).keys())
     if missing_paths:
         errors.append("Coze OpenAPI missing Python bridge paths: " + ", ".join(sorted(missing_paths)))
+    turn_schema = (((openapi.get("paths") or {}).get("/v1/turns") or {}).get("post") or {}).get("requestBody", {}).get("content", {}).get("application/json", {}).get("schema", {})
+    if "skill_input" not in (turn_schema.get("properties") or {}):
+        errors.append("Coze OpenAPI turn schema does not accept graph-owned skill_input")
+    if "skill_execution" in set(turn_schema.get("required") or []):
+        errors.append("Coze OpenAPI still requires caller-provided skill_execution")
     if errors:
         print("validate-package: FAIL")
         for error in errors:

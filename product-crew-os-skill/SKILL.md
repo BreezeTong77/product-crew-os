@@ -158,11 +158,11 @@ Skill execution must be auditable. For each routed case, record `expected_primar
 
 ### Codex Native Skill Execution
 
-When the host is Codex and the routed implementation exists in `third_party/skills/`, the coach must use the bundled Skill as a **host-native execution**: load its `SKILL.md`, read only the relevant references/scripts/templates, and follow its method while producing the current Artifact. Do not require Ollama, DeepSeek, Coze, or a second model merely to execute a Skill that Codex already exposes locally.
+When the host is Codex and the routed implementation exists in `third_party/skills/`, the coach may use the bundled Skill as a **host-native execution** only when a deployed Host Native Adapter returns the actual output to LangGraph. The Python Runtime otherwise executes bundled methodology Skills through its configured local model adapter and records that driver plainly. Do not label a Skill as host-native merely because the coach read its `SKILL.md` in chat.
 
 Record `host_native_executed` only after that activation actually happened. The evidence must include `host=codex`, `skill_id`, bundled `skill_path`, `skill_content_hash`, the bounded input Artifact/source refs, raw output or output Artifact ref, and timestamp. The host-native Skill may improve analysis and drafting, but it may not change Stage, decide Gate, write project memory, invoke review roles, or write external tools; those remain owned by Product Crew OS.
 
-If the routed capability is Figma/Pencil/MCP-based, or is not bundled, state the missing deployment plainly and ask for the required connector/authorization. Do not route an already-bundled Codex Skill through an unrelated model provider as a substitute for host-native activation.
+If the routed capability is Figma/Pencil/MCP-based, or is not bundled, state the missing deployment plainly and ask for the required connector/authorization. A model adapter can execute a bundled methodology Skill, but cannot impersonate an MCP write action.
 
 Common routing:
 

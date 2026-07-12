@@ -180,8 +180,8 @@ Runtime 必须记录以下核心事件，便于回归和评估：
 
 ```text
 SOP 选择 Skill 与目标
--> Contract 约束权限与证据
--> Skill 运行专业工作流
+-> LangGraph execute_skill 节点运行专业工作流
+-> Runtime 生成带签名的 execution receipt
 -> Runtime 校验实际动作与输出证据
 -> Artifact / Review / 用户决策 / Stage Gate
 ```
@@ -197,13 +197,15 @@ SOP 选择 Skill 与目标
 
 外部工具动作可以在 `approved_actions` 中精确授权，例如 `figma.write_nodes`、`jira.create_issue`；未授权或禁止动作会令 `skill_contract_invalid`，通过类 Gate 自动降为 `blocked_runtime_preflight`。
 
+调用方不能传入一个 `skill_execution` 对象来声称成功。当前运行时只接受 `skill_input`：`execute_skill` 节点实际运行 primary 或 fallback Skill、保存原始输出、写入 SQLite，再签发回执。回执必须与同一项目、同一 stage、同一输出文件和本机签名匹配，才可能进入 Artifact / Review。
+
 示例见 [Skill Execution Contract 模板](../templates/skill-execution-contract.json)。
 
 ### 2.3 Codex Native Skill Contract
 
-若宿主是 Codex，且路由目标是已打包的 `third_party/skills/*/SKILL.md`，它可作为 `host_native` 执行，不要求额外 LLM provider。有效证据为：Codex 实际加载的 `skill_path`、内容 hash、输入 Artifact/source refs、输出 Artifact/raw output ref 和执行时间。
+Codex 可读取已打包的 `third_party/skills/*/SKILL.md`。但只有当宿主已部署 Host Native Adapter，并把实际输出交回 LangGraph 的 `execute_skill` 节点时，才可记为 `host_native` 执行。单独在聊天中读取 Skill、手写一份结果或传一份“成功凭证”都不能作为 Stage Gate 依据。
 
-`host_native` 仍受同一控制边界约束：Skill 不能自行改 Stage、决定 Gate、写项目记忆、召唤评审角色或写外部工具。MCP 写入仍须先征得用户授权。
+当前 Python Runtime 的开箱真实执行后端是本地 `ollama_prompt` 和已注册的 `command` 脚本；MCP 写入仍须先征得用户授权并连接真实工具。
 
 ## 5. Note Adapter / 笔记工具适配
 

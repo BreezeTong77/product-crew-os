@@ -56,13 +56,16 @@ def main() -> int:
             check(errors, retrieved.get("candidates", [{}])[0].get("stage_id") == "mvp_scope", "Python RAG did not return source-bound candidate")
             checks.append("Python RAG has incremental SQLite storage and labels hash retrieval as smoke only")
 
-            skill = SkillExecutionAdapter(SKILL_ROOT).execute(
+            executor = SkillExecutionAdapter(SKILL_ROOT)
+            catalog = executor.catalog_status()
+            check(errors, catalog.get("bundled_implementations") == 49, "all 49 bundled Skill implementations were not discovered by the executor")
+            skill = executor.execute(
                 "product-discovery",
                 {"assumptions": [{"statement": "Users have this pain weekly", "category": "desirability", "risk": 0.9, "certainty": 0.2}]},
             )
             check(errors, skill.get("execution_status") == "executed", "Python command Skill did not execute")
             check(errors, skill.get("execution_proof"), "Python command Skill omitted execution proof")
-            checks.append("Python Skill adapter executes registered command skills with proof")
+            checks.append("Python Skill adapter discovers all 49 bundled implementations and executes registered command skills")
 
             bridge = BridgeApplication(root_path / "bridge", SKILL_ROOT, "bridge-token", "bridge-delegate-secret")
             try:
@@ -73,15 +76,17 @@ def main() -> int:
                 bridge.handle("POST", "/v1/projects", {"project_id": "bridge-project", "name": "Bridge project"})
                 status, bridge_route = bridge.handle("POST", "/v1/routes", {"project_id": "bridge-project", "user_input": "先做 MVP，不要做大，帮我砍范围和列 not-do。"})
                 bridge_proof = {"skill_id": "scope-cutting", "execution_id": "bridge-proof-001", "output_ref": "artifacts/mvp.md", "execution_mode": "external_workflow", "contract_valid": True, "may_change_stage": False, "may_decide_gate": False, "may_write_project_memory": False, "may_call_agents": False}
-                status, bridge_turn = bridge.handle("POST", "/v1/turns", {"project_id": "bridge-project", "user_input": "Continue the persisted MVP route.", "route_decision_id": bridge_route.get("route_decision_id", ""), "skill_execution": bridge_proof, "thread_id": "bridge-thread"})
+                status, rejected = bridge.handle("POST", "/v1/turns", {"project_id": "bridge-project", "user_input": "Continue the persisted MVP route.", "route_decision_id": bridge_route.get("route_decision_id", ""), "skill_execution": bridge_proof, "thread_id": "bridge-rejected-thread"})
+                check(errors, int(status) == 409 and rejected.get("status") == "skill_receipt_rejected", "Python bridge accepted a caller-provided Skill receipt")
+                status, bridge_turn = bridge.handle("POST", "/v1/turns", {"project_id": "bridge-project", "user_input": "Continue the persisted MVP route.", "route_decision_id": bridge_route.get("route_decision_id", ""), "skill_input": {}, "thread_id": "bridge-thread"})
                 check(errors, int(status) == 200 and bridge_turn.get("route", {}).get("route_decision_id") == bridge_route.get("route_decision_id"), "Python bridge did not bind turn to persisted route")
-                status, _unknown_turn = bridge.handle("POST", "/v1/turns", {"project_id": "bridge-project", "user_input": "Continue with fake route.", "route_decision_id": "route_unknown", "skill_execution": bridge_proof, "thread_id": "bridge-thread-unknown"})
+                status, _unknown_turn = bridge.handle("POST", "/v1/turns", {"project_id": "bridge-project", "user_input": "Continue with fake route.", "route_decision_id": "route_unknown", "skill_input": {}, "thread_id": "bridge-thread-unknown"})
                 check(errors, int(status) == 409, "Python bridge accepted an unknown route decision")
                 status, response = bridge.handle("POST", "/v1/reviews/prepare", {})
                 check(errors, int(status) == 409 and response.get("status") == "use_langgraph_turn_or_resume", "Python bridge allowed a side-channel review write")
             finally:
                 bridge.close()
-            checks.append("Python Coze bridge binds turns to persisted routes and rejects side-channel writes")
+            checks.append("Python Coze bridge binds turns to persisted routes and rejects caller-provided Skill receipts")
         finally:
             runtime.close()
 

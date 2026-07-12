@@ -13,6 +13,7 @@ import hashlib
 import hmac
 import os
 import re
+import secrets
 import sqlite3
 import uuid
 from datetime import datetime, timezone
@@ -36,6 +37,8 @@ class WorkflowState(TypedDict, total=False):
     retrieval_evidence: Dict[str, Any]
     project_context: Dict[str, Any]
     route: Dict[str, Any]
+    skill_input: Dict[str, Any]
+    caller_supplied_skill_execution: Dict[str, Any]
     skill_execution: Dict[str, Any]
     artifact: Dict[str, Any]
     context_packets: List[Dict[str, Any]]
@@ -87,6 +90,7 @@ class ProductCrewLangGraphRuntime:
         self.skill_root = Path(skill_root).expanduser().resolve()
         self.delegate_secret = delegate_secret or os.environ.get("PCO_LANGGRAPH_DELEGATE_SECRET", "")
         self.workspace.mkdir(parents=True, exist_ok=True)
+        self.skill_receipt_secret = self._load_skill_receipt_secret()
         self.project_db = self.workspace / "product-crew-langgraph.sqlite3"
         self.checkpoint_db = self.workspace / "product-crew-langgraph-checkpoints.sqlite3"
         self.rag_db = self.workspace / "product-crew-rag.sqlite3"
@@ -121,6 +125,7 @@ class ProductCrewLangGraphRuntime:
         project_id: str,
         user_input: str,
         *,
+        skill_input: Optional[Dict[str, Any]] = None,
         skill_execution: Optional[Dict[str, Any]] = None,
         retrieval_evidence: Optional[Dict[str, Any]] = None,
         require_real_embedding: bool = False,
@@ -134,7 +139,11 @@ class ProductCrewLangGraphRuntime:
             "thread_id": thread,
             "user_input": user_input,
             "requested_route_decision_id": route_decision_id,
-            "skill_execution": skill_execution or {},
+            "skill_input": skill_input or {},
+            # Kept only to report old-host attempts. It is never accepted as
+            # evidence: the graph executes the selected Skill itself.
+            "caller_supplied_skill_execution": skill_execution or {},
+            "skill_execution": {},
             "retrieval_evidence": retrieval_evidence or {},
             "require_real_embedding": require_real_embedding,
             "events": [],
@@ -152,6 +161,7 @@ class ProductCrewLangGraphRuntime:
             "thread_id": f"route:{uuid.uuid4().hex[:12]}",
             "user_input": user_input,
             "retrieval_evidence": retrieval_evidence or {},
+            "skill_input": {},
             "skill_execution": {},
             "events": [],
         }
@@ -164,7 +174,39 @@ class ProductCrewLangGraphRuntime:
         return state["route"]
 
     def execute_skill(self, skill_id: str, input_payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Run a Skill outside a Stage only as a visible preflight.
+
+        This endpoint is useful for deployment checks but deliberately cannot
+        mint a receipt that a Stage Gate accepts.
+        """
+        result = self._execute_skill_adapter(skill_id, input_payload)
+        return result | {"invocation_scope": "standalone_preflight", "gate_valid": False}
+
+    def _execute_skill_adapter(self, skill_id: str, input_payload: Dict[str, Any]) -> Dict[str, Any]:
         return SkillExecutionAdapter(self.skill_root).execute(skill_id, input_payload)
+
+    def _skill_candidates(self, route: Dict[str, Any]) -> List[str]:
+        candidates = [str(route.get("primary_skill", "")).strip()]
+        fallback = str(route.get("fallback_skill", ""))
+        candidates.extend(item.strip() for item in fallback.split("/") if item.strip())
+        return self._unique(candidates)
+
+    def _skill_input(self, state: WorkflowState, skill_id: str) -> Dict[str, Any]:
+        """Give Skills context without handing them workflow-control authority."""
+        route = state["route"]
+        supplied = dict(state.get("skill_input") or {})
+        return {
+            "skill_id": skill_id,
+            "user_input": state["user_input"],
+            "stage_id": route["stage_id"],
+            "sop_id": route["sop"],
+            "required_artifacts": route.get("required_artifacts", []),
+            "project_context": state.get("project_context", {}),
+            "retrieval_evidence": state.get("retrieval_evidence", {}),
+            "user_supplied_input": supplied,
+            # Command Skills use these when an integration has provided data.
+            **supplied,
+        }
 
     def rag_store(self) -> PersistentRagStore:
         return PersistentRagStore(self.rag_db)
@@ -185,6 +227,7 @@ class ProductCrewLangGraphRuntime:
         builder.add_node("load_project_context", self._load_project_context)
         builder.add_node("retrieve_evidence", self._retrieve_evidence)
         builder.add_node("route_stage", self._route_stage)
+        builder.add_node("execute_skill", self._execute_skill)
         builder.add_node("skill_execution_guard", self._skill_execution_guard)
         builder.add_node("write_artifact", self._write_artifact)
         builder.add_node("prepare_review", self._prepare_review)
@@ -206,8 +249,9 @@ class ProductCrewLangGraphRuntime:
         builder.add_conditional_edges(
             "route_stage",
             self._route_branch,
-            {"execute": "skill_execution_guard", "end": END},
+            {"execute": "execute_skill", "end": END},
         )
+        builder.add_edge("execute_skill", "skill_execution_guard")
         builder.add_edge("skill_execution_guard", "write_artifact")
         builder.add_conditional_edges(
             "write_artifact",
@@ -383,13 +427,104 @@ class ProductCrewLangGraphRuntime:
         status = state.get("route", {}).get("route_status")
         return "execute" if status == "mapped" else "end"
 
+    def _execute_skill(self, state: WorkflowState) -> Dict[str, Any]:
+        """Run the routed Skill inside the graph, then persist an engine receipt.
+
+        The caller is never allowed to provide an execution receipt. This node
+        is the sole place where a Stage can obtain one.
+        """
+        route = state["route"]
+        if state.get("caller_supplied_skill_execution"):
+            self._append_event(
+                state["project_id"],
+                "caller_skill_receipt_ignored",
+                {
+                    "stage_id": route["stage_id"],
+                    "claimed_skill_id": state["caller_supplied_skill_execution"].get("skill_id", ""),
+                    "reason": "only_graph_execute_skill_may_issue_receipts",
+                },
+            )
+        attempts: List[Dict[str, Any]] = []
+        result: Dict[str, Any] = {}
+        for skill_id in self._skill_candidates(route):
+            result = self._execute_skill_adapter(skill_id, self._skill_input(state, skill_id))
+            attempts.append(
+                {
+                    "skill_id": skill_id,
+                    "execution_status": result.get("execution_status", "unavailable"),
+                    "driver": result.get("driver", result.get("reason", "")),
+                }
+            )
+            if result.get("execution_status") == "executed":
+                break
+
+        execution_id = self._id("skillrun")
+        selected_skill = str(result.get("skill_id") or route["primary_skill"])
+        if result.get("execution_status") != "executed":
+            execution = {
+                "skill_id": selected_skill,
+                "primary_skill": route["primary_skill"],
+                "execution_status": result.get("execution_status", "deployment_required"),
+                "gate_valid": False,
+                "issues": ["skill_execution_not_completed"],
+                "attempts": attempts,
+                "deployment_notice": result.get("deployment_notice", {}),
+                "detail": result.get("detail", result.get("reason", "")),
+            }
+            self._persist_skill_execution(state["project_id"], route["stage_id"], execution)
+            return self._event_update(state, "skill_execution_blocked", execution) | {"skill_execution": execution}
+
+        output = str(result.get("output_content", "")).strip()
+        if not output:
+            execution = {
+                "skill_id": selected_skill,
+                "primary_skill": route["primary_skill"],
+                "execution_status": "deployment_required",
+                "gate_valid": False,
+                "issues": ["skill_output_empty"],
+                "attempts": attempts,
+            }
+            self._persist_skill_execution(state["project_id"], route["stage_id"], execution)
+            return self._event_update(state, "skill_execution_blocked", execution) | {"skill_execution": execution}
+
+        output_path = self._project_dir(state["project_id"]) / "skill-runs" / execution_id / "raw-output.md"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(output + "\n", encoding="utf-8")
+        receipt = {
+            "execution_id": execution_id,
+            "project_id": state["project_id"],
+            "stage_id": route["stage_id"],
+            "skill_id": selected_skill,
+            "primary_skill": route["primary_skill"],
+            "execution_mode": result.get("execution_mode", "external_workflow"),
+            "output_ref": str(output_path),
+            "output_sha256": hashlib.sha256(output.encode("utf-8")).hexdigest(),
+            "source_ref": result.get("source_ref", ""),
+            "driver": result.get("driver", ""),
+            "executed_at": self._now(),
+        }
+        receipt_signature = self._sign_skill_receipt(receipt)
+        execution = receipt | {
+            "execution_status": "executed",
+            "gate_valid": False,
+            "contract_valid": True,
+            "may_change_stage": False,
+            "may_decide_gate": False,
+            "may_write_project_memory": False,
+            "may_call_agents": False,
+            "receipt_signature": receipt_signature,
+            "attempts": attempts,
+            "execution_proof": result.get("execution_proof", {}),
+        }
+        self._persist_skill_execution(state["project_id"], route["stage_id"], execution)
+        return self._event_update(state, "skill_executed_in_graph", execution) | {"skill_execution": execution}
+
     def _skill_execution_guard(self, state: WorkflowState) -> Dict[str, Any]:
         route = state["route"]
         proof = dict(state.get("skill_execution") or {})
-        expected_skill = route["primary_skill"]
         issues: List[str] = []
 
-        if proof.get("skill_id") != expected_skill:
+        if proof.get("skill_id") not in self._skill_candidates(route):
             issues.append("skill_id_mismatch_or_missing")
         if proof.get("execution_mode") not in {"native_capability", "external_workflow"}:
             issues.append("unsupported_execution_mode")
@@ -407,18 +542,16 @@ class ProductCrewLangGraphRuntime:
             issues.append("skill_may_write_project_memory")
         if proof.get("may_call_agents") is not False:
             issues.append("skill_may_call_agents")
+        if not self._valid_skill_receipt(state["project_id"], route["stage_id"], proof):
+            issues.append("skill_receipt_invalid_or_not_graph_issued")
 
         valid = not issues
         status = "executed" if valid else "deployment_required"
         execution = {
-            "skill_id": expected_skill,
+            **proof,
             "execution_status": status,
             "gate_valid": valid,
             "issues": issues,
-            "execution_id": proof.get("execution_id", ""),
-            "output_ref": proof.get("output_ref", ""),
-            "execution_mode": proof.get("execution_mode", "catalog_selected"),
-            "contract_ref": proof.get("contract_ref", ""),
         }
         self._append_event(state["project_id"], "skill_execution_checked", execution)
         return self._update(state, skill_execution=execution)
@@ -911,12 +1044,15 @@ class ProductCrewLangGraphRuntime:
         route = state["route"]
         execution = state["skill_execution"]
         if execution["gate_valid"]:
+            output_ref = Path(str(execution["output_ref"]))
+            skill_output = output_ref.read_text(encoding="utf-8") if output_ref.is_file() else ""
             return (
                 f"# {route['required_artifacts'][0]}\n\n"
                 f"- Stage: `{route['stage_id']}`\n"
-                f"- Selected Skill: `{route['primary_skill']}`\n"
+                f"- Selected Skill: `{execution['skill_id']}`\n"
                 f"- Execution evidence: `{execution['execution_id']}`\n\n"
-                "This artifact was produced through a validated host or external skill execution."
+                "## Skill 原始输出\n\n"
+                f"{skill_output}"
             )
         return (
             f"# {route['required_artifacts'][0]}\n\n"
@@ -965,6 +1101,16 @@ class ProductCrewLangGraphRuntime:
                   payload_json TEXT NOT NULL,
                   created_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS langgraph_skill_executions (
+                  execution_id TEXT PRIMARY KEY,
+                  project_id TEXT NOT NULL,
+                  stage_id TEXT NOT NULL,
+                  skill_id TEXT NOT NULL,
+                  status TEXT NOT NULL,
+                  receipt_json TEXT NOT NULL,
+                  receipt_signature TEXT NOT NULL DEFAULT '',
+                  created_at TEXT NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS langgraph_artifacts (
                   artifact_id TEXT PRIMARY KEY,
                   project_id TEXT NOT NULL,
@@ -994,6 +1140,84 @@ class ProductCrewLangGraphRuntime:
                 );
                 """
             )
+
+    def _load_skill_receipt_secret(self) -> str:
+        """Use an installation-local secret so only this runtime issues receipts."""
+        configured = os.environ.get("PCO_SKILL_RECEIPT_SECRET", "").strip()
+        if configured:
+            return configured
+        secret_path = self.workspace / ".pco-skill-receipt-secret"
+        if secret_path.is_file():
+            return secret_path.read_text(encoding="utf-8").strip()
+        secret = secrets.token_urlsafe(48)
+        secret_path.write_text(secret, encoding="utf-8")
+        try:
+            secret_path.chmod(0o600)
+        except OSError:
+            pass
+        return secret
+
+    def _sign_skill_receipt(self, receipt: Dict[str, Any]) -> str:
+        message = json.dumps(receipt, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return hmac.new(self.skill_receipt_secret.encode("utf-8"), message.encode("utf-8"), hashlib.sha256).hexdigest()
+
+    def _persist_skill_execution(self, project_id: str, stage_id: str, execution: Dict[str, Any]) -> None:
+        execution_id = str(execution.get("execution_id") or self._id("skillrun"))
+        stored = dict(execution) | {"execution_id": execution_id}
+        with self._project_connection() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO langgraph_skill_executions(execution_id, project_id, stage_id, skill_id, status, receipt_json, receipt_signature, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    execution_id,
+                    project_id,
+                    stage_id,
+                    str(stored.get("skill_id", "")),
+                    str(stored.get("execution_status", "deployment_required")),
+                    json.dumps(stored, ensure_ascii=False),
+                    str(stored.get("receipt_signature", "")),
+                    self._now(),
+                ),
+            )
+
+    def _valid_skill_receipt(self, project_id: str, stage_id: str, proof: Dict[str, Any]) -> bool:
+        execution_id = str(proof.get("execution_id", ""))
+        signature = str(proof.get("receipt_signature", ""))
+        if not execution_id or not signature:
+            return False
+        with self._project_connection() as conn:
+            row = conn.execute(
+                "SELECT receipt_json, receipt_signature FROM langgraph_skill_executions WHERE execution_id=? AND project_id=? AND stage_id=? AND status='executed'",
+                (execution_id, project_id, stage_id),
+            ).fetchone()
+        if not row:
+            return False
+        try:
+            stored = json.loads(row["receipt_json"])
+        except json.JSONDecodeError:
+            return False
+        signed_receipt = {
+            key: stored.get(key, "")
+            for key in (
+                "execution_id",
+                "project_id",
+                "stage_id",
+                "skill_id",
+                "primary_skill",
+                "execution_mode",
+                "output_ref",
+                "output_sha256",
+                "source_ref",
+                "driver",
+                "executed_at",
+            )
+        }
+        expected = self._sign_skill_receipt(signed_receipt)
+        return (
+            hmac.compare_digest(signature, str(row["receipt_signature"]))
+            and hmac.compare_digest(signature, expected)
+            and proof.get("skill_id") == stored.get("skill_id")
+            and proof.get("output_ref") == stored.get("output_ref")
+        )
 
     def _project_connection(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.project_db)

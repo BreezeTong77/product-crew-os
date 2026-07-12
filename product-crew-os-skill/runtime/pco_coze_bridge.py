@@ -73,10 +73,15 @@ class BridgeApplication:
                 )
             if method == "POST" and path == "/v1/turns":
                 route_decision_id = self._required(payload, "route_decision_id")
+                if self._object(payload, "skill_execution"):
+                    return HTTPStatus.CONFLICT, {
+                        "status": "skill_receipt_rejected",
+                        "message": "Skill execution receipts are issued only by the LangGraph execute_skill node. Send skill_input instead of a caller-provided success claim.",
+                    }
                 result = self.runtime.run(
                     self._required(payload, "project_id"),
                     self._required(payload, "user_input"),
-                    skill_execution=self._object(payload, "skill_execution"),
+                    skill_input=self._object(payload, "skill_input"),
                     retrieval_evidence=self._object(payload, "retrieval_evidence"),
                     require_real_embedding=payload.get("require_real_embedding") is True,
                     thread_id=str(payload.get("thread_id") or "") or None,

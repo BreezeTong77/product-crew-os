@@ -4,6 +4,16 @@ Product Crew OS 的重要变更都会记录在这里。
 
 ## Unreleased
 
+## v0.2.1 - 2026-07-12
+
+### Graph-owned Skill execution
+
+- `execute_skill` 成为 LangGraph 必经节点：SOP 命中后由图内执行 primary / fallback Skill，保存原始输出并生成签名回执。
+- 调用方、Coze Bridge 和 CLI 不再接受自带 `skill_execution` 成功声明；伪造回执不能进入 Stage Gate。
+- 执行器发现全部 49 份打包 Skill；脚本型能力直接执行，方法论 Skill 可通过已部署的本地 Ollama 读取真实 `SKILL.md` 后执行。
+- 增加真实 Ollama 集成测试，验证 `mvp_scope -> shape-up -> 回执 -> Artifact` 链路。
+- Coze OpenAPI、Workflow 蓝图、部署变量和审计表同步改为 graph-owned execution；MCP 仍要求真实连接与用户授权。
+
 ## v0.2.0 - 2026-07-12
 
 ### Python / LangGraph 全量迁移

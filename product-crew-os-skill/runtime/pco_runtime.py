@@ -65,6 +65,7 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--route-decision-id", default="")
     result.add_argument("--skill-id", default="")
     result.add_argument("--input-json", default="{}")
+    result.add_argument("--skill-input-json", default="{}")
     result.add_argument("--skill-execution-json", default="{}")
     result.add_argument("--retrieval-evidence-json", default="{}")
     result.add_argument("--resume-json", default="{}")
@@ -121,10 +122,13 @@ def main() -> int:
         elif args.command == "record-turn":
             if not args.project_id or not args.user_input:
                 raise SystemExit("record-turn requires --project-id and --user-input")
+            legacy_execution = parse_json(args.skill_execution_json, "--skill-execution-json")
+            if legacy_execution:
+                raise SystemExit("record-turn rejects --skill-execution-json; send bounded --skill-input-json and let LangGraph execute the routed Skill")
             result = runtime.run(
                 args.project_id,
                 args.user_input,
-                skill_execution=parse_json(args.skill_execution_json, "--skill-execution-json"),
+                skill_input=parse_json(args.skill_input_json, "--skill-input-json"),
                 retrieval_evidence=parse_json(args.retrieval_evidence_json, "--retrieval-evidence-json"),
                 require_real_embedding=args.require_real_embedding,
                 thread_id=args.thread_id or None,

@@ -15,10 +15,6 @@ sys.path.insert(0, str(ROOT / "runtime"))
 from langgraph_runtime import LocalHashDryRunEmbedding, PersistentRagStore, ProductCrewLangGraphRuntime, RuntimeBlocked  # noqa: E402
 
 
-def proof(skill_id: str) -> dict:
-    return {"skill_id": skill_id, "execution_id": f"release-{skill_id}", "output_ref": f"artifacts/{skill_id}.md", "execution_mode": "native_capability", "contract_valid": True, "may_change_stage": False, "may_decide_gate": False, "may_write_project_memory": False, "may_call_agents": False, "contract_ref": "test:release-gate"}
-
-
 def interrupt_kind(result: dict) -> str:
     values = result.get("__interrupt__", [])
     if not values:
@@ -54,12 +50,19 @@ def main() -> int:
             if non_product.get("gate_status") != "domain_exit":
                 errors.append("L45 non-product request entered Product Crew OS")
 
-            review = runtime.run("release-gate", "先做 MVP，不要做大，帮我砍范围和列 not-do。", skill_execution=proof("scope-cutting"), thread_id="l46-l47")
+            review = runtime.run(
+                "release-gate",
+                "我想验证这个痛点是不是真的，帮我设计访谈样本和通过标准。",
+                skill_input={"assumptions": [{"statement": "用户每周都会遇到该问题", "category": "desirability", "risk": 0.9, "certainty": 0.2}]},
+                thread_id="l46-l47",
+            )
             callbacks = signed_callbacks(runtime, review)
             after_review = runtime.resume("l46-l47", {"callbacks": callbacks})
             raw_review = Path(review["context_packets"][0]["path"]).parents[1] / "raw-review-records" / review["review_validation"]["session_id"] / f"{review['context_packets'][0]['persona']['role_key']}.md"
             if interrupt_kind(after_review) != "user_stage_decision":
                 errors.append("L46/L47 valid callback did not reach user decision")
+            if review.get("skill_execution", {}).get("driver") != "command" or review.get("skill_execution", {}).get("gate_valid") is not True:
+                errors.append("L46/L47 did not execute and validate the graph-owned Skill")
             if not raw_review.exists() or "Runtime nickname (audit only)" not in raw_review.read_text(encoding="utf-8"):
                 errors.append("L46/L47 nickname isolation or raw review visibility failed")
 

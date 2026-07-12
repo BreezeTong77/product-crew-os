@@ -481,7 +481,12 @@ class PersistentRagStore:
 
 
 class SkillExecutionAdapter:
-    """Executes registered command skills or honestly returns deployment_required."""
+    """Executes a routed bundled Skill and returns raw, inspectable evidence only.
+
+    This adapter deliberately has no API for changing Product Crew OS state. A
+    caller receives an output, never a Stage/Gate/Agent decision. The graph is
+    responsible for turning a successful execution into a signed receipt.
+    """
 
     def __init__(self, skill_root: str | Path):
         self.skill_root = Path(skill_root).resolve()
@@ -489,10 +494,28 @@ class SkillExecutionAdapter:
         config = yaml.safe_load(registry_path.read_text(encoding="utf-8"))
         self.registry = config.get("skills", {})
         self.defaults = config.get("defaults", {})
+        self.bundled_catalog = self._load_bundled_catalog()
+        self.bundled_implementation_count = len(list((self.skill_root / "third_party" / "skills").glob("*/SKILL.md")))
+
+    def catalog_status(self) -> Dict[str, int]:
+        """Expose packaged implementation coverage without claiming execution."""
+        canonical = {
+            key
+            for key in self.bundled_catalog
+            if not key.startswith(("alirez-", "aroy-", "assimovt-", "bmad-", "dean-", "phuryn-", "pop-", "pratik-", "turner-", "skill-"))
+        }
+        return {
+            "bundled_implementations": self.bundled_implementation_count,
+            "canonical_router_skills": len(canonical),
+            "registered_drivers": len(self.registry),
+        }
 
     def execute(self, skill_id: str, input_payload: Dict[str, Any]) -> Dict[str, Any]:
         entry = self.registry.get(skill_id)
         if not entry:
+            bundled_source = self.bundled_catalog.get(skill_id)
+            if bundled_source:
+                return self._execute_ollama_prompt(skill_id, bundled_source, input_payload)
             return self._unavailable(skill_id, "skill_not_registered_for_execution")
         driver = entry.get("driver")
         if driver == "command":
@@ -511,7 +534,115 @@ class SkillExecutionAdapter:
             return self._unavailable(skill_id, f"invalid_input: {error}")
         command = [sys.executable, str(source), *arguments]
         result = subprocess.run(command, capture_output=True, text=True, timeout=120)
-        return {"skill_id": skill_id, "driver": "command", "execution_status": "executed" if result.returncode == 0 else "failed", "output_type": entry.get("output_type", "markdown_draft"), "stdout": result.stdout, "stderr": result.stderr, "execution_proof": {"driver_source": entry["source"], "command_sha256": _sha("\0".join(command)), "executed_at": _now(), "exit_code": result.returncode}}
+        return {
+            "skill_id": skill_id,
+            "driver": "command",
+            "execution_mode": "native_capability",
+            "execution_status": "executed" if result.returncode == 0 else "failed",
+            "output_type": entry.get("output_type", "markdown_draft"),
+            "output_content": result.stdout,
+            "stderr": result.stderr,
+            "source_ref": entry["source"],
+            "execution_proof": {
+                "driver_source": entry["source"],
+                "command_sha256": _sha("\0".join(command)),
+                "executed_at": _now(),
+                "exit_code": result.returncode,
+            },
+        }
+
+    def _load_bundled_catalog(self) -> Dict[str, str]:
+        """Read the published Skill catalogue instead of inventing a second map."""
+        index = self.skill_root / "references" / "bundled-skill-index.md"
+        if not index.is_file():
+            return {}
+        catalog: Dict[str, str] = {}
+        pattern = re.compile(r"^\| `([^`]+)` \| `(third_party/skills/[^`]+)`")
+        for line in index.read_text(encoding="utf-8").splitlines():
+            match = pattern.match(line)
+            if not match:
+                continue
+            skill_id, relative_dir = match.groups()
+            path = self.skill_root / relative_dir / "SKILL.md"
+            if path.is_file():
+                # A Skill can have two bundled implementations. Keep the first
+                # published choice until the router gains an explicit variant.
+                catalog.setdefault(skill_id, str(path.relative_to(self.skill_root)))
+                # The folder alias exposes every one of the 49 packaged skill
+                # implementations for explicit use without changing the SOP
+                # router's canonical 46 capability names.
+                catalog.setdefault(Path(relative_dir).name, str(path.relative_to(self.skill_root)))
+        return catalog
+
+    def _execute_ollama_prompt(self, skill_id: str, source_ref: str, input_payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Run a bundled instruction Skill through a real local Ollama model.
+
+        This is intentionally an actual HTTP call, not a local string stub. If
+        Ollama/model deployment is absent it returns deployment_required, which
+        LangGraph will block before the Stage Gate.
+        """
+        source = self.skill_root / source_ref
+        if not source.is_file():
+            return self._unavailable(skill_id, "bundled_skill_source_missing")
+        model = os.environ.get("PCO_SKILL_MODEL", str(self.defaults.get("ollama_model", "qwen2.5:3b")))
+        base_url = os.environ.get("PCO_OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
+        prompt_limit = int(self.defaults.get("prompt_max_chars", 24000))
+        instructions = source.read_text(encoding="utf-8")[:prompt_limit]
+        prompt = (
+            "你正在作为 Product Crew OS 的受控专业 Skill 执行工作。\n"
+            "只完成下面 Skill 指令要求的专业分析或文档草稿。不要决定产品阶段、不要批准 Gate、"
+            "不要写项目记忆、不要召唤或模拟其他 Agent。输出应直接可归档为 Markdown。\n\n"
+            f"Skill ID: {skill_id}\n"
+            f"Skill instructions:\n{instructions}\n\n"
+            "Runtime input:\n"
+            f"{json.dumps(input_payload, ensure_ascii=False, indent=2)[:prompt_limit]}\n"
+        )
+        request_payload = json.dumps({"model": model, "prompt": prompt, "stream": False}).encode("utf-8")
+        request = Request(
+            f"{base_url}/api/generate",
+            data=request_payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urlopen(request, timeout=int(os.environ.get("PCO_SKILL_TIMEOUT_SECONDS", "180"))) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except (URLError, HTTPError, TimeoutError, json.JSONDecodeError) as error:
+            return self._deployment_required(
+                skill_id,
+                "ollama_prompt",
+                f"local Ollama execution failed: {error}",
+                {
+                    "title": "需要部署本地 Skill 模型",
+                    "user_message": "该 Skill 已被 LangGraph 选中，但本机 Ollama 服务或模型不可用，因此没有伪造执行结果。",
+                    "required_steps": ["启动 Ollama 服务", f"拉取模型 {model}", "确认 PCO_OLLAMA_URL 可访问", "重新运行该 SOP"],
+                },
+            )
+        output = str(payload.get("response", "")).strip()
+        if not output:
+            return self._deployment_required(
+                skill_id,
+                "ollama_prompt",
+                "local Ollama returned an empty skill output",
+                {"title": "Skill 没有返回可归档输出", "user_message": "模型已响应但没有产出内容，本轮不能算 Skill 成功执行。", "required_steps": ["检查模型日志", "调整模型或输入后重试"]},
+            )
+        return {
+            "skill_id": skill_id,
+            "driver": "ollama_prompt",
+            "execution_mode": "external_workflow",
+            "execution_status": "executed",
+            "output_type": "markdown_draft",
+            "output_content": output,
+            "source_ref": source_ref,
+            "execution_proof": {
+                "driver_source": source_ref,
+                "skill_source_sha256": _sha(source.read_text(encoding="utf-8")),
+                "model": model,
+                "endpoint": base_url,
+                "executed_at": _now(),
+                "response_sha256": _sha(output),
+            },
+        }
 
     @staticmethod
     def _command_arguments(schema: str, payload: Dict[str, Any]) -> List[str]:

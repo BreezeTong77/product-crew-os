@@ -41,10 +41,11 @@ workflow:
       table: pco_rag_ingestions
       optional: true
     - key: skill_execution
-      type: coze_skill_or_workflow
-      output: [selected_skill, skill_status, artifact_content, skill_execution]
+      type: langgraph_owned_execution
+      input: [skill_input]
+      output: [selected_skill, skill_status, artifact_content, graph_issued_skill_receipt]
       forbidden_skill_status_for_gate: [template_degraded, unavailable, failed]
-      invariant: "When an external Skill actually executes, skill_execution must validate before runtimeRecordTurn. Skill may not alter stage, gate, project memory, or sub-Bot invocation."
+      invariant: "Coze must not report a Skill as complete. runtimeRecordTurn invokes the LangGraph node, which executes the selected Skill and issues the only receipt that can reach a Gate. Skill may not alter stage, gate, project memory, or sub-Bot invocation."
     - key: turn_and_artifact_writer
       type: plugin_api
       operation_id: runtimeRecordTurn

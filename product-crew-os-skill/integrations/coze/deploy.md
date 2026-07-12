@@ -7,12 +7,14 @@
 在发布包根目录执行：
 
 ```bash
-cp product-crew-os-skill/integrations/coze/.env.example product-crew-os-skill/integrations/coze/.env
+cp product-crew-os-skill/integrations/coze/env.example product-crew-os-skill/integrations/coze/.env
 docker compose --env-file product-crew-os-skill/integrations/coze/.env \
   -f product-crew-os-skill/integrations/coze/docker-compose.yml up -d --build
 ```
 
 首次启动会下载 `BAAI/bge-small-zh-v1.5`。不要用 `local_hash_dry_run` 作为线上环境变量。
+
+另外必须先部署一个 Coze Runtime 容器可访问的 Ollama 服务，并在 `.env` 填入 `PCO_OLLAMA_URL` 与 `PCO_SKILL_MODEL`。Docker 容器里的 `127.0.0.1` 不是宿主机 Ollama；macOS 本机可用 `http://host.docker.internal:11434`。若模型不可访问，方法论 Skill 会显示 `deployment_required`，而不会被当成执行成功。
 
 验证：
 
@@ -39,6 +41,7 @@ curl -X POST -H "Authorization: Bearer $PCO_RUNTIME_TOKEN" \
 
 - `pco_projects`
 - `pco_route_traces`
+- `pco_skill_executions`
 - `pco_artifacts`
 - `pco_review_sessions`
 - `pco_agent_invocations`
@@ -69,7 +72,8 @@ Workflow 必须把 Call Bot 节点的真实 `runtime_agent_id` 连到 `runtimeRe
 严格使用 `workflow-node-map.yaml`：
 
 ```text
-Handshake -> Route -> Database Mirror -> Skill -> Turn Writer
+Handshake -> Route -> Database Mirror -> Turn Writer (skill_input)
+-> LangGraph Skill Execution -> Database Mirror
 -> Sub Bot Delegate -> Real Review Callback -> Review Items
 -> User Decision -> Finalize Gate -> Obsidian Export
 ```
@@ -82,7 +86,7 @@ Handshake -> Route -> Database Mirror -> Skill -> Turn Writer
 
 - `route_decision_id` 和 `real_embedding_performed=true`。
 - `skill_status` 不是 `template_degraded`。
-- 若 Coze 实际执行了外部 Skill / Skill Workflow，`runtimeRecordTurn` 请求必须带 `skill_execution`；其中四项控制边界均为 `false`：改 Stage、决定 Gate、写项目记忆、召唤子 Bot。未带契约或出现未授权动作时，runtime 会写入草稿但阻塞 Gate。
+- `runtimeRecordTurn` 只传受限 `skill_input`，不传 `skill_execution`。LangGraph 的 `execute_skill` 节点会实际执行 primary/fallback Skill、写入 `pco_skill_executions`、保存原始输出并签发回执。调用方自行声称成功应被拒绝。
 - 每个 Required Role 有真实 `runtime_agent_id`。
 - 每个 Callback 有 `context_packet_quality=complete`、raw review 和 Coze Database 镜像行。
 - 用户决策写入后才调用 `runtimeFinalizeStageGate`。

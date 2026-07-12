@@ -1,6 +1,6 @@
 # Product Crew OS
 
-[![Release](https://img.shields.io/badge/release-v0.1.3-blue)](releases/v0.1.3.md)
+[![Release](https://img.shields.io/badge/release-v0.2.1-blue)](releases/v0.2.1.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![SOP](https://img.shields.io/badge/SOP-44-orange)](product-crew-os-skill/references/workflow-sop-library.md)
 [![Bundled Skills](https://img.shields.io/badge/bundled%20skills-49-orange)](product-crew-os-skill/references/bundled-skill-index.md)

@@ -6,6 +6,9 @@ services:
     environment:
       PCO_RUNTIME_TOKEN: ${PCO_RUNTIME_TOKEN:?set_a_long_random_secret}
       PCO_LANGGRAPH_DELEGATE_SECRET: ${PCO_LANGGRAPH_DELEGATE_SECRET:?set_a_second_long_random_secret}
+      PCO_SKILL_RECEIPT_SECRET: ${PCO_SKILL_RECEIPT_SECRET:?set_a_third_long_random_secret}
+      PCO_OLLAMA_URL: ${PCO_OLLAMA_URL:?set_a_reachable_ollama_endpoint}
+      PCO_SKILL_MODEL: ${PCO_SKILL_MODEL:-qwen2.5:3b}
       PCO_RUNTIME_PORT: "8787"
       PCO_STAGE_ROUTER_EMBEDDING: real
       PCO_REQUIRE_REAL_EMBEDDING: "1"
