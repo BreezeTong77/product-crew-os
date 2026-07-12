@@ -6,14 +6,9 @@ defaults:
   prompt_max_chars: 24000
 skills:
   assumption-mapper:
-    driver: host_callback_required
+    driver: ollama_prompt
     allowed_stages: [assumption_mapping]
-    reason: "This bundled Skill provides methodology only; it has no package-owned executable driver."
-    deployment_notice:
-      title: "需要部署宿主 LLM 回调"
-      user_message: "该 Skill 是方法论指令，不是本地脚本。请先在当前宿主配置真实 LLM / Workflow 节点加载其 SKILL.md，并将原始输出和执行证据回传 Product Crew OS。"
-      required_steps: ["配置宿主 LLM 或 Workflow 节点", "加载对应 SKILL.md", "回传原始输出、模型标识和执行时间", "由 Product Crew OS 归档 Artifact 后再评审"]
-      authorization_required: false
+    skill_source: "third_party/skills/pratik-assumption-mapper/SKILL.md"
   product-discovery:
     driver: command
     source: "third_party/skills/alirez-product-discovery/scripts/assumption_mapper.py"
@@ -27,14 +22,9 @@ skills:
     input_schema: experiment_sample_size
     output_type: sample_size_estimate
   scope-cutting:
-    driver: host_callback_required
+    driver: ollama_prompt
     allowed_stages: [mvp_scope]
-    reason: "Methodology skill: the host must load SKILL.md into an actual LLM or workflow node and return a contract-backed result."
-    deployment_notice:
-      title: "需要部署范围裁剪 Skill 回调"
-      user_message: "范围裁剪需要真实宿主模型执行该 Skill。请先部署 LLM / Workflow 回调；未部署时系统只能保留草稿，不能声称 Skill 已运行。"
-      required_steps: ["配置可调用模型的宿主节点", "加载 scope-cutting 的 SKILL.md", "回传原始输出和模型/运行标识", "提交 Skill Execution Contract"]
-      authorization_required: false
+    skill_source: "third_party/skills/assimovt-scope-cutting/SKILL.md"
   pencil-design:
     driver: mcp_required
     allowed_stages: [low_fi_prototype]

@@ -5,9 +5,10 @@ Product Crew OS 的唯一运行时是 Python + LangGraph。Ruby Runtime、Ruby B
 ## 主流程
 
 ```text
-输入范围判断
+硬规则非产品快速退出
+-> 图内 BGE 检索 44 SOP
+-> 输入范围判断
 -> 读取项目上下文
--> 检索证据
 -> Stage / SOP / Skill 路由
 -> 图内 Skill 执行
 -> 运行时签发并校验回执
@@ -23,7 +24,7 @@ Product Crew OS 的唯一运行时是 Python + LangGraph。Ruby Runtime、Ruby B
 
 `thread_id` 绑定同一条可恢复流程。`interrupt()` 不是成功：真实 delegate callback、Skill 回执和用户确认都必须在恢复时接受校验。
 
-`record-turn` 只接受 `skill_input`，不接受调用方声称的 `skill_execution` 成功结果。执行回执只由 LangGraph 的 `execute_skill` 节点写入。
+`record-turn` 只接受 `skill_input`，不接受调用方声称的 `skill_execution` 或 `retrieval_evidence` 成功结果。Skill 回执和路由检索证据都只由 LangGraph 节点写入。
 
 ## 安装
 
@@ -40,17 +41,24 @@ python3 -m venv .venv
   --project-id demo \
   --name "Demo"
 
+.venv/bin/python product-crew-os-skill/runtime/pco_runtime.py rag-bootstrap \
+  --workspace ./runtime-workspace
+
+.venv/bin/python product-crew-os-skill/runtime/pco_runtime.py capability-handshake \
+  --workspace ./runtime-workspace
+
 .venv/bin/python product-crew-os-skill/runtime/pco_runtime.py route-intent \
   --workspace ./runtime-workspace \
   --project-id demo \
   --user-input "先做 MVP，不要做大，帮我砍范围。"
 ```
 
-可用命令：`health`、`init-project`、`route-intent`、`execute-skill`、`rag-ingest`、`rag-retrieve`、`source-extract`、`record-turn`、`resume`、`draw-graph`、`export-obsidian`。
+可用命令：`health`、`capability-handshake`、`init-project`、`route-intent`、`execute-skill`、`rag-ingest`、`rag-bootstrap`、`rag-retrieve`、`source-extract`、`record-turn`、`resume`、`draw-graph`、`export-obsidian`。
 
 ## Adapter 边界
 
 - `langgraph_runtime/adapters.py`：本地 BGE、OCR、SQLite RAG、受控 Skill 执行器。
+- 标准 SOP 前先执行 `rag-bootstrap`：它用本地 BGE 把 44 条 SOP 样本写入 SQLite RAG；模型或向量维度变化时会自动重建索引，避免新旧向量混算。
 - 49 份内置 Skill 都由执行器发现；带脚本的能力直接运行脚本，其余方法论 Skill 会读取真实 `SKILL.md` 并通过本机 Ollama 执行。模型不可用时返回 `deployment_required`，不会退化成“Skill 已成功”。
 - `pco_coze_bridge.py`：受 token 保护的 Coze HTTP Bridge，只能进入 LangGraph 的 `run` 或 `resume`，拒绝旁路写入。
 - 外部 Skill 和 MCP 可以保留专业方法，但不能改 Stage、决定 Gate、写项目记忆或召唤角色。
@@ -71,12 +79,15 @@ PCO_SKILL_MODEL=qwen2.5:3b .venv/bin/python product-crew-os-skill/runtime/pco_ru
 
 Figma、Pencil 等 MCP Skill 不会被模型替代。它们需要已连接的 MCP/CLI 和用户对目标工作区的写入授权；未部署或未授权时该 SOP 会被阻塞，而不是伪造原型文件。
 
+调用 `/v1/handshake` 会明确返回 BGE 索引、Ollama、Pencil、Figma、Coze 子 Bot 绑定和 Delegate Signer 状态。只有 44 SOP BGE 索引已建好、Ollama 模型可用、绑定完整且 Signer 可达时才可能显示 `ready_for_standard_sop`；每一次真实评审仍必须带回命中角色允许名单的 `runtime_agent_id`、`coze_invocation_id`、原文评审和 HMAC 证明。
+
 ## 测试
 
 ```bash
 .venv/bin/python product-crew-os-skill/tests/validate-package.py
 .venv/bin/python product-crew-os-skill/tests/run-langgraph-runtime-e2e.py
 .venv/bin/python product-crew-os-skill/tests/run-python-runtime-adapters-e2e.py
+.venv/bin/python product-crew-os-skill/tests/run-delegate-signer-e2e.py
 .venv/bin/python product-crew-os-skill/tests/run-release-gate.py
 ```
 
@@ -84,6 +95,8 @@ Figma、Pencil 等 MCP Skill 不会被模型替代。它们需要已连接的 MC
 
 ```bash
 .venv/bin/python product-crew-os-skill/tests/run-real-ollama-skill-integration.py
+.venv/bin/python product-crew-os-skill/tests/run-real-bge-rag-integration.py
+.venv/bin/python product-crew-os-skill/tests/run-standard-sop-readiness-integration.py
 ```
 
 50 条发布门禁的 44 条是 Stage/SOP/Skill 路由与控制回归，不能被描述为 44 个真实 Skill 或真实外部 Agent 已全部执行。

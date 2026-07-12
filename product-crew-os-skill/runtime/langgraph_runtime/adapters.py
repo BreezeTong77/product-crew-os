@@ -406,7 +406,14 @@ class PersistentRagStore:
         method = str(item.get("extraction_method", "direct_structured_parser"))
         confidence = float(item.get("extraction_confidence", 1.0))
         content_hash = _sha(content)
-        return {"doc_id": _sha(f"{namespace}|{scope}|{source_ref}"), "namespace": namespace, "scope": scope, "source_ref": source_ref, "title": str(item.get("title", source_ref)), "content": content, "content_hash": content_hash, "index_hash": _sha(f"{content_hash}|{method}|{confidence}|{json.dumps(metadata, sort_keys=True, ensure_ascii=False)}"), "extraction_method": method, "extraction_confidence": confidence, "pii_level": pii_level, "metadata": metadata, "consent_ref": consent_ref}
+        provider_identity = "|".join(
+            [
+                self.provider.__class__.__name__,
+                str(getattr(self.provider, "model", "")),
+                str(getattr(self.provider, "dim", "")),
+            ]
+        )
+        return {"doc_id": _sha(f"{namespace}|{scope}|{source_ref}"), "namespace": namespace, "scope": scope, "source_ref": source_ref, "title": str(item.get("title", source_ref)), "content": content, "content_hash": content_hash, "index_hash": _sha(f"{content_hash}|{method}|{confidence}|{provider_identity}|{json.dumps(metadata, sort_keys=True, ensure_ascii=False)}"), "extraction_method": method, "extraction_confidence": confidence, "pii_level": pii_level, "metadata": metadata, "consent_ref": consent_ref}
 
     def _structured_chunks(self, document: Dict[str, Any]) -> List[Dict[str, Any]]:
         sections = []
@@ -510,6 +517,38 @@ class SkillExecutionAdapter:
             "registered_drivers": len(self.registry),
         }
 
+    def runtime_capabilities(self) -> Dict[str, Any]:
+        """Inspect real local execution prerequisites without claiming success."""
+        model = os.environ.get("PCO_SKILL_MODEL", str(self.defaults.get("ollama_model", "qwen2.5:3b")))
+        base_url = os.environ.get("PCO_OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
+        ollama = {"endpoint": base_url, "model": model, "status": "unreachable"}
+        try:
+            with urlopen(f"{base_url}/api/tags", timeout=3) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            available_models = {str(item.get("name", "")) for item in payload.get("models", [])}
+            ollama["status"] = "ready" if model in available_models else "model_missing"
+            ollama["available_models"] = sorted(available_models)
+        except (URLError, HTTPError, TimeoutError, json.JSONDecodeError) as error:
+            ollama["detail"] = str(error)
+
+        pencil_path = shutil.which("pencil")
+        pencil = {"status": "not_installed", "path": ""}
+        if pencil_path:
+            pencil = {"status": "installed_not_authenticated", "path": pencil_path}
+            try:
+                result = subprocess.run([pencil_path, "status"], capture_output=True, text=True, timeout=10)
+                output = f"{result.stdout}\n{result.stderr}".lower()
+                if result.returncode == 0 and "not authenticated" not in output:
+                    pencil["status"] = "ready_requires_user_write_authorization"
+            except (OSError, subprocess.TimeoutExpired) as error:
+                pencil["detail"] = str(error)
+        return {
+            "bundled_skills": self.catalog_status(),
+            "ollama": ollama,
+            "pencil": pencil,
+            "figma": {"status": "mcp_connector_required"},
+        }
+
     def execute(self, skill_id: str, input_payload: Dict[str, Any]) -> Dict[str, Any]:
         entry = self.registry.get(skill_id)
         if not entry:
@@ -519,10 +558,27 @@ class SkillExecutionAdapter:
             return self._unavailable(skill_id, "skill_not_registered_for_execution")
         driver = entry.get("driver")
         if driver == "command":
-            return self._execute_command(skill_id, entry, input_payload)
-        if driver in {"ollama_prompt", "host_callback_required", "mcp_required", "missing_capability"}:
+            command_result = self._execute_command(skill_id, entry, input_payload)
+            if command_result.get("execution_status") == "executed":
+                return command_result
+            bundled_source = self._bundled_source_for(skill_id, entry)
+            if bundled_source:
+                return self._execute_ollama_prompt(skill_id, bundled_source, input_payload, prior_attempt=command_result)
+            return command_result
+        if driver == "ollama_prompt":
+            bundled_source = self._bundled_source_for(skill_id, entry)
+            if bundled_source:
+                return self._execute_ollama_prompt(skill_id, bundled_source, input_payload)
+            return self._unavailable(skill_id, "ollama_skill_source_missing")
+        if driver in {"host_callback_required", "mcp_required", "missing_capability"}:
             return self._deployment_required(skill_id, driver, entry.get("reason", ""), entry.get("deployment_notice", {}))
         return self._unavailable(skill_id, "unknown_driver")
+
+    def _bundled_source_for(self, skill_id: str, entry: Dict[str, Any]) -> str:
+        configured = str(entry.get("skill_source", "")).strip()
+        if configured and (self.skill_root / configured).is_file():
+            return configured
+        return self.bundled_catalog.get(skill_id, "")
 
     def _execute_command(self, skill_id: str, entry: Dict[str, Any], input_payload: Dict[str, Any]) -> Dict[str, Any]:
         source = self.skill_root / entry["source"]
@@ -531,7 +587,11 @@ class SkillExecutionAdapter:
         try:
             arguments = self._command_arguments(entry.get("input_schema", ""), input_payload)
         except AdapterError as error:
-            return self._unavailable(skill_id, f"invalid_input: {error}")
+            return self._unavailable(skill_id, f"invalid_input: {error}") | {
+                "driver": "command",
+                "source_ref": entry["source"],
+                "execution_proof": {"driver_source": entry["source"], "not_executed_reason": str(error)},
+            }
         command = [sys.executable, str(source), *arguments]
         result = subprocess.run(command, capture_output=True, text=True, timeout=120)
         return {
@@ -574,7 +634,7 @@ class SkillExecutionAdapter:
                 catalog.setdefault(Path(relative_dir).name, str(path.relative_to(self.skill_root)))
         return catalog
 
-    def _execute_ollama_prompt(self, skill_id: str, source_ref: str, input_payload: Dict[str, Any]) -> Dict[str, Any]:
+    def _execute_ollama_prompt(self, skill_id: str, source_ref: str, input_payload: Dict[str, Any], prior_attempt: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Run a bundled instruction Skill through a real local Ollama model.
 
         This is intentionally an actual HTTP call, not a local string stub. If
@@ -626,7 +686,7 @@ class SkillExecutionAdapter:
                 "local Ollama returned an empty skill output",
                 {"title": "Skill 没有返回可归档输出", "user_message": "模型已响应但没有产出内容，本轮不能算 Skill 成功执行。", "required_steps": ["检查模型日志", "调整模型或输入后重试"]},
             )
-        return {
+        result = {
             "skill_id": skill_id,
             "driver": "ollama_prompt",
             "execution_mode": "external_workflow",
@@ -643,6 +703,13 @@ class SkillExecutionAdapter:
                 "response_sha256": _sha(output),
             },
         }
+        if prior_attempt:
+            result["execution_proof"]["prior_attempt"] = {
+                "driver": prior_attempt.get("driver", ""),
+                "execution_status": prior_attempt.get("execution_status", ""),
+                "reason": prior_attempt.get("reason", ""),
+            }
+        return result
 
     @staticmethod
     def _command_arguments(schema: str, payload: Dict[str, Any]) -> List[str]:

@@ -15,13 +15,13 @@ from langgraph_runtime import AdapterError, ProductCrewLangGraphRuntime, Runtime
 
 
 class BridgeApplication:
-    def __init__(self, workspace: str | Path, skill_root: str | Path, token: str, delegate_secret: str):
+    def __init__(self, workspace: str | Path, skill_root: str | Path, token: str, delegate_secret: str, rag_provider: Any = None):
         if not token:
             raise ValueError("PCO_RUNTIME_TOKEN is required")
         if not delegate_secret:
             raise ValueError("PCO_LANGGRAPH_DELEGATE_SECRET is required for real delegate callbacks")
         self.token = token
-        self.runtime = ProductCrewLangGraphRuntime(workspace, skill_root, delegate_secret=delegate_secret)
+        self.runtime = ProductCrewLangGraphRuntime(workspace, skill_root, delegate_secret=delegate_secret, rag_provider=rag_provider)
 
     def close(self) -> None:
         self.runtime.close()
@@ -35,20 +35,18 @@ class BridgeApplication:
             return HTTPStatus.OK, {"status": "ok", "runtime": "python_langgraph"}
         try:
             if method == "POST" and path == "/v1/handshake":
-                return HTTPStatus.OK, {
-                    "runtime": "python_langgraph",
-                    "stage_control": "langgraph",
-                    "delegate_callback_proof": "hmac_sha256_required",
-                    "embedding": "adapter_required",
-                    "raw_review_visibility": "required",
-                }
+                return HTTPStatus.OK, self.runtime.capability_handshake()
             if method == "POST" and path == "/v1/projects":
                 return HTTPStatus.OK, self.runtime.init_project(self._required(payload, "project_id"), self._required(payload, "name"))
             if method == "POST" and path == "/v1/routes":
+                if self._object(payload, "retrieval_evidence"):
+                    return HTTPStatus.CONFLICT, {
+                        "status": "retrieval_evidence_rejected",
+                        "message": "Route embedding evidence is generated only by LangGraph RAG. Ingest sources through /v1/rag/ingest instead of supplying a success claim.",
+                    }
                 return HTTPStatus.OK, self.runtime.route_intent(
                     self._required(payload, "project_id"),
                     self._required(payload, "user_input"),
-                    self._object(payload, "retrieval_evidence"),
                 )
             if method == "POST" and path == "/v1/skills/execute":
                 return HTTPStatus.OK, self.runtime.execute_skill(self._required(payload, "skill_id"), self._object(payload, "input"))
@@ -62,6 +60,8 @@ class BridgeApplication:
                     documents,
                     str(payload.get("consent_ref", "")),
                 )
+            if method == "POST" and path == "/v1/rag/bootstrap":
+                return HTTPStatus.OK, self.runtime.bootstrap_product_rule_rag()
             if method == "POST" and path == "/v1/rag/retrieve":
                 return HTTPStatus.OK, self.runtime.rag_store().retrieve(
                     self._required(payload, "query"),
@@ -78,11 +78,15 @@ class BridgeApplication:
                         "status": "skill_receipt_rejected",
                         "message": "Skill execution receipts are issued only by the LangGraph execute_skill node. Send skill_input instead of a caller-provided success claim.",
                     }
+                if self._object(payload, "retrieval_evidence"):
+                    return HTTPStatus.CONFLICT, {
+                        "status": "retrieval_evidence_rejected",
+                        "message": "LangGraph owns route retrieval. Supply sources through /v1/rag/ingest, not retrieval evidence in /v1/turns.",
+                    }
                 result = self.runtime.run(
                     self._required(payload, "project_id"),
                     self._required(payload, "user_input"),
                     skill_input=self._object(payload, "skill_input"),
-                    retrieval_evidence=self._object(payload, "retrieval_evidence"),
                     require_real_embedding=payload.get("require_real_embedding") is True,
                     thread_id=str(payload.get("thread_id") or "") or None,
                     route_decision_id=route_decision_id,

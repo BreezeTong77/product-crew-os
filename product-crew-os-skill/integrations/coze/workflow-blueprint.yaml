@@ -6,15 +6,21 @@ description: "Coze Bot + Workflow + Database blueprint with a Python LangGraph P
 deployment_assets:
   runtime_bridge_entrypoint: "runtime/pco_coze_bridge.py"
   openapi_plugin_contract: "integrations/coze/runtime-plugin-openapi.yaml"
+  delegate_signer_openapi_contract: "integrations/coze/delegate-signer-openapi.yaml"
   sub_bot_binding_template: "integrations/coze/sub-bot-bindings.example.yaml"
   coze_database_schema: "integrations/coze/database-schema.yaml"
   workflow_node_map: "integrations/coze/workflow-node-map.yaml"
   required_environment:
     - "PCO_RUNTIME_TOKEN"
     - "PCO_LANGGRAPH_DELEGATE_SECRET"
-    - "PCO_STAGE_ROUTER_EMBEDDING=real"
-    - "PCO_REQUIRE_REAL_EMBEDDING=1"
-    - "PCO_REQUIRE_REAL_SUBAGENTS=1"
+    - "PCO_SKILL_RECEIPT_SECRET"
+    - "PCO_OLLAMA_URL"
+    - "PCO_SKILL_MODEL"
+    - "PCO_EMBEDDING_PROVIDER=local_open_source_bge_small_zh"
+    - "PCO_BGE_MODEL"
+    - "PCO_SUBAGENT_BINDINGS_PATH"
+    - "PCO_DELEGATE_SIGNER_URL"
+    - "PCO_DELEGATE_SIGNER_TOKEN"
   source_of_truth: "LangGraph checkpoint + Runtime SQLite + Project Workspace; Coze Database is an inspectable workflow mirror."
 
 entry_bot:
@@ -119,9 +125,15 @@ workflow_nodes:
     output: [context_packet_id, context_packet]
   - key: sub_bot_invoker
     input: [role_key, context_packet]
-    output: [runtime_agent_id, runtime_nickname, raw_review, conclusion, review_items]
-    callback_operation_id: runtimeRecordSubBotCallback
+    output: [runtime_agent_id, coze_invocation_id, runtime_nickname, raw_review, conclusion, review_items]
+    callback_operation_id: runtimeResumeReview
+    callback_invariant: "The Call Bot result must carry an approved runtime_agent_id and coze_invocation_id, then pass through Delegate Signer before runtimeResumeReview; same-thread roleplay is invalid for a gate."
     must_not: ["mark same-thread roleplay as real_invocation_performed"]
+  - key: delegate_callback_signer
+    input: [review_session_id, role_key, runtime_agent_id, coze_invocation_id, context_packet_id, context_packet_quality, persona_injection_status, raw_review]
+    output: [attested_callback, delegate_proof]
+    operation_id: delegateSignerAttestReview
+    invariant: "Signer checks the private role binding and signs the full callback; the HMAC secret never enters a Bot Prompt."
   - key: runtime_preflight
     input: [route_decision_id, real_embedding_performed, selected_skill, required_roles, agent_invocations]
     output: [preflight_status, blocking_reason, gate_status]
@@ -151,6 +163,8 @@ workflow_nodes:
     output: [visible_response]
 
 runtime_actions:
+  runtime_bootstrap_product_rule_rag: rag-bootstrap
+  runtime_capability_handshake: capability-handshake
   runtime_init_project: init-project
   runtime_route_intent: route-intent
   runtime_record_turn: record-turn
@@ -169,12 +183,13 @@ runtime_actions:
 
 plugin_operations:
   capability_handshake: runtimeCapabilityHandshake
+  bootstrap_product_rule_rag: runtimeBootstrapProductRuleRag
   project_init: runtimeInitProject
   route_intent: runtimeRouteIntent
   record_turn: runtimeRecordTurn
-  record_sub_bot_callback: runtimeRecordSubBotCallback
-  write_review_item: runtimeWriteReviewItem
-  record_review_decision: runtimeRecordReviewDecision
+  record_sub_bot_callback: runtimeResumeReview
+  attest_sub_bot_callback: delegateSignerAttestReview
+  record_review_decision: runtimeResumeUserDecision
   finalize_stage_gate: runtimeFinalizeStageGate
   export_obsidian: runtimeExportObsidian
   rag_ingest: runtimeRagIngest

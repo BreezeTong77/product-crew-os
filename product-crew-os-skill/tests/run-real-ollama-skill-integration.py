@@ -33,12 +33,22 @@ def main() -> int:
                 errors.append(f"Skill was not executed: {execution.get('deployment_notice') or execution.get('detail')}")
             if execution.get("driver") != "ollama_prompt":
                 errors.append(f"Expected ollama_prompt, got {execution.get('driver')}")
-            if execution.get("skill_id") != "shape-up":
-                errors.append(f"Expected fallback shape-up, got {execution.get('skill_id')}")
+            if execution.get("skill_id") != "scope-cutting":
+                errors.append(f"Expected primary scope-cutting, got {execution.get('skill_id')}")
             if execution.get("gate_valid") is not True:
                 errors.append("LangGraph did not validate the graph-issued Skill receipt")
             if not artifact.get("path") or not Path(artifact["path"]).is_file():
                 errors.append("Artifact from real Ollama Skill output was not saved")
+            research = runtime.run(
+                "real-ollama-research",
+                "我想验证这个痛点是不是真的，帮我设计访谈样本和通过标准。",
+                thread_id="real-ollama-research-thread",
+            )
+            research_execution = research.get("skill_execution", {})
+            if research_execution.get("skill_id") != "product-discovery" or research_execution.get("driver") != "ollama_prompt":
+                errors.append("unstructured product-discovery did not fall back from its command helper to its own bundled Skill")
+            if research_execution.get("execution_proof", {}).get("prior_attempt", {}).get("driver") != "command":
+                errors.append("product-discovery did not record the failed command-helper attempt before model execution")
             if errors:
                 print("run-real-ollama-skill-integration: FAIL")
                 for error in errors:
@@ -48,7 +58,7 @@ def main() -> int:
             runtime.close()
 
     print("run-real-ollama-skill-integration: PASS")
-    print("evidence: mvp_scope -> scope-cutting blocked -> shape-up executed by local Ollama -> graph-issued receipt -> Artifact")
+    print("evidence: mvp_scope -> scope-cutting executed by local Ollama; research_plan -> product-discovery command helper fallback -> same bundled Skill via Ollama; both receive graph-issued receipts")
     return 0
 
 

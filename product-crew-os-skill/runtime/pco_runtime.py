@@ -44,10 +44,12 @@ def parser() -> argparse.ArgumentParser:
         "command",
         choices=[
             "health",
+            "capability-handshake",
             "init-project",
             "route-intent",
             "execute-skill",
             "rag-ingest",
+            "rag-bootstrap",
             "rag-retrieve",
             "source-extract",
             "record-turn",
@@ -91,6 +93,8 @@ def main() -> int:
     try:
         if args.command == "health":
             result: Any = {"status": "ok", "runtime": "python_langgraph", "workspace": str(Path(args.workspace).resolve())}
+        elif args.command == "capability-handshake":
+            result = runtime.capability_handshake()
         elif args.command == "init-project":
             if not args.project_id or not args.name:
                 raise SystemExit("init-project requires --project-id and --name")
@@ -98,7 +102,9 @@ def main() -> int:
         elif args.command == "route-intent":
             if not args.project_id or not args.user_input:
                 raise SystemExit("route-intent requires --project-id and --user-input")
-            result = runtime.route_intent(args.project_id, args.user_input, parse_json(args.retrieval_evidence_json, "--retrieval-evidence-json"))
+            if parse_json(args.retrieval_evidence_json, "--retrieval-evidence-json"):
+                raise SystemExit("route-intent rejects --retrieval-evidence-json; ingest sources and let LangGraph RAG build route evidence")
+            result = runtime.route_intent(args.project_id, args.user_input)
         elif args.command == "execute-skill":
             if not args.skill_id:
                 raise SystemExit("execute-skill requires --skill-id")
@@ -111,6 +117,8 @@ def main() -> int:
             if not isinstance(documents, list):
                 raise SystemExit("--documents-json must be a JSON array")
             result = runtime.rag_store().upsert_documents(args.namespace, args.scope, documents, args.consent_ref)
+        elif args.command == "rag-bootstrap":
+            result = runtime.bootstrap_product_rule_rag()
         elif args.command == "rag-retrieve":
             if not args.query:
                 raise SystemExit("rag-retrieve requires --query")
@@ -125,11 +133,13 @@ def main() -> int:
             legacy_execution = parse_json(args.skill_execution_json, "--skill-execution-json")
             if legacy_execution:
                 raise SystemExit("record-turn rejects --skill-execution-json; send bounded --skill-input-json and let LangGraph execute the routed Skill")
+            legacy_retrieval = parse_json(args.retrieval_evidence_json, "--retrieval-evidence-json")
+            if legacy_retrieval:
+                raise SystemExit("record-turn rejects --retrieval-evidence-json; ingest sources and let LangGraph RAG build route evidence")
             result = runtime.run(
                 args.project_id,
                 args.user_input,
                 skill_input=parse_json(args.skill_input_json, "--skill-input-json"),
-                retrieval_evidence=parse_json(args.retrieval_evidence_json, "--retrieval-evidence-json"),
                 require_real_embedding=args.require_real_embedding,
                 thread_id=args.thread_id or None,
                 route_decision_id=args.route_decision_id,

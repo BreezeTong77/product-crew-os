@@ -8,33 +8,43 @@ purpose: "Bind protected Product Crew OS role keys to actual Coze sub-Bot IDs."
 bindings:
   Biz:
     coze_bot_id: "REPLACE_WITH_BIZ_BOT_ID"
+    approved_runtime_agent_ids: ["REPLACE_WITH_BIZ_RUNTIME_AGENT_ID"]
     invocation_node: "call_bot_biz"
   Tech:
     coze_bot_id: "REPLACE_WITH_TECH_BOT_ID"
+    approved_runtime_agent_ids: ["REPLACE_WITH_TECH_RUNTIME_AGENT_ID"]
     invocation_node: "call_bot_tech"
   Design:
     coze_bot_id: "REPLACE_WITH_DESIGN_BOT_ID"
+    approved_runtime_agent_ids: ["REPLACE_WITH_DESIGN_RUNTIME_AGENT_ID"]
     invocation_node: "call_bot_design"
   Research:
     coze_bot_id: "REPLACE_WITH_RESEARCH_BOT_ID"
+    approved_runtime_agent_ids: ["REPLACE_WITH_RESEARCH_RUNTIME_AGENT_ID"]
     invocation_node: "call_bot_research"
   Data:
     coze_bot_id: "REPLACE_WITH_DATA_BOT_ID"
+    approved_runtime_agent_ids: ["REPLACE_WITH_DATA_RUNTIME_AGENT_ID"]
     invocation_node: "call_bot_data"
   QA:
     coze_bot_id: "REPLACE_WITH_QA_BOT_ID"
+    approved_runtime_agent_ids: ["REPLACE_WITH_QA_RUNTIME_AGENT_ID"]
     invocation_node: "call_bot_qa"
   CS:
     coze_bot_id: "REPLACE_WITH_CS_BOT_ID"
+    approved_runtime_agent_ids: ["REPLACE_WITH_CS_RUNTIME_AGENT_ID"]
     invocation_node: "call_bot_cs"
   Customer:
     coze_bot_id: "REPLACE_WITH_CUSTOMER_BOT_ID"
+    approved_runtime_agent_ids: ["REPLACE_WITH_CUSTOMER_RUNTIME_AGENT_ID"]
     invocation_node: "call_bot_customer"
   Legal:
     coze_bot_id: "REPLACE_WITH_LEGAL_BOT_ID"
+    approved_runtime_agent_ids: ["REPLACE_WITH_LEGAL_RUNTIME_AGENT_ID"]
     invocation_node: "call_bot_legal"
   Ops:
     coze_bot_id: "REPLACE_WITH_OPS_BOT_ID"
+    approved_runtime_agent_ids: ["REPLACE_WITH_OPS_RUNTIME_AGENT_ID"]
     invocation_node: "call_bot_ops"
 
 callback_contract:
@@ -46,10 +56,15 @@ callback_contract:
     - artifact_id
     - context_packet_id
     - runtime_agent_id
+    - coze_invocation_id
+    - context_packet_quality
+    - persona_injection_status
     - raw_review
     - conclusion
   invariants:
     - "role_key is the stable Product Crew OS role key."
     - "runtime_agent_id comes from the actual Coze sub-Bot invocation."
+    - "runtime_agent_id must appear in the role's approved_runtime_agent_ids allow-list."
+    - "coze_invocation_id comes from the Call Bot node and is signed with the complete callback."
     - "runtime_nickname is audit-only and must not overwrite configured role identity."
     - "The callback must call /v1/reviews/callback before any stage gate can be finalized."

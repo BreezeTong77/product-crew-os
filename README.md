@@ -1,6 +1,6 @@
 # Product Crew OS
 
-[![Release](https://img.shields.io/badge/release-v0.2.1-blue)](releases/v0.2.1.md)
+[![Release](https://img.shields.io/badge/release-v0.2.2-blue)](releases/v0.2.2.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![SOP](https://img.shields.io/badge/SOP-44-orange)](product-crew-os-skill/references/workflow-sop-library.md)
 [![Bundled Skills](https://img.shields.io/badge/bundled%20skills-49-orange)](product-crew-os-skill/references/bundled-skill-index.md)
@@ -52,14 +52,16 @@ Workflow + Skill + Review + Artifact Workspace
 ```mermaid
 flowchart TB
   U["用户输入\n想法 / PRD / 截图 / 评审 / 日常问题"] --> PARSE["输入解析\n文本、截图、链接、附件"]
-  PARSE --> DG{"输入范围门\n是否属于产品工作或系统配置？"}
-  DG -- "否" --> EXIT["退出 Product Crew OS\n交给对应能力继续回答"]
+  PARSE --> RETRIEVE["图内检索\n硬规则非产品快速退出 / 44 SOP BGE"]
+  RETRIEVE --> DG{"输入范围门\n是否属于产品工作或系统配置？"}
+  RETRIEVE -- "硬规则非产品" --> EXIT["退出 Product Crew OS\n交给对应能力继续回答"]
+  DG -- "否" --> EXIT
   DG -- "是" --> COACH["主控产品教练"]
 
   COACH --> STATE["读取项目上下文\nproject-state / artifact-index / decision-log"]
-  STATE --> ROUTE["阶段与 SOP 路由\n规则 + 语义检索 + 宿主可选分类"]
+  STATE --> ROUTE["阶段与 SOP 路由\n规则 + 图内 BGE 检索 + 宿主可选分类"]
   ROUTE --> SKILL["能力路由\n主 Skill / fallback / 用户自有 Skill"]
-  SKILL --> WORK["执行工作包\nSkill + 模板 + 可选 MCP"]
+  SKILL --> WORK["图内执行工作包\nSkill + 原始输出 + 可选 MCP"]
   WORK --> ART["Artifact Workspace\nMarkdown / YAML / JSON / Mermaid"]
 
   ART --> REVIEW{"当前阶段需要评审？"}
@@ -187,7 +189,7 @@ python3 -m venv .venv
 - [子 Agent 调用契约](product-crew-os-skill/references/subagent-invocation-contract.md)
 - [Runtime 使用说明](product-crew-os-skill/runtime/README.md)
 - [LangGraph 控制平面](product-crew-os-skill/references/langgraph-runtime-architecture.md)
-- [v0.2.0 发布说明](releases/v0.2.0.md)
+- [v0.2.2 发布说明](releases/v0.2.2.md)
 
 ## 许可证
 

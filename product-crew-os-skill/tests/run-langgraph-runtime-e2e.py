@@ -16,7 +16,7 @@ import yaml
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SKILL_ROOT / "runtime"))
 
-from langgraph_runtime import ProductCrewLangGraphRuntime  # noqa: E402
+from langgraph_runtime import LocalHashDryRunEmbedding, ProductCrewLangGraphRuntime  # noqa: E402
 
 
 def check(errors: list[str], condition: bool, message: str) -> None:
@@ -79,7 +79,7 @@ def main() -> int:
     checks: list[str] = []
 
     with tempfile.TemporaryDirectory(prefix="pco-langgraph-e2e-") as root:
-        runtime = ProductCrewLangGraphRuntime(root, SKILL_ROOT, delegate_secret="test-delegate-secret")
+        runtime = ProductCrewLangGraphRuntime(root, SKILL_ROOT, delegate_secret="test-delegate-secret", rag_provider=LocalHashDryRunEmbedding())
         try:
             non_product = runtime.run("non-product", "今天上海天气怎么样？", thread_id="non-product-thread")
             check(errors, non_product.get("gate_status") == "domain_exit", "non-product input did not exit Product Crew OS")
@@ -118,9 +118,8 @@ def main() -> int:
                 },
                 thread_id="fake-claim-thread",
             )
-            check(errors, fake_claim.get("gate_status") == "blocked_runtime_preflight", "caller-provided Skill success claim bypassed graph execution")
             check(errors, fake_claim.get("skill_execution", {}).get("execution_id") != "caller-invented", "caller-provided Skill receipt was accepted")
-            checks.append("caller-provided Skill success claims are ignored and cannot pass a Gate")
+            checks.append("caller-provided Skill success claims are ignored even when the graph runs the routed Skill")
 
             persisted_route = runtime.route_intent("persisted-route", "先做 MVP，不要做大，帮我砍范围和列 not-do。")
             persisted_turn = runtime.run("persisted-route", "继续这个既有范围判断。", route_decision_id=persisted_route["route_decision_id"], thread_id="persisted-thread")
@@ -129,9 +128,9 @@ def main() -> int:
             check(errors, unknown.get("route", {}).get("route_status") == "route_decision_not_found", "unknown route decision was not blocked")
             checks.append("turns can reuse only a persisted route decision from the same project")
 
-            embedding_first = runtime.run(
-                "embedding-first",
-                "请处理这件事。",
+            embedding_claim = runtime.run(
+                "embedding-claim",
+                "先做 MVP，不要做大，帮我砍范围。",
                 retrieval_evidence={
                     "real_embedding_performed": True,
                     "provider": "local-bge-adapter",
@@ -140,11 +139,11 @@ def main() -> int:
                     "candidate_routes": [{"stage_id": "mvp_scope", "score": 0.93}],
                 },
                 require_real_embedding=True,
-                thread_id="embedding-first-thread",
+                thread_id="embedding-claim-thread",
             )
-            check(errors, embedding_first.get("route", {}).get("stage_id") == "mvp_scope", "real embedding candidate did not assist routing")
-            check(errors, embedding_first.get("route", {}).get("retrieval_mode") == "real_embedding_adapter", "real embedding evidence was not recorded")
-            checks.append("verified embedding candidates can assist routing without bypassing graph evidence")
+            check(errors, embedding_claim.get("route", {}).get("route_status") == "needs_embedding_deployment", "caller-provided embedding claim bypassed graph-owned RAG")
+            check(errors, embedding_claim.get("route", {}).get("evidence_retrieval_mode") == "graph_rag_smoke_only", "graph did not replace caller retrieval evidence with its own RAG result")
+            checks.append("caller-provided embedding claims are ignored; only graph-owned RAG may satisfy the real-embedding requirement")
 
             spoof = runtime.resume(
                 "real-skill-thread",

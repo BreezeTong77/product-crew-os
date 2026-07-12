@@ -23,9 +23,11 @@ Product Crew OS 不能单靠 Markdown 规则包强制任意宿主自动调用子
 运行时统一使用 `runtime/pco_runtime.py`。它不是第二套会自己决定产品流程的 Agent，而是把既有的运行时契约固化成有状态的控制图：
 
 ```text
-Input Scope Gate
--> Retrieval Evidence Guard
+Hard Non-product Exit
+-> Graph-owned Retrieval Evidence
+-> Input Scope Gate
 -> Stage / SOP Route
+-> Graph-owned Skill Execution
 -> Skill Execution Guard
 -> Artifact Writer
 -> Review Packet Builder
@@ -48,11 +50,12 @@ Python adapter 覆盖 Coze、OCR/RAG 和 CLI；任何 adapter 都必须经 LangG
 
 ```text
 用户输入
+-> Graph-owned SOP RAG
 -> Domain Gate
 -> Stage Router
 -> SOP Router
 -> Skill Router
--> Skill Execution Contract
+-> Graph-owned Skill Execution + signed receipt
 -> Artifact Writer
 -> Review Router
 -> Review Session Writer
@@ -92,15 +95,18 @@ record-turn
 
 这条规则专门防止“Coze / 普通 Agent 生成了文档，但 SOP、skill、embedding、子 Agent 和 runtime 都没接上”的假通过。
 
-本地 runtime 可用以下环境变量开启硬门禁：
+标准 SOP 使用下列真实环境变量和握手结果作为硬门禁：
 
 ```bash
-PCO_STAGE_ROUTER_EMBEDDING=real
-PCO_REQUIRE_REAL_EMBEDDING=1
-PCO_REQUIRE_REAL_SUBAGENTS=1
+PCO_EMBEDDING_PROVIDER=local_open_source_bge_small_zh
+PCO_BGE_MODEL=BAAI/bge-small-zh-v1.5
+PCO_OLLAMA_URL=http://host.docker.internal:11434
+PCO_SKILL_MODEL=qwen2.5:3b
+PCO_SUBAGENT_BINDINGS_PATH=/data/sub-bot-bindings.private.yaml
+PCO_DELEGATE_SIGNER_URL=http://product-crew-os-delegate-signer:8788
 ```
 
-`PCO_STAGE_ROUTER_EMBEDDING=real` 会调用本地开源 BGE provider 对 44 SOP prompt-eval set 建立实时 embedding top-K 召回。TF-IDF、关键词、local hash dry-run 只能作为 smoke，不得写成 real embedding。
+Delegate Signer 自身还需要单独保存 `PCO_DELEGATE_SIGNER_TOKEN` 和同一份 `PCO_LANGGRAPH_DELEGATE_SECRET`；Coze 只配置 Signer Token，不能拿到 HMAC 密钥。启动后先调用 `rag-bootstrap` / `runtimeBootstrapProductRuleRag` 建立 44 SOP 的本地 BGE 索引，再调用握手接口。只有 `standard_sop_status=ready_for_standard_sop` 才能进入标准 SOP。TF-IDF、关键词、local hash dry-run 只能作为 smoke，不得写成 real embedding。
 
 Python / LangGraph 本地命令入口是：
 
@@ -110,7 +116,7 @@ python3 product-crew-os-skill/runtime/pco_runtime.py record-turn \
   --project-id demo \
   --user-input "先做 MVP，帮我砍范围" \
   --thread-id demo-mvp-001 \
-  --skill-execution-json '{"skill_id":"scope-cutting","execution_id":"host-run-001","output_ref":"artifacts/mvp-scope.md","execution_mode":"external_workflow","contract_valid":true,"may_change_stage":false,"may_decide_gate":false,"may_write_project_memory":false,"may_call_agents":false}'
+  --skill-input-json '{}'
 ```
 
 `record-turn` 必须至少写入：

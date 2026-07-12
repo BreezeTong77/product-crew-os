@@ -19,6 +19,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, TypedDict
+from urllib import request as urlrequest
 
 import yaml
 from langgraph.checkpoint.sqlite import SqliteSaver
@@ -26,6 +27,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 
 from .adapters import PersistentRagStore, SkillExecutionAdapter
+from .delegate_contract import sign_callback, verify_callback
 
 
 class WorkflowState(TypedDict, total=False):
@@ -34,6 +36,7 @@ class WorkflowState(TypedDict, total=False):
     user_input: str
     requested_route_decision_id: str
     require_real_embedding: bool
+    caller_supplied_retrieval_evidence: Dict[str, Any]
     retrieval_evidence: Dict[str, Any]
     project_context: Dict[str, Any]
     route: Dict[str, Any]
@@ -85,7 +88,7 @@ class ProductCrewLangGraphRuntime:
         ("request_triage", (r"先做什么", r"下一步", r"不知道", r"判断.*阶段")),
     )
 
-    def __init__(self, workspace: str | Path, skill_root: str | Path, delegate_secret: Optional[str] = None):
+    def __init__(self, workspace: str | Path, skill_root: str | Path, delegate_secret: Optional[str] = None, rag_provider: Optional[Any] = None):
         self.workspace = Path(workspace).expanduser().resolve()
         self.skill_root = Path(skill_root).expanduser().resolve()
         self.delegate_secret = delegate_secret or os.environ.get("PCO_LANGGRAPH_DELEGATE_SECRET", "")
@@ -94,6 +97,8 @@ class ProductCrewLangGraphRuntime:
         self.project_db = self.workspace / "product-crew-langgraph.sqlite3"
         self.checkpoint_db = self.workspace / "product-crew-langgraph-checkpoints.sqlite3"
         self.rag_db = self.workspace / "product-crew-rag.sqlite3"
+        self._rag_store = PersistentRagStore(self.rag_db, provider=rag_provider)
+        self._sop_rag_bootstrap: Optional[Dict[str, Any]] = None
         self._create_project_schema()
         self._checkpoint_connection = sqlite3.connect(self.checkpoint_db, check_same_thread=False)
         self.checkpointer = SqliteSaver(self._checkpoint_connection)
@@ -144,7 +149,8 @@ class ProductCrewLangGraphRuntime:
             # evidence: the graph executes the selected Skill itself.
             "caller_supplied_skill_execution": skill_execution or {},
             "skill_execution": {},
-            "retrieval_evidence": retrieval_evidence or {},
+            "caller_supplied_retrieval_evidence": retrieval_evidence or {},
+            "retrieval_evidence": {},
             "require_real_embedding": require_real_embedding,
             "events": [],
         }
@@ -160,16 +166,17 @@ class ProductCrewLangGraphRuntime:
             "project_id": project_id,
             "thread_id": f"route:{uuid.uuid4().hex[:12]}",
             "user_input": user_input,
-            "retrieval_evidence": retrieval_evidence or {},
+            "caller_supplied_retrieval_evidence": retrieval_evidence or {},
+            "retrieval_evidence": {},
             "skill_input": {},
             "skill_execution": {},
             "events": [],
         }
+        state.update(self._retrieve_evidence(state))
         state.update(self._input_scope_gate(state))
         if not state.get("route", {}).get("product_crew_os_applies", True):
             return state["route"]
         state.update(self._load_project_context(state))
-        state.update(self._retrieve_evidence(state))
         state.update(self._route_stage(state))
         return state["route"]
 
@@ -184,6 +191,137 @@ class ProductCrewLangGraphRuntime:
 
     def _execute_skill_adapter(self, skill_id: str, input_payload: Dict[str, Any]) -> Dict[str, Any]:
         return SkillExecutionAdapter(self.skill_root).execute(skill_id, input_payload)
+
+    def capability_handshake(self) -> Dict[str, Any]:
+        """Report deployment facts; never infer real sub-agent calls from config."""
+        skill_capabilities = SkillExecutionAdapter(self.skill_root).runtime_capabilities()
+        provider = self.rag_store().provider
+        embedding_available = bool(getattr(provider, "available", lambda: False)())
+        index_stats = self.rag_store().stats()
+        expected_sop_documents = len(self._prompt_eval_cases())
+        graph_rag_ready = (
+            self._sop_rag_bootstrap is not None
+            and self._sop_rag_bootstrap.get("status") == "ready"
+            and index_stats.get("documents", 0) >= expected_sop_documents
+            and getattr(provider, "model", "") != "local_hash_dry_run"
+        )
+        binding_status = self._subagent_binding_status()
+        signer_status = self._delegate_signer_status()
+        missing = []
+        if not embedding_available:
+            missing.append("local_bge_embedding_runtime")
+        if not graph_rag_ready:
+            missing.append("product_rule_rag_index")
+        if skill_capabilities["ollama"].get("status") != "ready":
+            missing.append("ollama_skill_model")
+        if binding_status["status"] != "bindings_declared":
+            missing.append("coze_subagent_bindings")
+        if signer_status["status"] != "ready":
+            missing.append("coze_delegate_signer")
+        return {
+            "runtime": "python_langgraph",
+            "stage_control": "langgraph",
+            "standard_sop_status": "ready_for_standard_sop" if not missing else "runtime_degraded",
+            "missing_capabilities": missing,
+            "embedding": {
+                "provider": getattr(provider, "model", ""),
+                "package_status": "available" if embedding_available else "missing",
+                "index_status": "ready" if graph_rag_ready else "bootstrap_required",
+                "expected_sop_documents": expected_sop_documents,
+                "index_stats": index_stats,
+            },
+            "skill_execution": skill_capabilities,
+            "subagent_dispatch": binding_status,
+            "delegate_signer": signer_status,
+            "delegate_callback_proof": "hmac_sha256_required",
+            "raw_review_visibility": "required",
+            "note": "A declared sub-agent binding is only deployment readiness. Each Stage Gate still requires a real callback with runtime_agent_id and HMAC proof.",
+        }
+
+    @staticmethod
+    def _delegate_signer_status() -> Dict[str, Any]:
+        configured = os.environ.get("PCO_DELEGATE_SIGNER_URL", "").strip().rstrip("/")
+        if not configured:
+            return {"status": "not_configured", "url": ""}
+        try:
+            with urlrequest.urlopen(f"{configured}/health", timeout=3) as response:  # noqa: S310 - deployment URL is operator configured
+                payload = json.loads(response.read().decode("utf-8"))
+            if payload.get("status") == "ok" and payload.get("service") == "pco_delegate_signer":
+                return {"status": "ready", "url": configured}
+            return {"status": "unhealthy", "url": configured}
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            return {"status": "unreachable", "url": configured, "detail": str(error)}
+
+    def bootstrap_product_rule_rag(self) -> Dict[str, Any]:
+        """Build the graph-owned 44-SOP BGE index before standard SOP traffic."""
+        bootstrap = self._bootstrap_sop_rag()
+        provider = self.rag_store().provider
+        stats = self.rag_store().stats()
+        expected_sop_documents = len(self._prompt_eval_cases())
+        real_embedding = getattr(provider, "model", "") != "local_hash_dry_run"
+        ready = (
+            bootstrap.get("status") == "ready"
+            and real_embedding
+            and stats.get("documents", 0) >= expected_sop_documents
+        )
+        return {
+            "status": "ready" if ready else "runtime_blocked",
+            "provider": getattr(provider, "model", ""),
+            "real_embedding_performed": real_embedding and bootstrap.get("status") == "ready",
+            "expected_sop_documents": expected_sop_documents,
+            "index_stats": stats,
+            "bootstrap": bootstrap,
+        }
+
+    def _subagent_binding_status(self) -> Dict[str, Any]:
+        configured = os.environ.get("PCO_SUBAGENT_BINDINGS_PATH", "").strip()
+        if not configured:
+            return {"status": "bindings_not_configured", "path": ""}
+        path = Path(configured).expanduser()
+        if not path.is_file():
+            return {"status": "bindings_file_missing", "path": str(path)}
+        try:
+            bindings = yaml.safe_load(path.read_text(encoding="utf-8")).get("bindings", {})
+        except (OSError, yaml.YAMLError, AttributeError) as error:
+            return {"status": "bindings_file_invalid", "path": str(path), "detail": str(error)}
+        invalid = [
+            role_key
+            for role_key, value in bindings.items()
+            if (
+                not str((value or {}).get("coze_bot_id", "")).strip()
+                or "REPLACE_WITH" in str((value or {}).get("coze_bot_id", ""))
+                or not isinstance((value or {}).get("approved_runtime_agent_ids"), list)
+                or not (value or {}).get("approved_runtime_agent_ids")
+                or any(
+                    not str(agent_id).strip() or "REPLACE_WITH" in str(agent_id)
+                    for agent_id in (value or {}).get("approved_runtime_agent_ids", [])
+                )
+            )
+        ]
+        required_roles = {
+            str(persona.get("role_key", ""))
+            for persona in yaml.safe_load((self.skill_root / "config" / "crew-personas.yaml").read_text(encoding="utf-8")).get("personas", {}).values()
+            if str(persona.get("role_key", "")) and str(persona.get("role_key", "")) != "Coach"
+        }
+        invalid.extend(sorted(required_roles - set(bindings)))
+        if invalid:
+            return {"status": "bindings_incomplete", "path": str(path), "invalid_roles": sorted(set(invalid))}
+        return {"status": "bindings_declared", "path": str(path), "configured_roles": sorted(bindings)}
+
+    def _approved_runtime_agent_ids(self, role_key: str) -> Optional[List[str]]:
+        """Return a configured allow-list, or None when no binding file is active."""
+        configured = os.environ.get("PCO_SUBAGENT_BINDINGS_PATH", "").strip()
+        if not configured:
+            return None
+        path = Path(configured).expanduser()
+        if not path.is_file():
+            return []
+        try:
+            bindings = yaml.safe_load(path.read_text(encoding="utf-8")).get("bindings", {})
+            value = bindings.get(role_key, {}) or {}
+            return [str(agent_id).strip() for agent_id in value.get("approved_runtime_agent_ids", []) if str(agent_id).strip()]
+        except (OSError, yaml.YAMLError, AttributeError):
+            return []
 
     def _skill_candidates(self, route: Dict[str, Any]) -> List[str]:
         candidates = [str(route.get("primary_skill", "")).strip()]
@@ -209,17 +347,14 @@ class ProductCrewLangGraphRuntime:
         }
 
     def rag_store(self) -> PersistentRagStore:
-        return PersistentRagStore(self.rag_db)
+        return self._rag_store
 
     def draw_mermaid(self) -> str:
         return self.graph.get_graph().draw_mermaid()
 
     def sign_delegate_callback(self, session_id: str, callback: Dict[str, Any]) -> str:
         """Create the proof expected from a trusted external delegate adapter."""
-        if not self.delegate_secret:
-            raise ValueError("PCO_LANGGRAPH_DELEGATE_SECRET is required to sign a delegate callback")
-        message = self._delegate_message(session_id, callback)
-        return hmac.new(self.delegate_secret.encode("utf-8"), message.encode("utf-8"), hashlib.sha256).hexdigest()
+        return sign_callback(self.delegate_secret, session_id, callback)
 
     def _build_graph(self):
         builder = StateGraph(WorkflowState)
@@ -238,14 +373,14 @@ class ProductCrewLangGraphRuntime:
         builder.add_node("write_project_memory", self._write_project_memory)
         builder.add_node("export_project_assets", self._export_project_assets)
 
-        builder.add_edge(START, "input_scope_gate")
+        builder.add_edge(START, "retrieve_evidence")
+        builder.add_edge("retrieve_evidence", "input_scope_gate")
         builder.add_conditional_edges(
             "input_scope_gate",
             self._scope_branch,
             {"route": "load_project_context", "end": END},
         )
-        builder.add_edge("load_project_context", "retrieve_evidence")
-        builder.add_edge("retrieve_evidence", "route_stage")
+        builder.add_edge("load_project_context", "route_stage")
         builder.add_conditional_edges(
             "route_stage",
             self._route_branch,
@@ -343,40 +478,96 @@ class ProductCrewLangGraphRuntime:
         return self._event_update(state, "project_context_loaded", {"event_count": len(context["recent_events"])}) | {"project_context": context}
 
     def _retrieve_evidence(self, state: WorkflowState) -> Dict[str, Any]:
-        """Accept only structured retrieval evidence from a configured adapter."""
-        evidence = dict(state.get("retrieval_evidence") or {})
-        if not evidence:
+        """Build route evidence in graph; callers cannot self-certify embedding."""
+        if any(re.search(pattern, state["user_input"], re.IGNORECASE) for pattern in self.NON_PRODUCT_PATTERNS):
             canonical = {
-                "retrieval_mode": "rules_only",
-                "embedding_status": "not_configured",
+                "retrieval_mode": "skipped_hard_non_product",
+                "embedding_status": "not_needed",
                 "real_embedding_performed": False,
                 "embedding_provider": "",
                 "embedding_model": "",
                 "source_refs": [],
-            }
-        elif evidence.get("real_embedding_performed") is True and all(
-            evidence.get(key) for key in ("provider", "model", "source_refs")
-        ):
-            canonical = {
-                "retrieval_mode": "real_embedding_sop_rag",
-                "embedding_status": "real_embedding_performed",
-                "real_embedding_performed": True,
-                "embedding_provider": evidence["provider"],
-                "embedding_model": evidence["model"],
-                "source_refs": list(evidence["source_refs"]),
-                "candidate_routes": list(evidence.get("candidate_routes", [])),
+                "candidate_routes": [],
             }
         else:
-            canonical = {
-                "retrieval_mode": "adapter_evidence_invalid",
-                "embedding_status": "invalid_embedding_evidence",
-                "real_embedding_performed": False,
-                "embedding_provider": evidence.get("provider", ""),
-                "embedding_model": evidence.get("model", ""),
-                "source_refs": list(evidence.get("source_refs", [])),
-                "candidate_routes": list(evidence.get("candidate_routes", [])),
-            }
+            caller_evidence = dict(state.get("caller_supplied_retrieval_evidence") or {})
+            if caller_evidence:
+                self._append_event(
+                    state["project_id"],
+                    "caller_retrieval_evidence_ignored",
+                    {"reason": "only_graph_rag_may_certify_embedding", "claimed_provider": caller_evidence.get("provider", "")},
+                )
+            canonical = self._graph_rag_evidence(state["user_input"])
         return self._event_update(state, "retrieval_evidence_checked", canonical) | {"retrieval_evidence": canonical}
+
+    def _graph_rag_evidence(self, query: str) -> Dict[str, Any]:
+        bootstrap = self._bootstrap_sop_rag()
+        if bootstrap.get("status") != "ready":
+            return {
+                "retrieval_mode": "graph_rag_runtime_blocked",
+                "embedding_status": bootstrap.get("reason", "not_configured"),
+                "real_embedding_performed": False,
+                "embedding_provider": "",
+                "embedding_model": "",
+                "source_refs": [],
+                "candidate_routes": [],
+            }
+        try:
+            retrieved = self.rag_store().retrieve(query, namespace=PersistentRagStore.DEFAULT_NAMESPACE, top_k=3, used_for="stage_router")
+        except RuntimeError as error:
+            return {
+                "retrieval_mode": "graph_rag_runtime_blocked",
+                "embedding_status": str(error),
+                "real_embedding_performed": False,
+                "embedding_provider": "",
+                "embedding_model": "",
+                "source_refs": [],
+                "candidate_routes": [],
+            }
+        real = retrieved.get("real_embedding_performed") is True
+        candidates = [
+            {"stage_id": item.get("stage_id"), "score": item.get("score", 0.0), "source_ref": item.get("source_ref", "")}
+            for item in retrieved.get("candidates", [])
+            if item.get("stage_id")
+        ]
+        return {
+            "retrieval_mode": "graph_rag_real_embedding" if real else "graph_rag_smoke_only",
+            "embedding_status": "real_embedding_performed" if real else "smoke_only_not_gate_valid",
+            "real_embedding_performed": real,
+            "embedding_provider": retrieved.get("provider", ""),
+            "embedding_model": retrieved.get("model", ""),
+            "source_refs": list(retrieved.get("source_refs", [])),
+            "candidate_routes": candidates,
+        }
+
+    def _bootstrap_sop_rag(self) -> Dict[str, Any]:
+        if self._sop_rag_bootstrap is not None:
+            return self._sop_rag_bootstrap
+        documents = []
+        for case in self._prompt_eval_cases():
+            expected = case.get("expected", {})
+            documents.append(
+                {
+                    "source_ref": f"tests/prompt-eval-cases.yaml#{case.get('case_id', case['stage_id'])}",
+                    "title": str(case["stage_id"]),
+                    "content": "\n".join(
+                        [
+                            f"# {case['stage_id']}",
+                            str(case.get("user_input", "")),
+                            f"primary_skill: {expected.get('primary_skill', '')}",
+                            f"fallback_skill: {expected.get('fallback_skill', '')}",
+                        ]
+                    ),
+                    "metadata": {"stage_id": case["stage_id"], "case_id": case.get("case_id", "")},
+                }
+            )
+        try:
+            result = self.rag_store().upsert_documents(PersistentRagStore.DEFAULT_NAMESPACE, PersistentRagStore.DEFAULT_SCOPE, documents)
+        except RuntimeError as error:
+            self._sop_rag_bootstrap = {"status": "runtime_blocked", "reason": str(error)}
+        else:
+            self._sop_rag_bootstrap = {"status": "ready", "documents": len(documents), "index_result": result}
+        return self._sop_rag_bootstrap
 
     def _route_stage(self, state: WorkflowState) -> Dict[str, Any]:
         requested_route_decision_id = state.get("requested_route_decision_id", "")
@@ -415,6 +606,7 @@ class ProductCrewLangGraphRuntime:
             "confidence": route_match["confidence"],
             "route_status": route_status,
             "retrieval_mode": route_match["retrieval_mode"],
+            "evidence_retrieval_mode": embedding["retrieval_mode"],
             "embedding_status": embedding["embedding_status"],
             "real_embedding_performed": embedding["real_embedding_performed"],
             "embedding_provider": embedding["embedding_provider"],
@@ -797,9 +989,9 @@ class ProductCrewLangGraphRuntime:
         """Resolve all 44 SOPs before falling back to a small alias list.
 
         The local prompt-eval index is intentionally evidence-labelled lexical
-        retrieval, not a pretend embedding. A host-provided candidate can take
-        precedence only when Retrieval Evidence Guard has marked it as a real
-        embedding result with provider, model and source references.
+        retrieval, not a pretend embedding. A graph-owned embedding candidate
+        may take precedence only when its score and margin clear configured
+        thresholds; otherwise rules remain the conservative fallback.
         """
         cases = self._prompt_eval_cases()
         by_stage = {case["stage_id"]: case for case in cases}
@@ -811,6 +1003,9 @@ class ProductCrewLangGraphRuntime:
             if valid:
                 top = valid[0]
                 confidence = float(top.get("score", top.get("similarity", 0)))
+                second = float(valid[1].get("score", valid[1].get("similarity", 0))) if len(valid) > 1 else 0.0
+                minimum_score = float(os.environ.get("PCO_RAG_ROUTE_MIN_SCORE", "0.55"))
+                minimum_margin = float(os.environ.get("PCO_RAG_ROUTE_MIN_MARGIN", "0.04"))
                 routes = [
                     {
                         "stage_id": item["stage_id"],
@@ -819,12 +1014,13 @@ class ProductCrewLangGraphRuntime:
                     }
                     for item in valid[:3]
                 ]
-                return self._case_reference(by_stage[top["stage_id"]]), {
-                    "stage_id": top["stage_id"],
-                    "confidence": confidence,
-                    "candidate_routes": routes,
-                    "retrieval_mode": "real_embedding_adapter",
-                }
+                if confidence >= minimum_score and (confidence - second >= minimum_margin or confidence >= 0.82):
+                    return self._case_reference(by_stage[top["stage_id"]]), {
+                        "stage_id": top["stage_id"],
+                        "confidence": confidence,
+                        "candidate_routes": routes,
+                        "retrieval_mode": "graph_rag_real_embedding",
+                    }
 
         normalized = self._normalize_text(user_input)
         scored = []
@@ -875,13 +1071,15 @@ class ProductCrewLangGraphRuntime:
 
     @staticmethod
     def _has_real_sop_candidate(evidence: Dict[str, Any]) -> bool:
+        candidates = evidence.get("candidate_routes", [])
+        top_score = max((float(item.get("score", item.get("similarity", 0))) for item in candidates if isinstance(item, dict)), default=0.0)
         return (
             evidence.get("real_embedding_performed") is True
-            and bool(evidence.get("provider"))
-            and bool(evidence.get("model"))
+            and bool(evidence.get("embedding_provider") or evidence.get("provider"))
+            and bool(evidence.get("embedding_model") or evidence.get("model"))
             and bool(evidence.get("source_refs"))
-            and isinstance(evidence.get("candidate_routes"), list)
-            and bool(evidence["candidate_routes"])
+            and isinstance(candidates, list)
+            and top_score >= float(os.environ.get("PCO_RAG_DOMAIN_MIN_SCORE", "0.50"))
         )
 
     @staticmethod
@@ -993,21 +1191,40 @@ class ProductCrewLangGraphRuntime:
         expected = {packet["persona"]["role_key"]: packet for packet in state.get("context_packets", [])}
         received = {callback.get("role_key"): callback for callback in callbacks}
         issues: List[str] = []
+        if len(received) != len(callbacks):
+            issues.append("duplicate_role_callback")
+        for role_key in received:
+            if role_key not in expected:
+                issues.append(f"{role_key}:unexpected_review_role")
         for role_key, packet in expected.items():
             callback = received.get(role_key, {})
             if callback.get("real_invocation_performed") is not True:
                 issues.append(f"{role_key}:real_invocation_missing")
             if not callback.get("runtime_agent_id"):
                 issues.append(f"{role_key}:runtime_agent_id_missing")
+            approved_agent_ids = self._approved_runtime_agent_ids(role_key)
+            if approved_agent_ids is not None:
+                if not approved_agent_ids:
+                    issues.append(f"{role_key}:runtime_agent_binding_missing")
+                elif str(callback.get("runtime_agent_id", "")) not in approved_agent_ids:
+                    issues.append(f"{role_key}:runtime_agent_binding_mismatch")
+                if not callback.get("coze_invocation_id"):
+                    issues.append(f"{role_key}:coze_invocation_id_missing")
             if callback.get("context_packet_id") != packet["packet_id"]:
                 issues.append(f"{role_key}:context_packet_mismatch")
+            if callback.get("context_packet_quality") not in {None, "complete"}:
+                issues.append(f"{role_key}:context_packet_quality_invalid")
+            if callback.get("persona_injection_status") not in {None, "complete"}:
+                issues.append(f"{role_key}:persona_injection_incomplete")
             if not callback.get("raw_review"):
                 issues.append(f"{role_key}:raw_review_missing")
             if callback.get("simulation_label"):
                 issues.append(f"{role_key}:simulated_result_invalid_for_gate")
+            if callback.get("result") in {"advice_only", "invalid_for_gate", "simulated", "runtime_blocked"}:
+                issues.append(f"{role_key}:callback_result_invalid_for_gate")
             if not self.delegate_secret:
                 issues.append(f"{role_key}:delegate_verifier_not_configured")
-            elif not hmac.compare_digest(str(callback.get("delegate_proof", "")), self.sign_delegate_callback(state["review_validation"]["session_id"], callback)):
+            elif not verify_callback(self.delegate_secret, state["review_validation"]["session_id"], callback):
                 issues.append(f"{role_key}:delegate_proof_invalid")
         return {
             "session_id": state["review_validation"]["session_id"],
@@ -1060,19 +1277,6 @@ class ProductCrewLangGraphRuntime:
             "The runtime saved this draft for traceability, but no validated Skill execution proof exists. "
             "It cannot be used to pass the stage gate.\n"
         )
-
-    @staticmethod
-    def _delegate_message(session_id: str, callback: Dict[str, Any]) -> str:
-        payload = {
-            "session_id": session_id,
-            "role_key": callback.get("role_key", ""),
-            "runtime_agent_id": callback.get("runtime_agent_id", ""),
-            "runtime_nickname": callback.get("runtime_nickname", ""),
-            "context_packet_id": callback.get("context_packet_id", ""),
-            "raw_review": callback.get("raw_review", ""),
-            "real_invocation_performed": callback.get("real_invocation_performed") is True,
-        }
-        return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
     def _create_project_schema(self) -> None:
         with self._project_connection() as conn:

@@ -4,6 +4,15 @@ Product Crew OS 的重要变更都会记录在这里。
 
 ## Unreleased
 
+## v0.2.2 - 2026-07-12
+
+### 真实执行与部署就绪门禁
+
+- primary Skill 不再因输入不完整直接跳到无关 fallback：有辅助脚本但无法执行时，会读取同一份真实 `SKILL.md` 交给本机 Ollama 完成，仍由 LangGraph 签发回执。
+- 44 SOP 检索改为图内 BGE 自己生成证据；调用方传入 `retrieval_evidence` 会被拒绝。新增 `rag-bootstrap`，未真的建立 44 SOP BGE 索引时，握手只能显示 `runtime_degraded`。
+- Coze 子 Agent 私有绑定增加 `approved_runtime_agent_ids`。启用绑定后，签名回调还必须命中对应角色允许名单；重复、额外或模拟回调不能进入 Gate。
+- 清理 Coze 蓝图、Docker、OpenAPI 和命令示例中的失效变量、旧接口名和旧的外部成功回传表述。
+
 ## v0.2.1 - 2026-07-12
 
 ### Graph-owned Skill execution

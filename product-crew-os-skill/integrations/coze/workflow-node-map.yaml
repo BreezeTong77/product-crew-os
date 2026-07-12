@@ -5,6 +5,11 @@ purpose: "Executable node order and persistence contract for the Coze Workflow."
 workflow:
   entry: coach_bot_message
   nodes:
+    - key: bootstrap_product_rule_rag
+      type: plugin_api
+      operation_id: runtimeBootstrapProductRuleRag
+      required_before_standard_sop: true
+      invariant: "The 44-SOP rule index must be built with local BGE. Package installation alone is not sufficient."
     - key: capability_handshake
       type: plugin_api
       operation_id: runtimeCapabilityHandshake
@@ -32,10 +37,9 @@ workflow:
       input: [content, source_type, extraction_method, source_ref, consent_ref]
       invariant: "Private namespace ingestion requires user authorization and consent_ref."
     - key: rag_gate_evidence_binding
-      type: langgraph_state_input
-      optional: true
-      input: [retrieval_evidence, source_refs]
-      invariant: "RAG evidence enters runtimeRecordTurn as structured retrieval evidence. Low-confidence OCR, unknown PII classification, and unknown source_ref are ineligible for a final Gate."
+      type: langgraph_owned_retrieval
+      input: [user_input, source_refs]
+      invariant: "RAG evidence is created by the LangGraph retrieval node from Runtime SQLite. Coze must ingest sources first, not pass retrieval_evidence into runtimeRecordTurn. Low-confidence OCR, unknown PII classification, and unknown source_ref are ineligible for a final Gate."
     - key: coze_rag_mirror
       type: coze_database_write
       table: pco_rag_ingestions
@@ -49,7 +53,7 @@ workflow:
     - key: turn_and_artifact_writer
       type: plugin_api
       operation_id: runtimeRecordTurn
-      input_rule: "Pass the persisted route_decision_id, structured Skill execution evidence and optional RAG evidence. Runtime derives required/triggered roles itself and returns complete Context Packets without simulating their reviews."
+      input_rule: "Pass only the persisted route_decision_id and bounded skill_input. LangGraph derives RAG evidence, executes the selected Skill, then returns the Artifact and complete Context Packets without simulating reviews."
     - key: coze_artifact_and_session_mirror
       type: coze_database_write
       tables: [pco_artifacts, pco_review_sessions]
@@ -60,10 +64,17 @@ workflow:
       input: context_packet
       binding_file: sub-bot-bindings.private.yaml
       require_runtime_agent_id: true
+      require_coze_invocation_id: true
+    - key: delegate_callback_signer
+      type: protected_plugin_api
+      operation_id: delegateSignerAttestReview
+      foreach: sub_bot_fan_out.results
+      input: [session_id, role_key, runtime_agent_id, coze_invocation_id, context_packet_id, raw_review]
+      invariant: "The Signer checks the private allow-list and signs the complete callback. Bot prompts never receive the HMAC secret."
     - key: real_review_callback
       type: plugin_api
       operation_id: runtimeResumeReview
-      foreach: sub_bot_fan_out.results
+      foreach: delegate_callback_signer.results
       required: true
     - key: coze_invocation_and_raw_review_mirror
       type: coze_database_write
@@ -103,6 +114,7 @@ hard_failures:
   - "real_embedding_performed is false in standard SOP mode -> blocked_runtime_preflight"
   - "skill_status is template_degraded -> blocked_runtime_preflight"
   - "required role lacks a real runtime_agent_id -> blocked_runtime_preflight"
+  - "required role lacks a Coze invocation ID or signed delegate callback -> blocked_runtime_preflight"
   - "context_packet_quality is not complete -> invalid_for_gate"
   - "raw review is absent or advice_only -> invalid_for_gate"
   - "user decision is absent -> awaiting_user_decision"

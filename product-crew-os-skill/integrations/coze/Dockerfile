@@ -5,9 +5,6 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PCO_RUNTIME_PORT=8787 \
     PCO_RUNTIME_WORKSPACE=/data/workspace \
     PCO_RUNTIME_EXPORT_ROOT=/data/exports \
-    PCO_STAGE_ROUTER_EMBEDDING=real \
-    PCO_REQUIRE_REAL_EMBEDDING=1 \
-    PCO_REQUIRE_REAL_SUBAGENTS=1 \
     PCO_EMBEDDING_PROVIDER=local_open_source_bge_small_zh \
     PCO_BGE_MODEL=BAAI/bge-small-zh-v1.5
 
@@ -15,7 +12,7 @@ COPY product-crew-os-skill/runtime/requirements-langgraph.txt /tmp/requirements-
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends sqlite3 ca-certificates \
-  && python -m pip install --no-cache-dir -r /tmp/requirements-langgraph.txt sentence-transformers \
+  && python -m pip install --no-cache-dir -r /tmp/requirements-langgraph.txt \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

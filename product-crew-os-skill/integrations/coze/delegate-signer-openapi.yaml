@@ -1,0 +1,53 @@
+openapi: 3.0.3
+info:
+  title: Product Crew OS Coze Delegate Signer
+  version: 0.2.2
+  description: >-
+    Import this as a separate Coze API plugin. After a real Call Bot node
+    returns, this signer checks the role-to-runtime-agent allow-list and signs
+    the complete callback. Its token must stay in plugin configuration, never
+    in a Bot prompt.
+servers:
+  - url: https://REPLACE_WITH_YOUR_PUBLIC_SIGNER_HOST
+security:
+  - bearerAuth: []
+paths:
+  /health:
+    get:
+      operationId: delegateSignerHealth
+      responses:
+        '200': { description: Delegate signer available }
+  /v1/reviews/attest:
+    post:
+      operationId: delegateSignerAttestReview
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [session_id, callback]
+              properties:
+                session_id: { type: string }
+                callback:
+                  type: object
+                  required: [role_key, runtime_agent_id, coze_invocation_id, context_packet_id, context_packet_quality, persona_injection_status, real_invocation_performed, raw_review]
+                  properties:
+                    role_key: { type: string }
+                    runtime_agent_id: { type: string }
+                    coze_invocation_id: { type: string }
+                    context_packet_id: { type: string }
+                    context_packet_quality: { type: string, enum: [complete] }
+                    persona_injection_status: { type: string, enum: [complete] }
+                    real_invocation_performed: { type: boolean, enum: [true] }
+                    raw_review: { type: string }
+                    conclusion: { type: string }
+                    review_items: { type: array, items: { type: object, additionalProperties: true } }
+                  additionalProperties: true
+      responses:
+        '200': { description: Attested callback with delegate_proof }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer

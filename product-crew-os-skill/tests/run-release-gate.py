@@ -37,7 +37,7 @@ def main() -> int:
     errors: list[str] = []
     cases = yaml.safe_load((ROOT / "tests" / "prompt-eval-cases.yaml").read_text(encoding="utf-8"))["cases"]
     with tempfile.TemporaryDirectory(prefix="pco-python-release-") as temp:
-        runtime = ProductCrewLangGraphRuntime(temp, ROOT, delegate_secret="release-gate-secret")
+        runtime = ProductCrewLangGraphRuntime(temp, ROOT, delegate_secret="release-gate-secret", rag_provider=LocalHashDryRunEmbedding())
         try:
             runtime.init_project("release-gate", "Python release gate")
             for case in cases:

@@ -9,13 +9,30 @@ services:
       PCO_SKILL_RECEIPT_SECRET: ${PCO_SKILL_RECEIPT_SECRET:?set_a_third_long_random_secret}
       PCO_OLLAMA_URL: ${PCO_OLLAMA_URL:?set_a_reachable_ollama_endpoint}
       PCO_SKILL_MODEL: ${PCO_SKILL_MODEL:-qwen2.5:3b}
+      PCO_SUBAGENT_BINDINGS_PATH: ${PCO_SUBAGENT_BINDINGS_PATH:-}
+      PCO_DELEGATE_SIGNER_URL: ${PCO_DELEGATE_SIGNER_URL:-http://product-crew-os-delegate-signer:8788}
       PCO_RUNTIME_PORT: "8787"
-      PCO_STAGE_ROUTER_EMBEDDING: real
-      PCO_REQUIRE_REAL_EMBEDDING: "1"
-      PCO_REQUIRE_REAL_SUBAGENTS: "1"
+      PCO_EMBEDDING_PROVIDER: local_open_source_bge_small_zh
+      PCO_BGE_MODEL: ${PCO_BGE_MODEL:-BAAI/bge-small-zh-v1.5}
       HF_HOME: /data/huggingface
     ports:
       - "8787:8787"
+    volumes:
+      - ./runtime-data:/data
+    restart: unless-stopped
+  product-crew-os-delegate-signer:
+    build:
+      context: ../../..
+      dockerfile: product-crew-os-skill/integrations/coze/Dockerfile
+    command: ["python", "/app/product-crew-os-skill/runtime/pco_delegate_signer.py"]
+    environment:
+      PCO_DELEGATE_SIGNER_TOKEN: ${PCO_DELEGATE_SIGNER_TOKEN:?set_a_fourth_long_random_secret}
+      PCO_LANGGRAPH_DELEGATE_SECRET: ${PCO_LANGGRAPH_DELEGATE_SECRET:?set_a_second_long_random_secret}
+      PCO_SUBAGENT_BINDINGS_PATH: ${PCO_SUBAGENT_BINDINGS_PATH:-}
+      PCO_DELEGATE_SIGNER_BIND: 0.0.0.0
+      PCO_DELEGATE_SIGNER_PORT: "8788"
+    ports:
+      - "8788:8788"
     volumes:
       - ./runtime-data:/data
     restart: unless-stopped
