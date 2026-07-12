@@ -88,6 +88,12 @@ def main() -> int:
                 status, rejected_retrieval = bridge.handle("POST", "/v1/routes", {"project_id": "bridge-project", "user_input": "先做 MVP", "retrieval_evidence": {"real_embedding_performed": True}})
                 check(errors, int(status) == 409 and rejected_retrieval.get("status") == "retrieval_evidence_rejected", "Python bridge accepted caller-provided retrieval evidence")
                 status, bridge_route = bridge.handle("POST", "/v1/routes", {"project_id": "bridge-project", "user_input": "先做 MVP，不要做大，帮我砍范围和列 not-do。"})
+                status, feedback = bridge.handle("POST", "/v1/observability/route-feedback", {"project_id": "bridge-project", "route_decision_id": bridge_route.get("route_decision_id", ""), "outcome": "confirmed", "reason": "Bridge observability coverage"})
+                check(errors, int(status) == 200 and feedback.get("outcome") == "confirmed", "Python bridge did not record explicit route feedback")
+                status, metrics = bridge.handle("POST", "/v1/observability/metrics", {"project_id": "bridge-project"})
+                check(errors, int(status) == 200 and metrics.get("sop_routing", {}).get("confirmed_correct") == 1, "Python bridge did not return evidence-based operational metrics")
+                status, bad_cases = bridge.handle("POST", "/v1/observability/bad-cases", {"project_id": "bridge-project"})
+                check(errors, int(status) == 200 and isinstance(bad_cases.get("items"), list), "Python bridge did not expose the Bad Case queue")
                 bridge_proof = {"skill_id": "scope-cutting", "execution_id": "bridge-proof-001", "output_ref": "artifacts/mvp.md", "execution_mode": "external_workflow", "contract_valid": True, "may_change_stage": False, "may_decide_gate": False, "may_write_project_memory": False, "may_call_agents": False}
                 status, rejected = bridge.handle("POST", "/v1/turns", {"project_id": "bridge-project", "user_input": "Continue the persisted MVP route.", "route_decision_id": bridge_route.get("route_decision_id", ""), "skill_execution": bridge_proof, "thread_id": "bridge-rejected-thread"})
                 check(errors, int(status) == 409 and rejected.get("status") == "skill_receipt_rejected", "Python bridge accepted a caller-provided Skill receipt")
@@ -99,7 +105,7 @@ def main() -> int:
                 check(errors, int(status) == 409 and response.get("status") == "use_langgraph_turn_or_resume", "Python bridge allowed a side-channel review write")
             finally:
                 bridge.close()
-            checks.append("Python Coze bridge binds turns to persisted routes and rejects caller-provided Skill or retrieval receipts")
+            checks.append("Python Coze bridge binds turns to persisted routes, exposes operational metrics, and rejects caller-provided Skill or retrieval receipts")
 
             bindings_path = root_path / "sub-bot-bindings.private.yaml"
             bindings_path.write_text(

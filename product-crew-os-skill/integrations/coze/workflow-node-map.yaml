@@ -24,6 +24,12 @@ workflow:
       type: coze_database_write
       table: pco_route_traces
       required: true
+    - key: user_route_feedback
+      type: plugin_api
+      operation_id: runtimeRecordRouteFeedback
+      optional: true
+      input: [project_id, route_decision_id, outcome, corrected_stage_id, reason]
+      invariant: "Only explicit user confirmation or correction enters the SOP accuracy denominator."
     - key: source_extractor
       type: coze_file_parser_or_ocr
       optional: true
@@ -104,6 +110,16 @@ workflow:
       type: coze_database_write
       table: pco_stage_gates
       required: true
+    - key: operational_metrics
+      type: plugin_api
+      operation_id: runtimeOperationalMetrics
+      input: [project_id]
+      output: [sop_routing, skill_execution, subagent_feedback, bad_cases, calibration_review_queue]
+      invariant: "Metrics derive from Runtime facts. Bad Cases create human review suggestions and never auto-change router thresholds."
+    - key: coze_operational_metrics_mirror
+      type: coze_database_write
+      tables: [pco_route_feedback, pco_bad_cases, pco_operational_metrics]
+      optional: true
     - key: obsidian_export
       type: plugin_api
       operation_id: runtimeExportObsidian

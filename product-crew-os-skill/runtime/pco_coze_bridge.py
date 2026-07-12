@@ -36,6 +36,21 @@ class BridgeApplication:
         try:
             if method == "POST" and path == "/v1/handshake":
                 return HTTPStatus.OK, self.runtime.capability_handshake()
+            if method == "POST" and path == "/v1/observability/metrics":
+                return HTTPStatus.OK, self.runtime.operational_metrics(self._required(payload, "project_id"))
+            if method == "POST" and path == "/v1/observability/route-feedback":
+                return HTTPStatus.OK, self.runtime.record_route_feedback(
+                    self._required(payload, "project_id"),
+                    self._required(payload, "route_decision_id"),
+                    self._required(payload, "outcome"),
+                    str(payload.get("corrected_stage_id", "")),
+                    str(payload.get("reason", "")),
+                    str(payload.get("source", "user")),
+                )
+            if method == "POST" and path == "/v1/observability/bad-cases":
+                return HTTPStatus.OK, self.runtime.list_bad_cases(
+                    self._required(payload, "project_id"), str(payload.get("status", "open"))
+                )
             if method == "POST" and path == "/v1/projects":
                 return HTTPStatus.OK, self.runtime.init_project(self._required(payload, "project_id"), self._required(payload, "name"))
             if method == "POST" and path == "/v1/routes":

@@ -51,9 +51,23 @@ python3 -m venv .venv
   --workspace ./runtime-workspace \
   --project-id demo \
   --user-input "先做 MVP，不要做大，帮我砍范围。"
+
+.venv/bin/python product-crew-os-skill/runtime/pco_runtime.py operational-metrics \
+  --workspace ./runtime-workspace \
+  --project-id demo
 ```
 
-可用命令：`health`、`capability-handshake`、`init-project`、`route-intent`、`execute-skill`、`rag-ingest`、`rag-bootstrap`、`rag-retrieve`、`source-extract`、`record-turn`、`resume`、`draw-graph`、`export-obsidian`。
+可用命令：`health`、`capability-handshake`、`operational-metrics`、`record-route-feedback`、`list-bad-cases`、`init-project`、`route-intent`、`execute-skill`、`rag-ingest`、`rag-bootstrap`、`rag-retrieve`、`source-extract`、`record-turn`、`resume`、`draw-graph`、`export-obsidian`。
+
+## 运营指标与纠错
+
+每个项目可调用 `operational-metrics`，会在项目包内写入 `运营指标/运营指标.md` 和 JSON 原始数据。它只统计 Runtime 事实：
+
+- **SOP 确认命中率**：只用用户明确确认或纠正过的路由；没确认的不会被悄悄算作正确。
+- **Skill 真执行率**：只有图内真实执行、且有 Runtime 签名回执的 Skill 才算成功；模板或调用方自报成功不算。
+- **子 Agent 有效回调率**：只有真实、角色绑定且签名通过的回调才算完成。
+
+用户可以用 `record-route-feedback` 标注一次路由是 `confirmed` 还是 `corrected`。纠正会自动产生 Bad Case；同一种错误达到配置阈值后，系统只生成待人工确认的调参建议，绝不自动改路由权重。
 
 ## Adapter 边界
 
@@ -97,6 +111,7 @@ Figma、Pencil 等 MCP Skill 不会被模型替代。它们需要已连接的 MC
 .venv/bin/python product-crew-os-skill/tests/run-real-ollama-skill-integration.py
 .venv/bin/python product-crew-os-skill/tests/run-real-bge-rag-integration.py
 .venv/bin/python product-crew-os-skill/tests/run-standard-sop-readiness-integration.py
+.venv/bin/python product-crew-os-skill/tests/run-operational-metrics-e2e.py
 ```
 
 50 条发布门禁的 44 条是 Stage/SOP/Skill 路由与控制回归，不能被描述为 44 个真实 Skill 或真实外部 Agent 已全部执行。

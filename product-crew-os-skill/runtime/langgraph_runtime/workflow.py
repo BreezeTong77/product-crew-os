@@ -99,6 +99,7 @@ class ProductCrewLangGraphRuntime:
         self.rag_db = self.workspace / "product-crew-rag.sqlite3"
         self._rag_store = PersistentRagStore(self.rag_db, provider=rag_provider)
         self._sop_rag_bootstrap: Optional[Dict[str, Any]] = None
+        self._router_calibration = self._load_router_calibration()
         self._create_project_schema()
         self._checkpoint_connection = sqlite3.connect(self.checkpoint_db, check_same_thread=False)
         self.checkpointer = SqliteSaver(self._checkpoint_connection)
@@ -272,6 +273,187 @@ class ProductCrewLangGraphRuntime:
             "index_stats": stats,
             "bootstrap": bootstrap,
         }
+
+    def record_route_feedback(
+        self,
+        project_id: str,
+        route_decision_id: str,
+        outcome: str,
+        corrected_stage_id: str = "",
+        reason: str = "",
+        source: str = "user",
+    ) -> Dict[str, Any]:
+        """Store one human-confirmed route outcome; never silently change routing."""
+        if outcome not in {"confirmed", "corrected"}:
+            raise ValueError("route feedback outcome must be confirmed or corrected")
+        route = self._persisted_route(project_id, route_decision_id)
+        if not route:
+            raise ValueError("route_decision_id was not found for this project")
+        predicted_stage_id = str(route.get("stage_id", ""))
+        known_stages = {str(case.get("stage_id", "")) for case in self._prompt_eval_cases()}
+        if outcome == "corrected":
+            if not corrected_stage_id or corrected_stage_id not in known_stages:
+                raise ValueError("corrected_stage_id must be one of the 44 SOP stage IDs")
+            if corrected_stage_id == predicted_stage_id:
+                raise ValueError("corrected_stage_id must differ from the predicted stage")
+        elif corrected_stage_id:
+            raise ValueError("confirmed feedback must not carry corrected_stage_id")
+
+        feedback = {
+            "feedback_id": self._id("routefb"),
+            "project_id": project_id,
+            "route_decision_id": route_decision_id,
+            "predicted_stage_id": predicted_stage_id,
+            "corrected_stage_id": corrected_stage_id,
+            "outcome": outcome,
+            "confidence": float(route.get("confidence", 0)),
+            "retrieval_mode": str(route.get("retrieval_mode", "")),
+            "reason": reason.strip(),
+            "source": source,
+            "created_at": self._now(),
+        }
+        with self._project_connection() as conn:
+            if conn.execute(
+                "SELECT feedback_id FROM langgraph_route_feedback WHERE project_id=? AND route_decision_id=?",
+                (project_id, route_decision_id),
+            ).fetchone():
+                raise ValueError("route feedback was already recorded for this route_decision_id")
+            conn.execute(
+                "INSERT INTO langgraph_route_feedback(feedback_id, project_id, route_decision_id, predicted_stage_id, corrected_stage_id, outcome, confidence, retrieval_mode, reason, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    feedback["feedback_id"], project_id, route_decision_id, predicted_stage_id,
+                    corrected_stage_id, outcome, feedback["confidence"], feedback["retrieval_mode"],
+                    feedback["reason"], source, feedback["created_at"],
+                ),
+            )
+        self._append_event(project_id, "route_feedback_recorded", feedback)
+        if outcome == "corrected":
+            feedback["bad_case"] = self._record_bad_case(
+                project_id,
+                category="sop_route_correction",
+                summary=f"SOP route corrected from {predicted_stage_id} to {corrected_stage_id}",
+                severity="medium",
+                source=source,
+                route_decision_id=route_decision_id,
+                expected_value=corrected_stage_id,
+                observed_value=predicted_stage_id,
+                evidence={"confidence": feedback["confidence"], "retrieval_mode": feedback["retrieval_mode"], "reason": feedback["reason"]},
+            )
+        return feedback
+
+    def operational_metrics(self, project_id: str) -> Dict[str, Any]:
+        """Calculate evidence-based operations metrics and export them into the project vault."""
+        self._ensure_project(project_id)
+        with self._project_connection() as conn:
+            route_rows = conn.execute(
+                "SELECT route_decision_id FROM langgraph_routes WHERE project_id=?", (project_id,)
+            ).fetchall()
+            feedback_rows = conn.execute(
+                "SELECT * FROM langgraph_route_feedback WHERE project_id=? ORDER BY created_at", (project_id,)
+            ).fetchall()
+            skill_rows = conn.execute(
+                "SELECT stage_id, status, receipt_json FROM langgraph_skill_executions WHERE project_id=?", (project_id,)
+            ).fetchall()
+            review_rows = conn.execute(
+                "SELECT session_id, required_roles_json, status FROM langgraph_review_sessions WHERE project_id=?", (project_id,)
+            ).fetchall()
+            invocation_rows = conn.execute(
+                "SELECT session_id, role_key, gate_valid FROM langgraph_agent_invocations WHERE project_id=?", (project_id,)
+            ).fetchall()
+            bad_case_rows = conn.execute(
+                "SELECT category, status FROM langgraph_bad_cases WHERE project_id=?", (project_id,)
+            ).fetchall()
+
+        feedback = [dict(row) for row in feedback_rows]
+        confirmed = sum(1 for item in feedback if item["outcome"] == "confirmed")
+        corrected = sum(1 for item in feedback if item["outcome"] == "corrected")
+        evaluated = confirmed + corrected
+
+        signed_executions = 0
+        primary_executions = 0
+        execution_statuses: Dict[str, int] = {}
+        for row in skill_rows:
+            receipt = json.loads(row["receipt_json"])
+            status = str(row["status"])
+            execution_statuses[status] = execution_statuses.get(status, 0) + 1
+            if status == "executed" and self._valid_skill_receipt(project_id, str(row["stage_id"]), receipt):
+                signed_executions += 1
+                if receipt.get("skill_id") == receipt.get("primary_skill"):
+                    primary_executions += 1
+
+        expected_callback_slots = 0
+        completed_sessions = 0
+        for row in review_rows:
+            try:
+                expected_callback_slots += len(json.loads(row["required_roles_json"]))
+            except json.JSONDecodeError:
+                continue
+            if row["status"] == "review_complete":
+                completed_sessions += 1
+        valid_callback_slots = {
+            (str(row["session_id"]), str(row["role_key"]))
+            for row in invocation_rows
+            if int(row["gate_valid"]) == 1
+        }
+        observed_callback_slots = {(str(row["session_id"]), str(row["role_key"])) for row in invocation_rows}
+        bad_case_by_category: Dict[str, int] = {}
+        for row in bad_case_rows:
+            category = str(row["category"])
+            bad_case_by_category[category] = bad_case_by_category.get(category, 0) + 1
+
+        metrics = {
+            "schema_version": "0.1",
+            "project_id": project_id,
+            "measured_at": self._now(),
+            "sop_routing": {
+                "total_route_decisions": len(route_rows),
+                "evaluated_by_human": evaluated,
+                "confirmed_correct": confirmed,
+                "corrected": corrected,
+                "confirmed_accuracy": self._rate(confirmed, evaluated),
+                "unverified": max(len(route_rows) - evaluated, 0),
+                "definition": "Only human confirmed/corrected routes enter this accuracy rate; unreviewed routes are not silently counted as correct.",
+            },
+            "skill_execution": {
+                "attempts": len(skill_rows),
+                "signed_graph_executions": signed_executions,
+                "true_execution_rate": self._rate(signed_executions, len(skill_rows)),
+                "primary_skill_executions": primary_executions,
+                "primary_skill_rate": self._rate(primary_executions, signed_executions),
+                "status_breakdown": execution_statuses,
+                "definition": "Success means an executed Skill with a Runtime-verified graph-issued receipt, not a template or caller claim.",
+            },
+            "subagent_feedback": {
+                "review_sessions": len(review_rows),
+                "completed_review_sessions": completed_sessions,
+                "expected_callback_slots": expected_callback_slots,
+                "observed_callback_slots": len(observed_callback_slots),
+                "valid_callback_slots": len(valid_callback_slots),
+                "real_callback_completion_rate": self._rate(len(valid_callback_slots), expected_callback_slots),
+                "definition": "Completion requires a real, role-bound, signed callback that passes Runtime validation; simulated views do not count.",
+            },
+            "bad_cases": {
+                "total": len(bad_case_rows),
+                "open": sum(1 for row in bad_case_rows if row["status"] == "open"),
+                "by_category": bad_case_by_category,
+            },
+            "calibration_review_queue": self._calibration_review_queue(feedback),
+        }
+        return self._write_operational_metrics(project_id, metrics)
+
+    def list_bad_cases(self, project_id: str, status: str = "open") -> Dict[str, Any]:
+        self._ensure_project(project_id)
+        with self._project_connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM langgraph_bad_cases WHERE project_id=? AND (?='' OR status=?) ORDER BY created_at DESC",
+                (project_id, status, status),
+            ).fetchall()
+        items = []
+        for row in rows:
+            item = dict(row)
+            item["evidence"] = json.loads(item.pop("evidence_json"))
+            items.append(item)
+        return {"project_id": project_id, "status_filter": status, "items": items}
 
     def _subagent_binding_status(self) -> Dict[str, Any]:
         configured = os.environ.get("PCO_SUBAGENT_BINDINGS_PATH", "").strip()
@@ -664,6 +846,16 @@ class ProductCrewLangGraphRuntime:
                 "detail": result.get("detail", result.get("reason", "")),
             }
             self._persist_skill_execution(state["project_id"], route["stage_id"], execution)
+            self._record_bad_case(
+                state["project_id"],
+                category="skill_execution_blocked",
+                summary=f"Skill {selected_skill} did not complete for {route['stage_id']}",
+                severity="medium",
+                source="runtime",
+                expected_value="executed_with_graph_receipt",
+                observed_value=str(execution["execution_status"]),
+                evidence={"attempts": attempts, "detail": execution.get("detail", "")},
+            )
             return self._event_update(state, "skill_execution_blocked", execution) | {"skill_execution": execution}
 
         output = str(result.get("output_content", "")).strip()
@@ -677,6 +869,16 @@ class ProductCrewLangGraphRuntime:
                 "attempts": attempts,
             }
             self._persist_skill_execution(state["project_id"], route["stage_id"], execution)
+            self._record_bad_case(
+                state["project_id"],
+                category="skill_output_empty",
+                summary=f"Skill {selected_skill} returned no usable output for {route['stage_id']}",
+                severity="medium",
+                source="runtime",
+                expected_value="non_empty_artifact_output",
+                observed_value="empty_output",
+                evidence={"attempts": attempts},
+            )
             return self._event_update(state, "skill_execution_blocked", execution) | {"skill_execution": execution}
 
         output_path = self._project_dir(state["project_id"]) / "skill-runs" / execution_id / "raw-output.md"
@@ -745,6 +947,17 @@ class ProductCrewLangGraphRuntime:
             "gate_valid": valid,
             "issues": issues,
         }
+        if not valid:
+            self._record_bad_case(
+                state["project_id"],
+                category="skill_receipt_invalid",
+                summary=f"Skill receipt failed validation for {route['stage_id']}",
+                severity="high",
+                source="runtime",
+                expected_value="graph_issued_receipt",
+                observed_value="receipt_invalid",
+                evidence={"issues": issues, "skill_id": proof.get("skill_id", "")},
+            )
         self._append_event(state["project_id"], "skill_execution_checked", execution)
         return self._update(state, skill_execution=execution)
 
@@ -1004,8 +1217,8 @@ class ProductCrewLangGraphRuntime:
                 top = valid[0]
                 confidence = float(top.get("score", top.get("similarity", 0)))
                 second = float(valid[1].get("score", valid[1].get("similarity", 0))) if len(valid) > 1 else 0.0
-                minimum_score = float(os.environ.get("PCO_RAG_ROUTE_MIN_SCORE", "0.55"))
-                minimum_margin = float(os.environ.get("PCO_RAG_ROUTE_MIN_MARGIN", "0.04"))
+                minimum_score = self._router_threshold("rag_route_min_score", "PCO_RAG_ROUTE_MIN_SCORE", 0.55)
+                minimum_margin = self._router_threshold("rag_route_min_margin", "PCO_RAG_ROUTE_MIN_MARGIN", 0.04)
                 routes = [
                     {
                         "stage_id": item["stage_id"],
@@ -1034,7 +1247,9 @@ class ProductCrewLangGraphRuntime:
         ]
         best_score, best_case = scored[0]
         second_score = scored[1][0] if len(scored) > 1 else 0.0
-        if best_score >= 0.25 and (best_score - second_score >= 0.06 or best_score == 1.0):
+        lexical_score = self._router_threshold("lexical_route_min_score", "PCO_LEXICAL_ROUTE_MIN_SCORE", 0.25)
+        lexical_margin = self._router_threshold("lexical_route_min_margin", "PCO_LEXICAL_ROUTE_MIN_MARGIN", 0.06)
+        if best_score >= lexical_score and (best_score - second_score >= lexical_margin or best_score == 1.0):
             return self._case_reference(best_case), {
                 "stage_id": best_case["stage_id"],
                 "confidence": round(best_score, 4),
@@ -1069,8 +1284,7 @@ class ProductCrewLangGraphRuntime:
             default=0.0,
         )
 
-    @staticmethod
-    def _has_real_sop_candidate(evidence: Dict[str, Any]) -> bool:
+    def _has_real_sop_candidate(self, evidence: Dict[str, Any]) -> bool:
         candidates = evidence.get("candidate_routes", [])
         top_score = max((float(item.get("score", item.get("similarity", 0))) for item in candidates if isinstance(item, dict)), default=0.0)
         return (
@@ -1079,7 +1293,7 @@ class ProductCrewLangGraphRuntime:
             and bool(evidence.get("embedding_model") or evidence.get("model"))
             and bool(evidence.get("source_refs"))
             and isinstance(candidates, list)
-            and top_score >= float(os.environ.get("PCO_RAG_DOMAIN_MIN_SCORE", "0.50"))
+            and top_score >= self._router_threshold("domain_rag_min_score", "PCO_RAG_DOMAIN_MIN_SCORE", 0.50)
         )
 
     @staticmethod
@@ -1236,9 +1450,11 @@ class ProductCrewLangGraphRuntime:
     def _write_review_callbacks(self, project_id: str, session_id: str, callbacks: List[Dict[str, Any]], validation: Dict[str, Any]) -> None:
         root = self._project_dir(project_id) / "raw-review-records" / session_id
         root.mkdir(parents=True, exist_ok=True)
+        global_issues = [issue for issue in validation.get("issues", []) if ":" not in issue]
         for callback in callbacks:
             role_key = callback.get("role_key", "unknown")
-            (root / f"{role_key}.md").write_text(
+            raw_path = root / f"{role_key}.md"
+            raw_path.write_text(
                 "# Raw Review Record\n\n"
                 f"- Role: `{role_key}`\n"
                 f"- Runtime agent: `{callback.get('runtime_agent_id', '')}`\n"
@@ -1246,15 +1462,44 @@ class ProductCrewLangGraphRuntime:
                 # and injected persona remain the identity used for gate checks.
                 f"- Runtime nickname (audit only): `{callback.get('runtime_nickname', '')}`\n"
                 f"- Context packet: `{callback.get('context_packet_id', '')}`\n"
+                f"- Coze invocation: `{callback.get('coze_invocation_id', '')}`\n"
                 f"- Real invocation: `{callback.get('real_invocation_performed', False)}`\n\n"
                 "## Raw Review\n\n"
                 f"{callback.get('raw_review', '')}\n",
                 encoding="utf-8",
             )
         with self._project_connection() as conn:
+            for callback in callbacks:
+                role_key = str(callback.get("role_key", "unknown"))
+                role_issues = global_issues + [
+                    issue for issue in validation.get("issues", []) if issue.startswith(f"{role_key}:")
+                ]
+                conn.execute(
+                    "INSERT INTO langgraph_agent_invocations(invocation_id, session_id, project_id, role_key, runtime_agent_id, coze_invocation_id, context_packet_id, real_invocation_performed, gate_valid, result, raw_review_path, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        self._id("invoke"), session_id, project_id, role_key,
+                        str(callback.get("runtime_agent_id", "")), str(callback.get("coze_invocation_id", "")),
+                        str(callback.get("context_packet_id", "")),
+                        1 if callback.get("real_invocation_performed") is True else 0,
+                        0 if role_issues else 1,
+                        str(callback.get("result", "")),
+                        str(root / f"{role_key}.md"), self._now(),
+                    ),
+                )
             conn.execute(
                 "UPDATE langgraph_review_sessions SET status=?, validation_json=? WHERE session_id=?",
                 (validation["status"], json.dumps(validation, ensure_ascii=False), session_id),
+            )
+        if not validation.get("gate_valid", False):
+            self._record_bad_case(
+                project_id,
+                category="subagent_callback_invalid",
+                summary=f"Review callbacks failed validation for session {session_id}",
+                severity="high",
+                source="runtime",
+                expected_value="real_role_bound_signed_callback",
+                observed_value="invalid_callback",
+                evidence={"session_id": session_id, "issues": validation.get("issues", [])},
             )
 
     def _draft_content(self, state: WorkflowState) -> str:
@@ -1342,8 +1587,197 @@ class ProductCrewLangGraphRuntime:
                   validation_json TEXT NOT NULL DEFAULT '{}',
                   created_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS langgraph_route_feedback (
+                  feedback_id TEXT PRIMARY KEY,
+                  project_id TEXT NOT NULL,
+                  route_decision_id TEXT NOT NULL,
+                  predicted_stage_id TEXT NOT NULL,
+                  corrected_stage_id TEXT NOT NULL DEFAULT '',
+                  outcome TEXT NOT NULL,
+                  confidence REAL NOT NULL DEFAULT 0,
+                  retrieval_mode TEXT NOT NULL DEFAULT '',
+                  reason TEXT NOT NULL DEFAULT '',
+                  source TEXT NOT NULL DEFAULT 'user',
+                  created_at TEXT NOT NULL,
+                  UNIQUE(project_id, route_decision_id)
+                );
+                CREATE TABLE IF NOT EXISTS langgraph_agent_invocations (
+                  invocation_id TEXT PRIMARY KEY,
+                  session_id TEXT NOT NULL,
+                  project_id TEXT NOT NULL,
+                  role_key TEXT NOT NULL,
+                  runtime_agent_id TEXT NOT NULL DEFAULT '',
+                  coze_invocation_id TEXT NOT NULL DEFAULT '',
+                  context_packet_id TEXT NOT NULL DEFAULT '',
+                  real_invocation_performed INTEGER NOT NULL DEFAULT 0,
+                  gate_valid INTEGER NOT NULL DEFAULT 0,
+                  result TEXT NOT NULL DEFAULT '',
+                  raw_review_path TEXT NOT NULL DEFAULT '',
+                  created_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS langgraph_bad_cases (
+                  bad_case_id TEXT PRIMARY KEY,
+                  project_id TEXT NOT NULL,
+                  category TEXT NOT NULL,
+                  summary TEXT NOT NULL,
+                  severity TEXT NOT NULL,
+                  source TEXT NOT NULL,
+                  route_decision_id TEXT NOT NULL DEFAULT '',
+                  expected_value TEXT NOT NULL DEFAULT '',
+                  observed_value TEXT NOT NULL DEFAULT '',
+                  evidence_json TEXT NOT NULL DEFAULT '{}',
+                  status TEXT NOT NULL DEFAULT 'open',
+                  created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_langgraph_route_feedback_project ON langgraph_route_feedback(project_id, created_at);
+                CREATE INDEX IF NOT EXISTS idx_langgraph_agent_invocations_project ON langgraph_agent_invocations(project_id, session_id, role_key);
+                CREATE INDEX IF NOT EXISTS idx_langgraph_bad_cases_project ON langgraph_bad_cases(project_id, status, created_at);
                 """
             )
+
+    def _load_router_calibration(self) -> Dict[str, Any]:
+        path = self.skill_root / "config" / "router-calibration.yaml"
+        if not path.is_file():
+            return {"thresholds": {}, "review_policy": {"same_route_correction_threshold": 3, "auto_apply": False}}
+        try:
+            payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        except (OSError, yaml.YAMLError):
+            return {"thresholds": {}, "review_policy": {"same_route_correction_threshold": 3, "auto_apply": False}}
+        return payload if isinstance(payload, dict) else {"thresholds": {}, "review_policy": {"same_route_correction_threshold": 3, "auto_apply": False}}
+
+    def _router_threshold(self, key: str, environment_key: str, default: float) -> float:
+        configured = (self._router_calibration.get("thresholds", {}) or {}).get(key, default)
+        raw = os.environ.get(environment_key, str(configured))
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            return default
+
+    def _record_bad_case(
+        self,
+        project_id: str,
+        category: str,
+        summary: str,
+        severity: str,
+        source: str,
+        route_decision_id: str = "",
+        expected_value: str = "",
+        observed_value: str = "",
+        evidence: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        bad_case = {
+            "bad_case_id": self._id("badcase"),
+            "project_id": project_id,
+            "category": category,
+            "summary": summary,
+            "severity": severity,
+            "source": source,
+            "route_decision_id": route_decision_id,
+            "expected_value": expected_value,
+            "observed_value": observed_value,
+            "evidence": evidence or {},
+            "status": "open",
+            "created_at": self._now(),
+        }
+        with self._project_connection() as conn:
+            conn.execute(
+                "INSERT INTO langgraph_bad_cases(bad_case_id, project_id, category, summary, severity, source, route_decision_id, expected_value, observed_value, evidence_json, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    bad_case["bad_case_id"], project_id, category, summary, severity, source,
+                    route_decision_id, expected_value, observed_value,
+                    json.dumps(bad_case["evidence"], ensure_ascii=False), "open", bad_case["created_at"],
+                ),
+            )
+        self._append_event(project_id, "bad_case_recorded", bad_case)
+        return bad_case
+
+    @staticmethod
+    def _rate(numerator: int, denominator: int) -> Optional[float]:
+        return round(numerator / denominator, 4) if denominator else None
+
+    def _calibration_review_queue(self, feedback: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        policy = self._router_calibration.get("review_policy", {}) or {}
+        threshold = int(policy.get("same_route_correction_threshold", 3))
+        grouped: Dict[tuple[str, str, str], List[Dict[str, Any]]] = {}
+        for item in feedback:
+            if item.get("outcome") != "corrected":
+                continue
+            key = (
+                str(item.get("predicted_stage_id", "")),
+                str(item.get("corrected_stage_id", "")),
+                str(item.get("retrieval_mode", "")),
+            )
+            grouped.setdefault(key, []).append(item)
+
+        queue: List[Dict[str, Any]] = []
+        for (predicted, corrected, retrieval_mode), items in sorted(grouped.items()):
+            if len(items) < threshold:
+                continue
+            average_confidence = round(sum(float(item.get("confidence", 0)) for item in items) / len(items), 4)
+            control = "rag_route_min_margin" if retrieval_mode == "graph_rag_real_embedding" else "lexical_route_min_margin"
+            suggestion = "补充该表达的 SOP 样本、别名和反例，再复跑基准集。"
+            if average_confidence < 0.65:
+                suggestion = f"先人工评估是否把 {control} 提高 0.02，让低把握命中优先进入澄清问题。"
+            queue.append(
+                {
+                    "status": "pending_human_review",
+                    "predicted_stage_id": predicted,
+                    "corrected_stage_id": corrected,
+                    "retrieval_mode": retrieval_mode,
+                    "same_correction_count": len(items),
+                    "average_confidence": average_confidence,
+                    "candidate_control": control,
+                    "suggestion": suggestion,
+                    "auto_apply": False,
+                }
+            )
+        return queue
+
+    def _write_operational_metrics(self, project_id: str, metrics: Dict[str, Any]) -> Dict[str, Any]:
+        root = self._project_dir(project_id) / "运营指标"
+        root.mkdir(parents=True, exist_ok=True)
+        json_path = root / "运营指标.json"
+        markdown_path = root / "运营指标.md"
+        json_path.write_text(json.dumps(metrics, ensure_ascii=False, indent=2), encoding="utf-8")
+        routing = metrics["sop_routing"]
+        skill = metrics["skill_execution"]
+        agent = metrics["subagent_feedback"]
+        bad_cases = metrics["bad_cases"]
+        recommendations = metrics["calibration_review_queue"]
+        lines = [
+            "# Product Crew OS 运营指标",
+            "",
+            "## SOP 命中",
+            f"- 已确认样本：`{routing['evaluated_by_human']}`",
+            f"- 用户确认正确：`{routing['confirmed_correct']}`",
+            f"- 用户纠正：`{routing['corrected']}`",
+            f"- 确认命中率：`{routing['confirmed_accuracy'] if routing['confirmed_accuracy'] is not None else '暂无样本'}`",
+            "",
+            "## Skill 真执行",
+            f"- 执行尝试：`{skill['attempts']}`",
+            f"- 有效图内回执：`{skill['signed_graph_executions']}`",
+            f"- 真执行率：`{skill['true_execution_rate'] if skill['true_execution_rate'] is not None else '暂无样本'}`",
+            "",
+            "## 子 Agent 反馈",
+            f"- 应回调角色数：`{agent['expected_callback_slots']}`",
+            f"- 有效真实回调：`{agent['valid_callback_slots']}`",
+            f"- 有效回调完成率：`{agent['real_callback_completion_rate'] if agent['real_callback_completion_rate'] is not None else '暂无样本'}`",
+            "",
+            "## Bad Case",
+            f"- 总数：`{bad_cases['total']}`；待处理：`{bad_cases['open']}`",
+            f"- 分类：`{json.dumps(bad_cases['by_category'], ensure_ascii=False)}`",
+            "",
+            "## 待人工确认的调参建议",
+        ]
+        if recommendations:
+            for item in recommendations:
+                lines.append(
+                    f"- `{item['predicted_stage_id']}` 被纠正为 `{item['corrected_stage_id']}` 共 `{item['same_correction_count']}` 次：{item['suggestion']}"
+                )
+        else:
+            lines.append("- 暂无达到阈值的同类纠正。系统不会自动改权重。")
+        markdown_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return metrics | {"artifact_paths": {"json": str(json_path), "markdown": str(markdown_path)}}
 
     def _load_skill_receipt_secret(self) -> str:
         """Use an installation-local secret so only this runtime issues receipts."""

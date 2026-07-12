@@ -1,6 +1,6 @@
 # Product Crew OS
 
-[![Release](https://img.shields.io/badge/release-v0.2.2-blue)](releases/v0.2.2.md)
+[![Release](https://img.shields.io/badge/release-v0.2.3-blue)](releases/v0.2.3.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![SOP](https://img.shields.io/badge/SOP-44-orange)](product-crew-os-skill/references/workflow-sop-library.md)
 [![Bundled Skills](https://img.shields.io/badge/bundled%20skills-49-orange)](product-crew-os-skill/references/bundled-skill-index.md)
@@ -78,9 +78,21 @@ flowchart TB
   NEXT --> U
 
   WORK -. "用户授权后" .-> MCP["外部工具 / MCP\nFigma / Pencil / Jira 等"]
-  MEMORY --> EVAL["质量回流\n回归测试 / 路由评估 / Bad Case"]
+  MEMORY --> EVAL["运营指标与质量回流\nSOP / Skill / Agent / Bad Case"]
   EVAL --> ROUTE
 ```
+
+## 它怎么知道自己有没有做对
+
+Product Crew OS 不把“写出一份文档”当作成功。每个项目都会生成一页中文运营指标：
+
+| 看什么 | 只在什么情况下算成功 |
+| --- | --- |
+| SOP 命中率 | 用户明确确认当前 SOP 正确；未确认的不算正确。 |
+| Skill 真执行率 | Skill 在 LangGraph 内真实运行，且有 Runtime 签名回执。 |
+| 子 Agent 回调率 | 真实子 Agent 返回、角色身份匹配、原文评审和签名校验都通过。 |
+
+当用户纠正 SOP、Skill 跑不起来，或子 Agent 回调无效时，系统会写入 Bad Case。相同问题累计到阈值后，只生成“待人工确认”的调参建议，不会自己偷偷改路由规则。
 
 ## 可配置团队与评审
 
@@ -148,7 +160,7 @@ flowchart LR
 
 - 非产品任务不会被强行归到 SOP、Skill Router、项目记忆或评审流程；它会退出 Product Crew OS，交给对应能力正常回答。
 - 44 个 SOP 都有卡片、路由和最小测试链路；不等于每个 SOP 都完成了深度真实业务验证。
-- Skill 被路由到不等于已经真实执行。只有宿主返回执行证据，才能作为 Gate 依据。
+- Skill 被路由到不等于已经真实执行。只有 LangGraph 实际执行并签发回执，或经授权的外部工具返回可验证证据，才能作为 Gate 依据。
 - 子 Agent 是否能真实调用取决于宿主的 delegation 能力；不支持时不能假装已调用。
 - OCR、Embedding、向量库和外部 MCP 都依赖本地环境。依赖缺失时必须明确显示受限状态。
 - 低置信 OCR、未授权或未索引来源可以作为参考，但不能作为最终 Gate 证据。
@@ -175,6 +187,7 @@ python3 -m venv .venv
 .venv/bin/python product-crew-os-skill/tests/validate-package.py
 .venv/bin/python product-crew-os-skill/tests/run-langgraph-runtime-e2e.py
 .venv/bin/python product-crew-os-skill/tests/run-python-runtime-adapters-e2e.py
+.venv/bin/python product-crew-os-skill/tests/run-operational-metrics-e2e.py
 .venv/bin/python product-crew-os-skill/tests/run-release-gate.py
 ```
 
@@ -189,7 +202,7 @@ python3 -m venv .venv
 - [子 Agent 调用契约](product-crew-os-skill/references/subagent-invocation-contract.md)
 - [Runtime 使用说明](product-crew-os-skill/runtime/README.md)
 - [LangGraph 控制平面](product-crew-os-skill/references/langgraph-runtime-architecture.md)
-- [v0.2.2 发布说明](releases/v0.2.2.md)
+- [v0.2.3 发布说明](releases/v0.2.3.md)
 
 ## 许可证
 

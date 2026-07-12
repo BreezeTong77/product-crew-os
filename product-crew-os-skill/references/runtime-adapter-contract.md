@@ -213,6 +213,16 @@ Codex 可读取已打包的 `third_party/skills/*/SKILL.md`。但只有当宿主
 
 当前 Python Runtime 的开箱真实执行后端是本地 `ollama_prompt` 和已注册的 `command` 脚本；MCP 写入仍须先征得用户授权并连接真实工具。
 
+### 2.4 Operational Metrics / 运营指标与 Bad Case
+
+运营指标只从 Runtime SQLite 事实表计算，并写入每个项目的 `运营指标/` 目录：
+
+- SOP 命中率只使用用户明确 `confirmed` 或 `corrected` 的 route decision；未反馈不算正确。
+- Skill 真执行率只使用 LangGraph 已签名、已校验的 execution receipt。
+- 子 Agent 回调率只使用真实调用、角色绑定、完整 Context Packet 和签名都通过的 callback。
+
+用户纠正 SOP、Skill 失败或 callback 无效时，Runtime 自动追加 Bad Case。相同 SOP 纠正达到 `config/router-calibration.yaml` 的阈值后，只生成 `pending_human_review` 调参建议；`auto_apply` 必须保持 `false`，任何 Agent 都不能自行改阈值。
+
 ## 5. Note Adapter / 笔记工具适配
 
 Obsidian 是当前默认示例，不是唯一支持目标。Product Crew OS 的项目包本质是 Markdown / YAML / JSON 文件夹，因此可以适配不同笔记工具。

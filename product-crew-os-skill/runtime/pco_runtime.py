@@ -45,6 +45,9 @@ def parser() -> argparse.ArgumentParser:
         choices=[
             "health",
             "capability-handshake",
+            "operational-metrics",
+            "record-route-feedback",
+            "list-bad-cases",
             "init-project",
             "route-intent",
             "execute-skill",
@@ -65,6 +68,11 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--user-input", default="")
     result.add_argument("--thread-id", default="")
     result.add_argument("--route-decision-id", default="")
+    result.add_argument("--feedback-outcome", default="")
+    result.add_argument("--corrected-stage-id", default="")
+    result.add_argument("--reason", default="")
+    result.add_argument("--feedback-source", default="user")
+    result.add_argument("--bad-case-status", default="open")
     result.add_argument("--skill-id", default="")
     result.add_argument("--input-json", default="{}")
     result.add_argument("--skill-input-json", default="{}")
@@ -95,6 +103,25 @@ def main() -> int:
             result: Any = {"status": "ok", "runtime": "python_langgraph", "workspace": str(Path(args.workspace).resolve())}
         elif args.command == "capability-handshake":
             result = runtime.capability_handshake()
+        elif args.command == "operational-metrics":
+            if not args.project_id:
+                raise SystemExit("operational-metrics requires --project-id")
+            result = runtime.operational_metrics(args.project_id)
+        elif args.command == "record-route-feedback":
+            if not args.project_id or not args.route_decision_id or not args.feedback_outcome:
+                raise SystemExit("record-route-feedback requires --project-id, --route-decision-id and --feedback-outcome")
+            result = runtime.record_route_feedback(
+                args.project_id,
+                args.route_decision_id,
+                args.feedback_outcome,
+                args.corrected_stage_id,
+                args.reason,
+                args.feedback_source,
+            )
+        elif args.command == "list-bad-cases":
+            if not args.project_id:
+                raise SystemExit("list-bad-cases requires --project-id")
+            result = runtime.list_bad_cases(args.project_id, args.bad_case_status)
         elif args.command == "init-project":
             if not args.project_id or not args.name:
                 raise SystemExit("init-project requires --project-id and --name")

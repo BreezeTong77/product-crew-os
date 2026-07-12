@@ -30,6 +30,7 @@ REQUIRED = [
     "integrations/coze/workflow-blueprint.yaml",
     "integrations/coze/Dockerfile",
     "integrations/coze/env.example",
+    "config/router-calibration.yaml",
     "tests/prompt-eval-cases.yaml",
     "tests/run-langgraph-runtime-e2e.py",
     "tests/run-python-runtime-adapters-e2e.py",
@@ -38,6 +39,7 @@ REQUIRED = [
     "tests/run-real-ollama-skill-integration.py",
     "tests/run-real-bge-rag-integration.py",
     "tests/run-standard-sop-readiness-integration.py",
+    "tests/run-operational-metrics-e2e.py",
 ]
 
 
@@ -60,7 +62,7 @@ def main() -> int:
     if runtime_ruby:
         errors.append("Ruby runtime files remain: " + ", ".join(path.name for path in runtime_ruby))
     workflow = (ROOT / "runtime" / "langgraph_runtime" / "workflow.py").read_text(encoding="utf-8")
-    for term in ("StateGraph", "SqliteSaver", "interrupt", "Command", "execute_skill", "graph_rag_evidence", "bootstrap_product_rule_rag", "runtime_agent_binding_mismatch", "skill_receipt_invalid_or_not_graph_issued", "revise_artifact", "export_project_assets", "PCO_LANGGRAPH_DELEGATE_SECRET"):
+    for term in ("StateGraph", "SqliteSaver", "interrupt", "Command", "execute_skill", "graph_rag_evidence", "bootstrap_product_rule_rag", "record_route_feedback", "operational_metrics", "langgraph_bad_cases", "runtime_agent_binding_mismatch", "skill_receipt_invalid_or_not_graph_issued", "revise_artifact", "export_project_assets", "PCO_LANGGRAPH_DELEGATE_SECRET"):
         if term not in workflow:
             errors.append(f"LangGraph workflow missing {term}")
     blueprint = yaml.safe_load((ROOT / "integrations" / "coze" / "workflow-blueprint.yaml").read_text(encoding="utf-8"))
@@ -72,7 +74,7 @@ def main() -> int:
     if "pco_coze_bridge.py" not in dockerfile or "ruby" in dockerfile.lower():
         errors.append("Coze Dockerfile still depends on Ruby")
     openapi = yaml.safe_load((ROOT / "integrations" / "coze" / "runtime-plugin-openapi.yaml").read_text(encoding="utf-8"))
-    expected_paths = {"/health", "/v1/handshake", "/v1/projects", "/v1/routes", "/v1/skills/execute", "/v1/rag/ingest", "/v1/rag/bootstrap", "/v1/rag/retrieve", "/v1/turns", "/v1/reviews/callback", "/v1/review-decisions", "/v1/gates/finalize", "/v1/exports/obsidian"}
+    expected_paths = {"/health", "/v1/handshake", "/v1/observability/metrics", "/v1/observability/route-feedback", "/v1/observability/bad-cases", "/v1/projects", "/v1/routes", "/v1/skills/execute", "/v1/rag/ingest", "/v1/rag/bootstrap", "/v1/rag/retrieve", "/v1/turns", "/v1/reviews/callback", "/v1/review-decisions", "/v1/gates/finalize", "/v1/exports/obsidian"}
     missing_paths = expected_paths - set((openapi.get("paths") or {}).keys())
     if missing_paths:
         errors.append("Coze OpenAPI missing Python bridge paths: " + ", ".join(sorted(missing_paths)))

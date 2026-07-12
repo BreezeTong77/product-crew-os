@@ -4,6 +4,15 @@ Product Crew OS 的重要变更都会记录在这里。
 
 ## Unreleased
 
+## v0.2.3 - 2026-07-12
+
+### 运营指标与 Bad Case 闭环
+
+- Runtime 新增 SOP 确认命中率、Skill 真执行率、子 Agent 有效回调率三项项目级指标，并将中文指标页写入 Obsidian 项目包。
+- 用户纠正 SOP、Skill 执行失败或回执无效、子 Agent 回调不合法会自动写入 Bad Case；Coze 也可读取相同事实表。
+- 新增路由调参配置和人工审核队列：同类 SOP 纠正达到阈值后才提出建议，任何 Agent 或 Runtime 都不会自动改权重。
+- 新增 Runtime CLI、Bridge API、Coze 数据库字段与端到端测试，明确区分“已确认数据”和“尚未验证数据”。
+
 ## v0.2.2 - 2026-07-12
 
 ### 真实执行与部署就绪门禁

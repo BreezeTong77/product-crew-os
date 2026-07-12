@@ -97,6 +97,10 @@ workflow_nodes:
   - key: route_trace_writer
     input: [stage_id, macro_stage, route_confidence, candidate_routes, retrieval_mode, real_embedding_performed, source_refs]
     output: [route_decision_id, stage_route_decision_path]
+  - key: route_feedback_writer
+    input: [project_id, route_decision_id, user_confirmed_or_corrected, corrected_stage_id, reason]
+    output: [feedback_id, bad_case_id]
+    invariant: "Only an explicit user confirmation or correction can enter SOP accuracy. A correction never auto-changes router thresholds."
   - key: embedding_recall
     input: [user_message, prompt_eval_44_sop_index]
     output: [top_k_sop_candidates, real_embedding_performed, embedding_provider, embedding_model, source_refs]
@@ -155,6 +159,10 @@ workflow_nodes:
   - key: project_memory_writer
     input: [artifact_id, review_session_id, review_items, user_decisions, memory_candidates, gate_status]
     output: [database_rows, event_log, project_files]
+  - key: operational_metrics_writer
+    input: [project_id]
+    output: [sop_confirmed_accuracy, skill_true_execution_rate, subagent_callback_completion_rate, bad_cases, calibration_review_queue]
+    invariant: "Metrics come from Runtime facts and are written to the project vault; Bot prose must not fabricate them."
   - key: obsidian_exporter
     input: [project_id]
     output: [obsidian_vault_path]
@@ -180,6 +188,9 @@ runtime_actions:
   runtime_finalize_stage_gate: resume.user_stage_decision
   runtime_rag_ingest: rag-ingest
   runtime_rag_retrieve: rag-retrieve
+  runtime_operational_metrics: operational-metrics
+  runtime_record_route_feedback: record-route-feedback
+  runtime_list_bad_cases: list-bad-cases
 
 plugin_operations:
   capability_handshake: runtimeCapabilityHandshake
@@ -194,6 +205,9 @@ plugin_operations:
   export_obsidian: runtimeExportObsidian
   rag_ingest: runtimeRagIngest
   rag_retrieve: runtimeRagRetrieve
+  operational_metrics: runtimeOperationalMetrics
+  record_route_feedback: runtimeRecordRouteFeedback
+  list_bad_cases: runtimeListBadCases
 
 database_tables:
   - projects
@@ -216,6 +230,8 @@ database_tables:
   - memory_deltas
   - events
   - routing_feedback
+  - operational_metrics
+  - bad_cases
   - fts_documents
 
 fallback_policy:

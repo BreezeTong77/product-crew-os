@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Product Crew OS Python LangGraph Bridge
-  version: 0.2.2
+  version: 0.2.3
   description: >-
     Coze must enter the Python LangGraph runtime, not write artifacts, reviews,
     or gates through side channels. Every continuing turn carries the persisted
@@ -21,6 +21,56 @@ paths:
       operationId: runtimeCapabilityHandshake
       responses:
         '200': { description: Runtime capabilities }
+  /v1/observability/metrics:
+    post:
+      operationId: runtimeOperationalMetrics
+      description: Returns evidence-based SOP, Skill and real sub-agent callback metrics and writes a Chinese metrics page into the project vault.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [project_id]
+              properties:
+                project_id: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/RuntimeResponse' }
+  /v1/observability/route-feedback:
+    post:
+      operationId: runtimeRecordRouteFeedback
+      description: Records a user-confirmed or user-corrected SOP route. A correction creates a Bad Case but never changes thresholds automatically.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [project_id, route_decision_id, outcome]
+              properties:
+                project_id: { type: string }
+                route_decision_id: { type: string }
+                outcome: { type: string, enum: [confirmed, corrected] }
+                corrected_stage_id: { type: string }
+                reason: { type: string }
+                source: { type: string, default: user }
+      responses:
+        '200': { $ref: '#/components/responses/RuntimeResponse' }
+  /v1/observability/bad-cases:
+    post:
+      operationId: runtimeListBadCases
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [project_id]
+              properties:
+                project_id: { type: string }
+                status: { type: string, default: open }
+      responses:
+        '200': { $ref: '#/components/responses/RuntimeResponse' }
   /v1/projects:
     post:
       operationId: runtimeInitProject
