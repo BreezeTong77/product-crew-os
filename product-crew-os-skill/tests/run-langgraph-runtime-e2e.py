@@ -82,6 +82,25 @@ def main() -> int:
                 )
             checks.append("all 44 prompt-eval cases reach their expected Stage and primary Skill through LangGraph")
 
+            persisted_route = runtime.route_intent("persisted-route", "先做 MVP，不要做大，帮我砍范围和列 not-do。")
+            routed_turn = runtime.run(
+                "persisted-route",
+                "This host must use the route decision it already received.",
+                skill_execution=skill_proof("scope-cutting", "artifacts/persisted-route.md"),
+                route_decision_id=persisted_route["route_decision_id"],
+                thread_id="persisted-route-thread",
+            )
+            assert_true(errors, routed_turn["route"]["route_decision_id"] == persisted_route["route_decision_id"], "turn did not reuse persisted route decision")
+            unknown_route = runtime.run(
+                "persisted-route",
+                "try an unknown route",
+                skill_execution=skill_proof("scope-cutting", "artifacts/unknown-route.md"),
+                route_decision_id="route_not_real",
+                thread_id="unknown-route-thread",
+            )
+            assert_true(errors, unknown_route.get("route", {}).get("route_status") == "route_decision_not_found", "unknown route decision was not blocked")
+            checks.append("turns can reuse only persisted route decisions from the same project")
+
             embedding_first = runtime.run(
                 "embedding-first",
                 "请处理这件事。",
@@ -168,6 +187,36 @@ def main() -> int:
             assert_true(errors, interrupt_kind(after_review) == "user_stage_decision", "valid callbacks did not pause for the user decision")
             assert_true(errors, after_review.get("gate_status") != "pass", "review callbacks bypassed user confirmation")
             checks.append("signed callback contract still requires explicit user decision")
+
+            revise_flow = runtime.run(
+                "revision-review-flow",
+                "先做 MVP，不要做大，帮我砍范围和列 not-do。",
+                skill_execution=skill_proof("scope-cutting", "artifacts/mvp-scope.md"),
+                thread_id="revision-review-thread",
+            )
+            revise_packets = revise_flow.get("context_packets", [])
+            revise_session_id = revise_flow["review_validation"]["session_id"]
+            revise_callbacks = []
+            for packet in revise_packets:
+                callback = {
+                    "role_key": packet["persona"]["role_key"],
+                    "runtime_agent_id": f"fixture-revision-{packet['persona']['role_key'].lower()}",
+                    "context_packet_id": packet["packet_id"],
+                    "real_invocation_performed": True,
+                    "raw_review": "Revision fixture review.",
+                }
+                callback["delegate_proof"] = runtime.sign_delegate_callback(revise_session_id, callback)
+                revise_callbacks.append(callback)
+            ready_to_revise = runtime.resume("revision-review-thread", {"callbacks": revise_callbacks})
+            assert_true(errors, interrupt_kind(ready_to_revise) == "user_stage_decision", "revision flow did not reach a user decision")
+            rereview = runtime.resume(
+                "revision-review-thread",
+                {"action": "revise", "revision_content": "Remove enterprise settings from this MVP and clarify the one core hypothesis."},
+            )
+            assert_true(errors, interrupt_kind(rereview) == "external_review", "user-requested revision did not reopen focused review")
+            assert_true(errors, rereview.get("artifact", {}).get("revision") == 2, "revision did not create a new artifact version")
+            assert_true(errors, rereview.get("review_validation", {}).get("session_id") != revise_session_id, "revision reused a closed review session")
+            checks.append("user-requested revision writes a new artifact version and reopens external review")
 
             final = runtime.resume(
                 "signed-review-thread",

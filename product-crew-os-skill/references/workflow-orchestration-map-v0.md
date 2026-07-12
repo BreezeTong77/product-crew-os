@@ -52,7 +52,7 @@
 7. `gate_evidence_defined`：pass / conditional_pass / block / rollback 条件明确。
 8. `golden_case_replayable`：有自动化 Golden Case 断言上述记录。
 
-`run-sop-e2e-smoke.rb` 通过不等于满足这些条件。
+`run-release-gate.py` 的 44 条路由通过也不等于满足这些条件。
 
 ## 4. 10 大主流程
 
@@ -85,10 +85,10 @@
 
 ## 6. Runner
 
-新增 runner：
+当前不再单独维护 Ruby runner；编排审计由 Python Release Gate 覆盖：
 
 ```bash
-ruby product-crew-os-skill/tests/run-workflow-orchestration-golden.rb
+python3 product-crew-os-skill/tests/run-release-gate.py
 ```
 
 它当前做编排计数验证：

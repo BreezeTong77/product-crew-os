@@ -1,11 +1,11 @@
 openapi: 3.0.3
 info:
-  title: Product Crew OS Runtime Bridge
-  version: 0.1.0
+  title: Product Crew OS Python LangGraph Bridge
+  version: 0.2.0
   description: >-
-    Coze Workflow must call this runtime bridge instead of treating Product Crew OS
-    documents as a prompt. The bridge persists route traces, artifacts, context
-    packets, real sub-Bot callbacks, raw reviews, review items, and gates.
+    Coze must enter the Python LangGraph runtime, not write artifacts, reviews,
+    or gates through side channels. Every continuing turn carries the persisted
+    route_decision_id and every real review callback carries its HMAC proof.
 servers:
   - url: https://REPLACE_WITH_YOUR_PUBLIC_RUNTIME_HOST
 security:
@@ -14,29 +14,16 @@ paths:
   /health:
     get:
       operationId: runtimeHealth
-      summary: Runtime availability check
       responses:
-        '200':
-          description: Runtime is available
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RuntimeResponse'
+        '200': { description: Python LangGraph runtime available }
   /v1/handshake:
     post:
       operationId: runtimeCapabilityHandshake
-      summary: Verify configured host capabilities before standard SOP execution
       responses:
-        '200':
-          description: Capability status
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RuntimeResponse'
+        '200': { description: Runtime capabilities }
   /v1/projects:
     post:
       operationId: runtimeInitProject
-      summary: Create a persistent Product Crew OS project
       requestBody:
         required: true
         content:
@@ -45,16 +32,13 @@ paths:
               type: object
               required: [project_id, name]
               properties:
-                project_id: { type: string, pattern: '^[A-Za-z0-9_-]{1,80}$' }
+                project_id: { type: string }
                 name: { type: string }
-                description: { type: string }
-                owner: { type: string }
       responses:
-        '201': { description: Project created, content: { application/json: { schema: { $ref: '#/components/schemas/RuntimeResponse' } } } }
+        '200': { $ref: '#/components/responses/RuntimeResponse' }
   /v1/routes:
     post:
       operationId: runtimeRouteIntent
-      summary: Write a domain/stage/SOP route trace
       requestBody:
         required: true
         content:
@@ -65,56 +49,47 @@ paths:
               properties:
                 project_id: { type: string }
                 user_input: { type: string }
+                retrieval_evidence: { type: object, additionalProperties: true }
       responses:
-        '200': { description: Route decision, content: { application/json: { schema: { $ref: '#/components/schemas/RuntimeResponse' } } } }
+        '200': { $ref: '#/components/responses/RuntimeResponse' }
   /v1/skills/execute:
     post:
       operationId: runtimeExecuteSkill
-      summary: Execute one allowlisted external Skill driver and return raw output plus proof
-      description: >-
-        Only registered command drivers run here. Methodology-only Skills return
-        deployment_required with a user-facing deployment notice; MCP Skills do
-        the same and flag authorization_required. Neither may be reported as
-        completed without a real host execution record.
+      description: Registered command skills execute here. Host, MCP and methodology skills return deployment_required until a real host result is supplied to runtimeRecordTurn.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SkillExecuteRequest'
+              type: object
+              required: [skill_id, input]
+              properties:
+                skill_id: { type: string }
+                input: { type: object, additionalProperties: true }
       responses:
-        '200': { description: Execution result or explicit unavailable state, content: { application/json: { schema: { $ref: '#/components/schemas/RuntimeResponse' } } } }
-  /v1/skills/host-callback:
-    post:
-      operationId: runtimeRecordHostSkillExecution
-      summary: Record a real host LLM or workflow Skill execution before it may enter a gate-valid turn
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/HostSkillCallbackRequest'
-      responses:
-        '201': { description: Host execution evidence recorded, content: { application/json: { schema: { $ref: '#/components/schemas/RuntimeResponse' } } } }
+        '200': { $ref: '#/components/responses/RuntimeResponse' }
   /v1/rag/ingest:
     post:
       operationId: runtimeRagIngest
-      summary: Persist a consent-scoped RAG source with semantic chunks and batch embeddings
-      description: >-
-        pco_rules may be indexed without consent. Project, user, and team namespaces
-        require consent_ref and remain outside the public package.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RagIngestRequest'
+              type: object
+              required: [documents]
+              properties:
+                namespace: { type: string, default: pco_rules }
+                scope: { type: string, default: product_rule_memory }
+                consent_ref: { type: string }
+                documents:
+                  type: array
+                  items: { type: object, additionalProperties: true }
       responses:
-        '201': { description: Source indexed or skipped as unchanged, content: { application/json: { schema: { $ref: '#/components/schemas/RuntimeResponse' } } } }
+        '200': { $ref: '#/components/responses/RuntimeResponse' }
   /v1/rag/retrieve:
     post:
       operationId: runtimeRagRetrieve
-      summary: Retrieve persisted vectors and source refs from one allowed namespace
       requestBody:
         required: true
         content:
@@ -126,105 +101,87 @@ paths:
                 query: { type: string }
                 namespace: { type: string, default: pco_rules }
                 top_k: { type: integer, default: 3 }
-                allowed_scopes: { type: string }
-                consent_ref: { type: string, description: Required for private namespaces. }
+                allowed_scopes: { type: array, items: { type: string } }
+                consent_ref: { type: string }
       responses:
-        '200': { description: Retrieval candidates with source refs, content: { application/json: { schema: { $ref: '#/components/schemas/RuntimeResponse' } } } }
-  /v1/rag/evidence:
-    post:
-      operationId: runtimeAttachRagEvidence
-      summary: Attach actually used RAG sources to a stage run and reject ineligible sources at the final gate
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RagEvidenceRequest'
-      responses:
-        '201': { description: RAG evidence attached with gate eligibility, content: { application/json: { schema: { $ref: '#/components/schemas/RuntimeResponse' } } } }
+        '200': { $ref: '#/components/responses/RuntimeResponse' }
   /v1/turns:
     post:
       operationId: runtimeRecordTurn
-      summary: Persist a routed SOP turn and prepare external review packets when roles are required
       description: >-
-        route_decision_id is mandatory. Runtime derives the required and triggered reviewers
-        from that persisted route decision, prepares complete Context Packets, and never
-        creates a simulated review or a passing stage gate.
+        Continues only from a persisted route decision for the same project.
+        Missing or fake Skill evidence can create a draft but cannot pass a Gate.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RecordTurnRequest'
+              type: object
+              required: [project_id, user_input, route_decision_id, skill_execution]
+              properties:
+                project_id: { type: string }
+                user_input: { type: string }
+                route_decision_id: { type: string }
+                thread_id: { type: string }
+                retrieval_evidence: { type: object, additionalProperties: true }
+                require_real_embedding: { type: boolean }
+                skill_execution:
+                  type: object
+                  required: [skill_id, execution_id, output_ref, execution_mode, contract_valid, may_change_stage, may_decide_gate, may_write_project_memory, may_call_agents]
+                  additionalProperties: true
       responses:
-        '201': { description: Turn persisted, content: { application/json: { schema: { $ref: '#/components/schemas/RuntimeResponse' } } } }
-  /v1/reviews/prepare:
-    post:
-      operationId: runtimePrepareExternalReview
-      summary: Create a real external-review session and full persona Context Packets
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PrepareReviewRequest'
-      responses:
-        '201': { description: Review session and packets, content: { application/json: { schema: { $ref: '#/components/schemas/RuntimeResponse' } } } }
+        '200': { $ref: '#/components/responses/RuntimeResponse' }
   /v1/reviews/callback:
     post:
-      operationId: runtimeRecordSubBotCallback
-      summary: Record an actual Coze sub-Bot callback and its raw review
-      description: >-
-        runtime_agent_id is mandatory. The bridge rejects a callback whose context
-        packet does not contain the full configured persona.
+      operationId: runtimeResumeReview
+      description: Each callback must contain a full Context Packet ID, runtime_agent_id, raw_review and HMAC delegate_proof.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ReviewCallbackRequest'
+              type: object
+              required: [thread_id, callbacks]
+              properties:
+                thread_id: { type: string }
+                callbacks: { type: array, items: { type: object, additionalProperties: true } }
       responses:
-        '201': { description: Real invocation and raw review recorded, content: { application/json: { schema: { $ref: '#/components/schemas/RuntimeResponse' } } } }
-  /v1/review-items:
-    post:
-      operationId: runtimeWriteReviewItem
-      summary: Write a structured review item after the raw review is stored
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ReviewItemRequest'
-      responses:
-        '201': { description: Review item written, content: { application/json: { schema: { $ref: '#/components/schemas/RuntimeResponse' } } } }
+        '200': { $ref: '#/components/responses/RuntimeResponse' }
   /v1/review-decisions:
     post:
-      operationId: runtimeRecordReviewDecision
-      summary: Record an explicit user decision on review items
+      operationId: runtimeResumeUserDecision
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ReviewDecisionRequest'
+              type: object
+              required: [thread_id, decision]
+              properties:
+                thread_id: { type: string }
+                decision: { type: object, additionalProperties: true }
       responses:
-        '201': { description: User decision recorded, content: { application/json: { schema: { $ref: '#/components/schemas/RuntimeResponse' } } } }
+        '200': { $ref: '#/components/responses/RuntimeResponse' }
   /v1/gates/finalize:
     post:
       operationId: runtimeFinalizeStageGate
-      summary: Finalize a gate only after route, skill, real sub-Bot, packet, raw-review and user-decision evidence exists
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/FinalizeGateRequest'
+              type: object
+              required: [thread_id, user_confirmed, action]
+              properties:
+                thread_id: { type: string }
+                user_confirmed: { type: boolean }
+                action: { type: string, enum: [approve, conditional_pass, revise, defer, reject] }
+                decision: { type: object, additionalProperties: true }
       responses:
-        '200': { description: Gate decision, content: { application/json: { schema: { $ref: '#/components/schemas/RuntimeResponse' } } } }
+        '200': { $ref: '#/components/responses/RuntimeResponse' }
   /v1/exports/obsidian:
     post:
       operationId: runtimeExportObsidian
-      summary: Export the persistent project package to an Obsidian-compatible vault
       requestBody:
         required: true
         content:
@@ -235,183 +192,18 @@ paths:
               properties:
                 project_id: { type: string }
       responses:
-        '201': { description: Vault exported, content: { application/json: { schema: { $ref: '#/components/schemas/RuntimeResponse' } } } }
+        '200': { $ref: '#/components/responses/RuntimeResponse' }
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: PCO_RUNTIME_TOKEN
-  schemas:
+  responses:
     RuntimeResponse:
-      type: object
-      additionalProperties: true
-    RecordTurnRequest:
-      type: object
-      required: [project_id, stage_id, route_decision_id, primary_skill, artifact_name]
-      properties:
-        project_id: { type: string }
-        stage_id: { type: string }
-        macro_stage: { type: string }
-        sop_id: { type: string }
-        user_input: { type: string }
-        route_confidence: { type: string }
-        route_decision_id: { type: string }
-        primary_skill: { type: string }
-        fallback_skill: { type: string }
-        skill_status: { type: string, enum: [completed, template_degraded, unavailable, failed] }
-        skill_execution:
-          $ref: '#/components/schemas/SkillExecutionContract'
-        skill_execution_id: { type: string, description: Required for external_workflow or native_capability contracts; returned by runtimeRecordHostSkillExecution. }
-        artifact_name: { type: string }
-        artifact_content: { type: string }
-        artifact_status: { type: string }
-        gate_status: { type: string }
-        gate_result: { type: string }
-        review_roles: { type: string, deprecated: true, description: Ignored by Runtime. Required and triggered roles are derived from route_decision_id. }
-        review_question: { type: string }
-        review_scope: { type: string }
-        evidence_boundary: { type: string }
-        source_ref: { type: string }
-    SkillExecutionContract:
-      type: object
-      description: >-
-        Required whenever Coze actually executes an external Skill or Skill workflow.
-        It preserves the Skill's internal professional method while reserving stage,
-        gate, project-memory, and sub-Bot control for Product Crew OS.
-      required: [skill_id, execution_mode, allowed_stage_ids, capability_scope, approved_actions, observed_actions, control_boundary, output_evidence]
-      properties:
-        contract_ref: { type: string }
-        skill_id: { type: string }
-        execution_mode: { type: string, enum: [external_workflow, native_capability] }
-        allowed_stage_ids: { type: array, items: { type: string } }
-        capability_scope: { type: array, items: { type: string } }
-        approved_actions: { type: array, items: { type: string } }
-        observed_actions: { type: array, items: { type: string } }
-        control_boundary:
-          type: object
-          required: [may_change_stage, may_decide_gate, may_write_project_memory, may_call_agents]
-          properties:
-            may_change_stage: { type: boolean, enum: [false] }
-            may_decide_gate: { type: boolean, enum: [false] }
-            may_write_project_memory: { type: boolean, enum: [false] }
-            may_call_agents: { type: boolean, enum: [false] }
-        output_evidence:
-          type: object
-          required: [artifact_name, source_ref]
-          properties:
-            artifact_name: { type: string }
-            source_ref: { type: string }
-    SkillExecuteRequest:
-      type: object
-      required: [skill_id, input]
-      properties:
-        skill_id: { type: string }
-        input: { type: object, additionalProperties: true }
-    HostSkillCallbackRequest:
-      type: object
-      required: [project_id, stage_id, skill_id, runtime_model_id, host_run_id, raw_output]
-      properties:
-        project_id: { type: string }
-        stage_id: { type: string }
-        skill_id: { type: string }
-        runtime_model_id: { type: string, description: Actual model or host workflow identifier. }
-        host_run_id: { type: string, description: Actual execution ID returned by the host. }
-        raw_output: { type: string }
-        observed_actions_json: { type: string, description: JSON array of actions recorded by the host. }
-        source_ref: { type: string }
-    RagIngestRequest:
-      type: object
-      required: [namespace, scope, source_ref, title, content]
-      properties:
-        namespace: { type: string }
-        scope: { type: string }
-        source_ref: { type: string }
-        title: { type: string }
-        content: { type: string, description: Text extracted by an approved parser, OCR, or ASR node. }
-        source_type: { type: string }
-        extraction_method: { type: string }
-        consent_ref: { type: string }
-        public_package_allowed: { type: boolean }
-        metadata:
-          type: object
-          description: >-
-            Include extraction_confidence. OCR sources also require ocr_engine,
-            ocr_confidence, ocr_page_index, ocr_bbox_json, and language_hint.
-            Private sources without pii_level stay ineligible for a stage gate.
-          additionalProperties: true
-    RagEvidenceRequest:
-      type: object
-      required: [project_id, stage_run_id, artifact_id, source_refs]
-      properties:
-        project_id: { type: string }
-        stage_run_id: { type: string }
-        artifact_id: { type: string }
-        source_refs: { type: string, description: Comma-separated RAG source refs actually used in the artifact. }
-        usage: { type: string, default: artifact_evidence }
-    PrepareReviewRequest:
-      type: object
-      required: [project_id, stage_id, artifact_id, required_roles]
-      properties:
-        project_id: { type: string }
-        stage_id: { type: string }
-        artifact_id: { type: string }
-        required_roles: { type: string }
-        review_question: { type: string }
-        review_scope: { type: string }
-        evidence_boundary: { type: string }
-        token_budget: { type: integer }
-    ReviewCallbackRequest:
-      type: object
-      required: [project_id, session_id, role_key, stage_id, artifact_id, context_packet_id, runtime_agent_id, raw_review, conclusion]
-      properties:
-        project_id: { type: string }
-        session_id: { type: string }
-        role_key: { type: string }
-        stage_id: { type: string }
-        artifact_id: { type: string }
-        context_packet_id: { type: string }
-        runtime_agent_id: { type: string, description: Actual Coze Bot ID returned by the delegate node }
-        runtime_nickname: { type: string, description: Audit-only runtime nickname, never replaces configured display name }
-        raw_review: { type: string }
-        conclusion: { type: string, enum: [pass, conditional_pass, block, advice_only] }
-        review_items:
-          type: array
-          items: { type: object, additionalProperties: true }
-    ReviewItemRequest:
-      type: object
-      required: [project_id, comment]
-      properties:
-        project_id: { type: string }
-        comment: { type: string }
-        session_id: { type: string }
-        role_key: { type: string }
-        artifact_id: { type: string }
-        stage_id: { type: string }
-        conclusion: { type: string }
-        priority: { type: string }
-        recommendation: { type: string }
-        status: { type: string }
-    ReviewDecisionRequest:
-      type: object
-      required: [project_id, session_id, action, user_confirmed]
-      properties:
-        project_id: { type: string }
-        session_id: { type: string }
-        action: { type: string, enum: [accept, reject, defer, needs_evidence, close] }
-        item_ids: { type: string }
-        user_confirmed: { type: boolean }
-        notes: { type: string }
-    FinalizeGateRequest:
-      type: object
-      required: [project_id, stage_id, artifact_id, stage_run_id]
-      properties:
-        project_id: { type: string }
-        stage_id: { type: string }
-        artifact_id: { type: string }
-        stage_run_id: { type: string, description: Immutable stage execution ID returned by runtimeRecordTurn. }
-        review_session_id: { type: string }
-        requested_gate_status: { type: string, enum: [pass, conditional_pass] }
-        gate_result: { type: string }
-        user_confirmed: { type: boolean }
-        decision_note: { type: string }
+      description: Runtime response
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true

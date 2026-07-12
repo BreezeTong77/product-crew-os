@@ -168,13 +168,12 @@ flowchart LR
 在仓库根目录运行：
 
 ```text
-ruby product-crew-os-skill/tests/validate-package.rb
-ruby product-crew-os-skill/tests/run-regression.rb
-ruby product-crew-os-skill/tests/run-runtime-smoke.rb
-ruby product-crew-os-skill/tests/run-sop-e2e-smoke.rb
-ruby product-crew-os-skill/tests/run-review-loop-e2e.rb
-ruby product-crew-os-skill/tests/run-loop-50-cases.rb --release-gate
-ruby product-crew-os-skill/tests/run-source-ingestion-runtime.rb
+python3 -m venv .venv
+.venv/bin/pip install -r product-crew-os-skill/runtime/requirements-langgraph.txt
+.venv/bin/python product-crew-os-skill/tests/validate-package.py
+.venv/bin/python product-crew-os-skill/tests/run-langgraph-runtime-e2e.py
+.venv/bin/python product-crew-os-skill/tests/run-python-runtime-adapters-e2e.py
+.venv/bin/python product-crew-os-skill/tests/run-release-gate.py
 ```
 
 测试验证本地规则、路由、运行时写入和门禁，不代表线上用户效果。
@@ -188,7 +187,7 @@ ruby product-crew-os-skill/tests/run-source-ingestion-runtime.rb
 - [子 Agent 调用契约](product-crew-os-skill/references/subagent-invocation-contract.md)
 - [Runtime 使用说明](product-crew-os-skill/runtime/README.md)
 - [LangGraph 控制平面](product-crew-os-skill/references/langgraph-runtime-architecture.md)
-- [v0.1.4 发布说明](releases/v0.1.4.md)
+- [v0.2.0 发布说明](releases/v0.2.0.md)
 
 ## 许可证
 

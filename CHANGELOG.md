@@ -4,6 +4,23 @@ Product Crew OS 的重要变更都会记录在这里。
 
 ## Unreleased
 
+## v0.2.0 - 2026-07-12
+
+### Python / LangGraph 全量迁移
+
+- 删除 Ruby Runtime、Ruby Coze Bridge 和 Ruby 测试入口；发布包不再要求 Ruby。
+- `pco_runtime.py` 成为唯一 Runtime CLI，`pco_coze_bridge.py` 成为唯一 HTTP Bridge。
+- LangGraph 补齐项目上下文读取、评审收束、用户修订、Artifact 版本、定向复评和项目资产导出节点。
+- 将本地 BGE、PaddleOCR / Tesseract、SQLite RAG 与受控 Skill 执行器迁入 Python adapter 层。
+- Coze Docker 镜像改为 Python，Bridge 只允许进入 LangGraph `run` / `resume`，拒绝旁路评审或 Gate 写入。
+- 发布测试迁为 Python：包校验、LangGraph E2E、Python adapter E2E 与 50 条 Release Gate。
+
+### 真实边界
+
+- 44 条 SOP 在 Release Gate 中验证 Stage / SOP / 主 Skill 路由与控制链；不等于 44 个外部 Skill 或子 Agent 均已真实线上执行。
+- BGE 缺失时必须 `runtime_blocked`；hash 向量只能用于 smoke。
+- 签名 delegate callback 是 adapter 契约夹具，不是线上子 Agent 证明。
+
 ## v0.1.4 - 2026-07-12
 
 ### LangGraph 控制平面

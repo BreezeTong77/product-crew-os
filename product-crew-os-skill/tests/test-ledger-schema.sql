@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS suite_runs (
   command TEXT DEFAULT '',
   force_rerun INTEGER DEFAULT 0,
   release_gate INTEGER DEFAULT 0,
-  ruby_version TEXT DEFAULT '',
+  python_version TEXT DEFAULT '',
   sqlite_version TEXT DEFAULT '',
   status TEXT DEFAULT '',
   total_count INTEGER DEFAULT 0,

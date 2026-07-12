@@ -1,6 +1,6 @@
 # LangGraph Runtime
 
-这是 Product Crew OS 的新运行时主链。它把原先散落在命令和宿主流程中的关键控制点改成一个持久化 LangGraph：
+这是 Product Crew OS 的唯一运行时主链。它把关键控制点固化为一个持久化 LangGraph：
 
 ```text
 Input Scope Gate
@@ -10,8 +10,10 @@ Input Scope Gate
 -> Artifact Writer
 -> Review Packet Builder
 -> External Review Interrupt
+-> Review Summary
 -> User Decision Interrupt
--> Project Memory Writer
+-> Revision / Re-review
+-> Project Memory / Asset Export
 ```
 
 ## 为什么这样拆
@@ -33,12 +35,12 @@ python3 -m venv .venv
 ## 最小运行
 
 ```bash
-python3 product-crew-os-skill/runtime/pco_langgraph_runtime.py init-project \
+python3 product-crew-os-skill/runtime/pco_runtime.py init-project \
   --workspace ./runtime-workspace \
   --project-id demo \
   --name "Demo"
 
-python3 product-crew-os-skill/runtime/pco_langgraph_runtime.py run \
+python3 product-crew-os-skill/runtime/pco_runtime.py record-turn \
   --workspace ./runtime-workspace \
   --project-id demo \
   --thread-id demo-run-001 \
@@ -47,6 +49,6 @@ python3 product-crew-os-skill/runtime/pco_langgraph_runtime.py run \
 
 第一次运行会在需要真实评审或用户确认处返回 `__interrupt__`。不要把这个状态写成通过；宿主必须把 interrupt payload 展示给用户或真实 delegate，之后再调用 `resume`。
 
-## 迁移边界
+## Runtime 边界
 
-Ruby Runtime 在迁移期仍保留，负责已有 CLI、Coze Bridge、OCR / RAG adapter 和旧回归测试。新功能应优先进入 LangGraph Runtime；当 LangGraph 覆盖 Runtime、Review Loop、RAG 和 Coze 的关键回归后，再移除 Ruby 主链。
+Python adapter 负责 BGE、OCR、RAG、Skill 与 Coze HTTP 接入；它们只能返回证据或执行结果。Stage、Gate、用户决策、修订和复评只能由 LangGraph 节点推进。

@@ -5,11 +5,11 @@ services:
       dockerfile: product-crew-os-skill/integrations/coze/Dockerfile
     environment:
       PCO_RUNTIME_TOKEN: ${PCO_RUNTIME_TOKEN:?set_a_long_random_secret}
+      PCO_LANGGRAPH_DELEGATE_SECRET: ${PCO_LANGGRAPH_DELEGATE_SECRET:?set_a_second_long_random_secret}
       PCO_RUNTIME_PORT: "8787"
       PCO_STAGE_ROUTER_EMBEDDING: real
       PCO_REQUIRE_REAL_EMBEDDING: "1"
       PCO_REQUIRE_REAL_SUBAGENTS: "1"
-      PCO_COZE_SUBAGENT_DELEGATE: workflow_callback
       HF_HOME: /data/huggingface
     ports:
       - "8787:8787"

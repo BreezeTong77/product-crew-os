@@ -198,7 +198,7 @@ Coze M1 最小闭环：
 
 ## 10. 可部署 Bridge 与 Coze 节点
 
-发布包现在提供了真实 HTTP Runtime Bridge：`runtime/pco_coze_bridge.rb`。它不是一个把 README 交给模型的中间层，而是受 token 保护的 API，实际调用 `pco_runtime.rb` 写 SQLite、Project Workspace、route trace、Context Packet、调用账本、raw review 与 Stage Gate。
+发布包现在提供了真实 HTTP Runtime Bridge：`runtime/pco_coze_bridge.py`。它不是一个把 README 交给模型的中间层，而是受 token 保护的 API，只能进入 Python LangGraph 的 `run` 或 `resume`，写入 SQLite、Project Workspace、route trace、Context Packet、调用账本、raw review 与 Stage Gate。
 
 Coze 接入文件：
 

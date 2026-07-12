@@ -14,7 +14,7 @@ workflow:
       type: plugin_api
       operation_id: runtimeRouteIntent
       output: [route_decision_id, stage_id, candidate_routes, real_embedding_performed, source_refs]
-      invariant: "The Runtime persists 44 SOP vectors in pco_rules with content-hash incremental updates and retrieval events."
+      invariant: "The Runtime persists one route decision. Real BGE candidates may assist it; local lexical candidates remain explicitly non-embedding fallback."
     - key: coze_route_trace_mirror
       type: coze_database_write
       table: pco_route_traces
@@ -31,12 +31,11 @@ workflow:
       optional: true
       input: [content, source_type, extraction_method, source_ref, consent_ref]
       invariant: "Private namespace ingestion requires user authorization and consent_ref."
-    - key: rag_gate_evidence_attacher
-      type: plugin_api
-      operation_id: runtimeAttachRagEvidence
+    - key: rag_gate_evidence_binding
+      type: langgraph_state_input
       optional: true
-      input: [project_id, stage_run_id, artifact_id, source_refs]
-      invariant: "When an artifact uses a RAG source as stage evidence, it must be attached here. Low-confidence OCR, unknown PII classification, and unknown source_ref are ineligible and block the final gate."
+      input: [retrieval_evidence, source_refs]
+      invariant: "RAG evidence enters runtimeRecordTurn as structured retrieval evidence. Low-confidence OCR, unknown PII classification, and unknown source_ref are ineligible for a final Gate."
     - key: coze_rag_mirror
       type: coze_database_write
       table: pco_rag_ingestions
@@ -45,11 +44,11 @@ workflow:
       type: coze_skill_or_workflow
       output: [selected_skill, skill_status, artifact_content, skill_execution]
       forbidden_skill_status_for_gate: [template_degraded, unavailable, failed]
-      invariant: "When an external Skill actually executes, skill_execution must validate against SkillExecutionContract before runtimeRecordTurn. Skill may not alter stage, gate, project memory, or sub-Bot invocation."
+      invariant: "When an external Skill actually executes, skill_execution must validate before runtimeRecordTurn. Skill may not alter stage, gate, project memory, or sub-Bot invocation."
     - key: turn_and_artifact_writer
       type: plugin_api
       operation_id: runtimeRecordTurn
-      input_rule: "Pass route_decision_id and Skill execution evidence. Runtime derives required/triggered roles itself and returns complete Context Packets without simulating their reviews."
+      input_rule: "Pass the persisted route_decision_id, structured Skill execution evidence and optional RAG evidence. Runtime derives required/triggered roles itself and returns complete Context Packets without simulating their reviews."
     - key: coze_artifact_and_session_mirror
       type: coze_database_write
       tables: [pco_artifacts, pco_review_sessions]
@@ -62,7 +61,7 @@ workflow:
       require_runtime_agent_id: true
     - key: real_review_callback
       type: plugin_api
-      operation_id: runtimeRecordSubBotCallback
+      operation_id: runtimeResumeReview
       foreach: sub_bot_fan_out.results
       required: true
     - key: coze_invocation_and_raw_review_mirror
@@ -73,10 +72,10 @@ workflow:
       type: coze_structured_output
       input: raw_review_records
       output: [review_items, conflict_matrix, open_questions]
-    - key: review_item_writer
-      type: plugin_api
-      operation_id: runtimeWriteReviewItem
-      foreach: review_items
+    - key: review_summary
+      type: langgraph_node
+      input: raw_review_records
+      output: [review_summary, must_fix_count]
     - key: user_decision_parser
       type: coze_structured_output
       input: [user_message, review_items, conflict_matrix]
@@ -84,7 +83,7 @@ workflow:
       invariant: "No LLM may invent user_confirmed=true."
     - key: decision_writer
       type: plugin_api
-      operation_id: runtimeRecordReviewDecision
+      operation_id: runtimeResumeUserDecision
     - key: stage_gate_finalizer
       type: plugin_api
       operation_id: runtimeFinalizeStageGate

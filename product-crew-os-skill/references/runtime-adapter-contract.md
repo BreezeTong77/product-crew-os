@@ -20,7 +20,7 @@ Product Crew OS 不能单靠 Markdown 规则包强制任意宿主自动调用子
 
 ## 1.1 LangGraph 控制平面
 
-新接入优先使用 `runtime/pco_langgraph_runtime.py`。它不是第二套会自己决定产品流程的 Agent，而是把既有的运行时契约固化成有状态的控制图：
+运行时统一使用 `runtime/pco_runtime.py`。它不是第二套会自己决定产品流程的 Agent，而是把既有的运行时契约固化成有状态的控制图：
 
 ```text
 Input Scope Gate
@@ -40,7 +40,7 @@ Input Scope Gate
 - 外部 delegate callback 除完整 Context Packet、`runtime_agent_id` 和 raw review 外，还必须带由私有 `PCO_LANGGRAPH_DELEGATE_SECRET` 生成的签名。仅传一个 runtime ID 不能证明真实调用。
 - `runtime_nickname` 只能作审计元数据，不能覆盖已配置 `role_key`、`display_name` 或 persona；原始评审必须在 `raw-review-records` 可见。
 
-Ruby Runtime 继续作为已有 Coze、OCR/RAG 和 CLI 的兼容 adapter，直至对应能力完成 LangGraph 适配和同等级回归验证。
+Python adapter 覆盖 Coze、OCR/RAG 和 CLI；任何 adapter 都必须经 LangGraph 节点和同等级回归验证，不能建立旁路流程。
 
 ## 2. 标准回合写入链路
 
@@ -102,24 +102,15 @@ PCO_REQUIRE_REAL_SUBAGENTS=1
 
 `PCO_STAGE_ROUTER_EMBEDDING=real` 会调用本地开源 BGE provider 对 44 SOP prompt-eval set 建立实时 embedding top-K 召回。TF-IDF、关键词、local hash dry-run 只能作为 smoke，不得写成 real embedding。
 
-本地命令入口是：
+Python / LangGraph 本地命令入口是：
 
 ```bash
-ruby product-crew-os-skill/runtime/pco_runtime.rb record-turn \
+python3 product-crew-os-skill/runtime/pco_runtime.py record-turn \
   --workspace ./runtime-workspace \
-  --db ./runtime-workspace/product-crew-os.sqlite3 \
   --project-id demo \
-  --stage-id mvp_scope \
-  --macro-stage requirement_analysis \
-  --sop-id mvp_scope \
   --user-input "先做 MVP，帮我砍范围" \
-  --primary-skill scope-cutting \
-  --fallback-skill shape-up \
-  --artifact-name "mvp-scope.md" \
-  --artifact-content "MVP scope draft" \
-  --review-roles "Biz,Tech,Design" \
-  --gate-status conditional_pass \
-  --gate-result "MVP can prove one core hypothesis"
+  --thread-id demo-mvp-001 \
+  --skill-execution-json '{"skill_id":"scope-cutting","execution_id":"host-run-001","output_ref":"artifacts/mvp-scope.md","execution_mode":"external_workflow","contract_valid":true,"may_change_stage":false,"may_decide_gate":false,"may_write_project_memory":false,"may_call_agents":false}'
 ```
 
 `record-turn` 必须至少写入：
@@ -246,7 +237,7 @@ note_adapter:
 用户或宿主可以运行：
 
 ```bash
-ruby product-crew-os-skill/runtime/create_demo_vault.rb \
+python3 product-crew-os-skill/runtime/create_demo_vault.py \
   --output-dir ./runtime-demo-vault
 ```
 

@@ -24,19 +24,25 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 
+from .adapters import PersistentRagStore, SkillExecutionAdapter
+
 
 class WorkflowState(TypedDict, total=False):
     project_id: str
     thread_id: str
     user_input: str
+    requested_route_decision_id: str
     require_real_embedding: bool
     retrieval_evidence: Dict[str, Any]
+    project_context: Dict[str, Any]
     route: Dict[str, Any]
     skill_execution: Dict[str, Any]
     artifact: Dict[str, Any]
     context_packets: List[Dict[str, Any]]
     review_callbacks: List[Dict[str, Any]]
     review_validation: Dict[str, Any]
+    review_summary: Dict[str, Any]
+    revision_count: int
     gate_status: str
     gate_result: str
     user_decision: Dict[str, Any]
@@ -83,6 +89,7 @@ class ProductCrewLangGraphRuntime:
         self.workspace.mkdir(parents=True, exist_ok=True)
         self.project_db = self.workspace / "product-crew-langgraph.sqlite3"
         self.checkpoint_db = self.workspace / "product-crew-langgraph-checkpoints.sqlite3"
+        self.rag_db = self.workspace / "product-crew-rag.sqlite3"
         self._create_project_schema()
         self._checkpoint_connection = sqlite3.connect(self.checkpoint_db, check_same_thread=False)
         self.checkpointer = SqliteSaver(self._checkpoint_connection)
@@ -118,6 +125,7 @@ class ProductCrewLangGraphRuntime:
         retrieval_evidence: Optional[Dict[str, Any]] = None,
         require_real_embedding: bool = False,
         thread_id: Optional[str] = None,
+        route_decision_id: str = "",
     ) -> Dict[str, Any]:
         self._ensure_project(project_id)
         thread = thread_id or f"{project_id}:{uuid.uuid4().hex[:12]}"
@@ -125,6 +133,7 @@ class ProductCrewLangGraphRuntime:
             "project_id": project_id,
             "thread_id": thread,
             "user_input": user_input,
+            "requested_route_decision_id": route_decision_id,
             "skill_execution": skill_execution or {},
             "retrieval_evidence": retrieval_evidence or {},
             "require_real_embedding": require_real_embedding,
@@ -134,6 +143,31 @@ class ProductCrewLangGraphRuntime:
 
     def resume(self, thread_id: str, response: Dict[str, Any]) -> Dict[str, Any]:
         return self.graph.invoke(Command(resume=response), self._config(thread_id))
+
+    def route_intent(self, project_id: str, user_input: str, retrieval_evidence: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Persist a route trace without creating an Artifact or Stage Gate."""
+        self._ensure_project(project_id)
+        state: WorkflowState = {
+            "project_id": project_id,
+            "thread_id": f"route:{uuid.uuid4().hex[:12]}",
+            "user_input": user_input,
+            "retrieval_evidence": retrieval_evidence or {},
+            "skill_execution": {},
+            "events": [],
+        }
+        state.update(self._input_scope_gate(state))
+        if not state.get("route", {}).get("product_crew_os_applies", True):
+            return state["route"]
+        state.update(self._load_project_context(state))
+        state.update(self._retrieve_evidence(state))
+        state.update(self._route_stage(state))
+        return state["route"]
+
+    def execute_skill(self, skill_id: str, input_payload: Dict[str, Any]) -> Dict[str, Any]:
+        return SkillExecutionAdapter(self.skill_root).execute(skill_id, input_payload)
+
+    def rag_store(self) -> PersistentRagStore:
+        return PersistentRagStore(self.rag_db)
 
     def draw_mermaid(self) -> str:
         return self.graph.get_graph().draw_mermaid()
@@ -148,21 +182,26 @@ class ProductCrewLangGraphRuntime:
     def _build_graph(self):
         builder = StateGraph(WorkflowState)
         builder.add_node("input_scope_gate", self._input_scope_gate)
+        builder.add_node("load_project_context", self._load_project_context)
         builder.add_node("retrieve_evidence", self._retrieve_evidence)
         builder.add_node("route_stage", self._route_stage)
         builder.add_node("skill_execution_guard", self._skill_execution_guard)
         builder.add_node("write_artifact", self._write_artifact)
         builder.add_node("prepare_review", self._prepare_review)
         builder.add_node("await_external_review", self._await_external_review)
+        builder.add_node("summarize_review", self._summarize_review)
         builder.add_node("await_user_decision", self._await_user_decision)
+        builder.add_node("revise_artifact", self._revise_artifact)
         builder.add_node("write_project_memory", self._write_project_memory)
+        builder.add_node("export_project_assets", self._export_project_assets)
 
         builder.add_edge(START, "input_scope_gate")
         builder.add_conditional_edges(
             "input_scope_gate",
             self._scope_branch,
-            {"route": "retrieve_evidence", "end": END},
+            {"route": "load_project_context", "end": END},
         )
+        builder.add_edge("load_project_context", "retrieve_evidence")
         builder.add_edge("retrieve_evidence", "route_stage")
         builder.add_conditional_edges(
             "route_stage",
@@ -180,13 +219,30 @@ class ProductCrewLangGraphRuntime:
             self._review_branch,
             {"review": "await_external_review", "gate": "await_user_decision"},
         )
-        builder.add_edge("await_external_review", "await_user_decision")
-        builder.add_edge("await_user_decision", "write_project_memory")
-        builder.add_edge("write_project_memory", END)
+        builder.add_edge("await_external_review", "summarize_review")
+        builder.add_edge("summarize_review", "await_user_decision")
+        builder.add_conditional_edges(
+            "await_user_decision",
+            self._user_decision_branch,
+            {"pass": "write_project_memory", "revise": "revise_artifact", "hold": "write_project_memory"},
+        )
+        builder.add_edge("revise_artifact", "prepare_review")
+        builder.add_edge("write_project_memory", "export_project_assets")
+        builder.add_edge("export_project_assets", END)
         return builder.compile(checkpointer=self.checkpointer, name="product_crew_os")
 
     def _input_scope_gate(self, state: WorkflowState) -> Dict[str, Any]:
         text = state["user_input"].strip()
+        requested_route_decision_id = state.get("requested_route_decision_id", "")
+        if requested_route_decision_id:
+            return self._event_update(
+                state,
+                "input_scope_route_continuation_requested",
+                {
+                    "route_decision_id": requested_route_decision_id,
+                    "persisted": self._persisted_route(state["project_id"], requested_route_decision_id) is not None,
+                },
+            )
         if any(re.search(pattern, text, re.IGNORECASE) for pattern in self.NON_PRODUCT_PATTERNS):
             route = {
                 "product_crew_os_applies": False,
@@ -218,6 +274,29 @@ class ProductCrewLangGraphRuntime:
     def _scope_branch(self, state: WorkflowState) -> Literal["route", "end"]:
         route = state.get("route", {})
         return "route" if route.get("product_crew_os_applies", True) else "end"
+
+    def _load_project_context(self, state: WorkflowState) -> Dict[str, Any]:
+        """Read durable project facts before route decisions, never chat history."""
+        project_state_path = self._project_dir(state["project_id"]) / "project-state.json"
+        persisted = {}
+        if project_state_path.exists():
+            try:
+                persisted = json.loads(project_state_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                persisted = {"state_read_error": "project_state_invalid_json"}
+        with self._project_connection() as conn:
+            recent_events = conn.execute(
+                "SELECT event_type, payload_json, created_at FROM langgraph_events WHERE project_id=? ORDER BY created_at DESC LIMIT 8",
+                (state["project_id"],),
+            ).fetchall()
+        context = {
+            "project_state": persisted,
+            "recent_events": [
+                {"event_type": row["event_type"], "payload": json.loads(row["payload_json"]), "created_at": row["created_at"]}
+                for row in recent_events
+            ],
+        }
+        return self._event_update(state, "project_context_loaded", {"event_count": len(context["recent_events"])}) | {"project_context": context}
 
     def _retrieve_evidence(self, state: WorkflowState) -> Dict[str, Any]:
         """Accept only structured retrieval evidence from a configured adapter."""
@@ -256,6 +335,18 @@ class ProductCrewLangGraphRuntime:
         return self._event_update(state, "retrieval_evidence_checked", canonical) | {"retrieval_evidence": canonical}
 
     def _route_stage(self, state: WorkflowState) -> Dict[str, Any]:
+        requested_route_decision_id = state.get("requested_route_decision_id", "")
+        if requested_route_decision_id:
+            persisted_route = self._persisted_route(state["project_id"], requested_route_decision_id)
+            if not persisted_route:
+                route = {
+                    "product_crew_os_applies": True,
+                    "route_decision_id": requested_route_decision_id,
+                    "route_status": "route_decision_not_found",
+                    "confidence": 0.0,
+                }
+                return self._update(state, route=route)
+            return self._update(state, route=persisted_route)
         reference, route_match = self._select_stage_reference(state["user_input"], state.get("retrieval_evidence", {}))
         stage_id = route_match["stage_id"]
         embedding = self._embedding_evidence(state)
@@ -285,8 +376,7 @@ class ProductCrewLangGraphRuntime:
             "embedding_provider": embedding["embedding_provider"],
             "embedding_model": embedding["embedding_model"],
         }
-        self._append_event(state["project_id"], "stage_route_decision", route)
-        self._write_route_trace(state["project_id"], route)
+        self._persist_route(state["project_id"], route)
         return self._update(state, route=route)
 
     def _route_branch(self, state: WorkflowState) -> Literal["execute", "end"]:
@@ -401,6 +491,35 @@ class ProductCrewLangGraphRuntime:
         self._write_review_callbacks(state["project_id"], state["review_validation"]["session_id"], callbacks, validation)
         return self._update(state, review_callbacks=callbacks, review_validation=validation)
 
+    def _summarize_review(self, state: WorkflowState) -> Dict[str, Any]:
+        """Persist a neutral, inspectable review summary before asking the user."""
+        callbacks = state.get("review_callbacks", [])
+        must_fix = [item for item in callbacks if item.get("priority") == "must_fix"]
+        summary = {
+            "session_id": state.get("review_validation", {}).get("session_id", ""),
+            "artifact_id": state["artifact"]["artifact_id"],
+            "reviewed_roles": [item.get("role_key", "") for item in callbacks],
+            "must_fix_count": len(must_fix),
+            "status": state.get("review_validation", {}).get("status", ""),
+            "user_decision_required": True,
+        }
+        path = self._project_dir(state["project_id"]) / "review-summaries" / f"{summary['session_id']}.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        lines = [
+            "# Review Summary",
+            "",
+            f"- Session: `{summary['session_id']}`",
+            f"- Artifact: `{summary['artifact_id']}`",
+            f"- Roles: `{', '.join(summary['reviewed_roles'])}`",
+            f"- Must-fix count: `{summary['must_fix_count']}`",
+            f"- Validation: `{summary['status']}`",
+            "",
+            "The coach summarizes evidence only. The user owns adoption, rejection, deferral, revision, and gate approval.",
+        ]
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        summary["path"] = str(path)
+        return self._event_update(state, "review_summarized", summary) | {"review_summary": summary}
+
     def _await_user_decision(self, state: WorkflowState) -> Dict[str, Any]:
         preflight_issues = list(state["skill_execution"].get("issues", []))
         if state.get("context_packets") and not state.get("review_validation", {}).get("gate_valid", False):
@@ -424,11 +543,64 @@ class ProductCrewLangGraphRuntime:
         approved = isinstance(decision, dict) and decision.get("action") in {"approve", "conditional_pass"}
         if confirmed and approved:
             return self._update(state, user_decision=decision, gate_status="pass", gate_result="user_confirmed")
+        if isinstance(decision, dict) and decision.get("action") == "revise":
+            revision_content = str(decision.get("revision_content", "")).strip()
+            if not revision_content:
+                return self._update(
+                    state,
+                    user_decision=decision,
+                    gate_status="awaiting_user_decision",
+                    gate_result="revision_content_required",
+                )
+            return self._update(
+                state,
+                user_decision=decision,
+                gate_status="revision_requested",
+                gate_result="user_requested_artifact_revision",
+            )
         return self._update(
             state,
             user_decision=decision if isinstance(decision, dict) else {},
             gate_status="awaiting_user_decision",
             gate_result="user did not confirm a passing decision",
+        )
+
+    def _user_decision_branch(self, state: WorkflowState) -> Literal["pass", "revise", "hold"]:
+        if state.get("gate_status") == "pass":
+            return "pass"
+        if state.get("gate_status") == "revision_requested":
+            return "revise"
+        return "hold"
+
+    def _revise_artifact(self, state: WorkflowState) -> Dict[str, Any]:
+        revision_number = int(state.get("revision_count", 0)) + 1
+        decision = state.get("user_decision", {})
+        revision_content = str(decision.get("revision_content", "")).strip()
+        artifact = dict(state["artifact"])
+        prior_path = Path(artifact["path"])
+        versioned_path = prior_path.with_name(f"{prior_path.stem}-v{revision_number + 1}{prior_path.suffix}")
+        body = prior_path.read_text(encoding="utf-8") if prior_path.exists() else ""
+        versioned_path.write_text(
+            f"{body.rstrip()}\n\n## User-requested revision {revision_number}\n\n{revision_content}\n",
+            encoding="utf-8",
+        )
+        artifact.update({"path": str(versioned_path), "status": "revised_pending_review", "revision": revision_number + 1})
+        with self._project_connection() as conn:
+            conn.execute(
+                "INSERT INTO langgraph_artifact_revisions(revision_id, artifact_id, project_id, revision, path, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (self._id("rev"), artifact["artifact_id"], state["project_id"], artifact["revision"], str(versioned_path), "user_requested_revision", self._now()),
+            )
+        self._append_event(state["project_id"], "artifact_revised", {"artifact_id": artifact["artifact_id"], "revision": artifact["revision"], "path": artifact["path"]})
+        return self._update(
+            state,
+            artifact=artifact,
+            revision_count=revision_number,
+            context_packets=[],
+            review_callbacks=[],
+            review_validation={},
+            review_summary={},
+            gate_status="awaiting_external_review",
+            gate_result="artifact_revised_rereview_required",
         )
 
     def _write_project_memory(self, state: WorkflowState) -> Dict[str, Any]:
@@ -442,6 +614,7 @@ class ProductCrewLangGraphRuntime:
             "skill_execution": state.get("skill_execution", {}),
             "review": state.get("review_validation", {}),
             "user_decision": state.get("user_decision", {}),
+            "review_summary": state.get("review_summary", {}),
             "updated_at": self._now(),
         }
         self._write_project_state(state["project_id"], payload)
@@ -455,6 +628,23 @@ class ProductCrewLangGraphRuntime:
         updates["gate_status"] = gate_status
         updates["gate_result"] = state.get("gate_result", "")
         return updates
+
+    def _export_project_assets(self, state: WorkflowState) -> Dict[str, Any]:
+        project_root = self._project_dir(state["project_id"])
+        artifact = state.get("artifact", {})
+        home = project_root / "00_项目首页.md"
+        home.write_text(
+            "# 项目首页\n\n"
+            f"- 当前 Stage：`{state.get('route', {}).get('stage_id', '')}`\n"
+            f"- Gate：`{state.get('gate_status', '')}`\n"
+            f"- 当前 Artifact：`{artifact.get('name', '')}`\n"
+            f"- Artifact 路径：`{artifact.get('relative_path', artifact.get('path', ''))}`\n"
+            f"- 下一步：`{state.get('gate_result', '')}`\n",
+            encoding="utf-8",
+        )
+        manifest = {"project_id": state["project_id"], "home": str(home), "artifact": artifact, "exported_at": self._now()}
+        (project_root / "export-manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        return self._event_update(state, "project_assets_exported", manifest) | {"project_asset_pack": manifest}
 
     def _stage_reference(self, stage_id: str) -> Dict[str, Any]:
         for case in self._prompt_eval_cases():
@@ -769,6 +959,12 @@ class ProductCrewLangGraphRuntime:
                   payload_json TEXT NOT NULL,
                   created_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS langgraph_routes (
+                  route_decision_id TEXT PRIMARY KEY,
+                  project_id TEXT NOT NULL,
+                  payload_json TEXT NOT NULL,
+                  created_at TEXT NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS langgraph_artifacts (
                   artifact_id TEXT PRIMARY KEY,
                   project_id TEXT NOT NULL,
@@ -776,6 +972,15 @@ class ProductCrewLangGraphRuntime:
                   name TEXT NOT NULL,
                   path TEXT NOT NULL,
                   status TEXT NOT NULL,
+                  created_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS langgraph_artifact_revisions (
+                  revision_id TEXT PRIMARY KEY,
+                  artifact_id TEXT NOT NULL,
+                  project_id TEXT NOT NULL,
+                  revision INTEGER NOT NULL,
+                  path TEXT NOT NULL,
+                  source TEXT NOT NULL,
                   created_at TEXT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS langgraph_review_sessions (
@@ -814,6 +1019,23 @@ class ProductCrewLangGraphRuntime:
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(route, ensure_ascii=False) + "\n")
+
+    def _persist_route(self, project_id: str, route: Dict[str, Any]) -> None:
+        with self._project_connection() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO langgraph_routes(route_decision_id, project_id, payload_json, created_at) VALUES (?, ?, ?, ?)",
+                (route["route_decision_id"], project_id, json.dumps(route, ensure_ascii=False), self._now()),
+            )
+        self._append_event(project_id, "stage_route_decision", route)
+        self._write_route_trace(project_id, route)
+
+    def _persisted_route(self, project_id: str, route_decision_id: str) -> Optional[Dict[str, Any]]:
+        with self._project_connection() as conn:
+            row = conn.execute(
+                "SELECT payload_json FROM langgraph_routes WHERE project_id=? AND route_decision_id=?",
+                (project_id, route_decision_id),
+            ).fetchone()
+        return json.loads(row["payload_json"]) if row else None
 
     def _append_event(self, project_id: str, event_type: str, payload: Dict[str, Any]) -> None:
         event = {"event_id": self._id("evt"), "event_type": event_type, "payload": payload, "created_at": self._now()}

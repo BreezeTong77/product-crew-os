@@ -1,4 +1,4 @@
-FROM ruby:3.3-slim
+FROM python:3.11-slim
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PCO_RUNTIME_BIND=0.0.0.0 \
@@ -8,13 +8,14 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PCO_STAGE_ROUTER_EMBEDDING=real \
     PCO_REQUIRE_REAL_EMBEDDING=1 \
     PCO_REQUIRE_REAL_SUBAGENTS=1 \
-    PCO_COZE_SUBAGENT_DELEGATE=workflow_callback \
     PCO_EMBEDDING_PROVIDER=local_open_source_bge_small_zh \
     PCO_BGE_MODEL=BAAI/bge-small-zh-v1.5
 
+COPY product-crew-os-skill/runtime/requirements-langgraph.txt /tmp/requirements-langgraph.txt
+
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends sqlite3 python3 python3-pip ca-certificates \
-  && python3 -m pip install --no-cache-dir --break-system-packages sentence-transformers \
+  && apt-get install -y --no-install-recommends sqlite3 ca-certificates \
+  && python -m pip install --no-cache-dir -r /tmp/requirements-langgraph.txt sentence-transformers \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -23,4 +24,4 @@ COPY product-crew-os-skill /app/product-crew-os-skill
 VOLUME ["/data"]
 EXPOSE 8787
 
-CMD ["ruby", "/app/product-crew-os-skill/runtime/pco_coze_bridge.rb"]
+CMD ["python", "/app/product-crew-os-skill/runtime/pco_coze_bridge.py"]

@@ -46,11 +46,11 @@
 | 5 | Evidence inventory | 证据/推断分层 | [workflow-sop-library.md](workflow-sop-library.md)、[project-memory-index-architecture.md](project-memory-index-architecture.md) | L7、L8 |
 | 6 | Problem definition | 问题陈述与方案分离 | [workflow-sop-library.md](workflow-sop-library.md)、[structured-review-loop.md](structured-review-loop.md) | L2、L6 |
 | 7 | User segmentation | 主用户边界与服务边界 | [workflow-sop-library.md](workflow-sop-library.md)、[project-asset-pack.md](project-asset-pack.md) | L2、L3 |
-| 8 | Research plan | 研究计划模板化 | [workflow-sop-library.md](workflow-sop-library.md)、[run-external-benchmark.rb](../tests/run-external-benchmark.rb) | L3、L6 |
+| 8 | Research plan | 研究计划模板化 | [workflow-sop-library.md](workflow-sop-library.md)、[run-release-gate.py](../tests/run-release-gate.py) | L3、L6 |
 | 9 | Interview guide | 访谈问题标准化 | [workflow-sop-library.md](workflow-sop-library.md)、[templates/artifacts/evidence-inventory.md](../templates/artifacts/evidence-inventory.md) | L2、L6 |
 | 10 | Interview synthesis | 原话/洞察可追踪 | [workflow-sop-library.md](workflow-sop-library.md)、[project-asset-pack.md](project-asset-pack.md) | L2、L6 |
 | 11 | Persona / JTBD / Journey | 动机链路到决策链路 | [workflow-sop-library.md](workflow-sop-library.md)、[semantic-stage-router.md](semantic-stage-router.md) | L2、L3 |
-| 12 | Opportunity tree | 机会拆解与优先化入口 | [workflow-sop-library.md](workflow-sop-library.md)、[run-loop-50-cases.rb](../tests/run-loop-50-cases.rb) | L2、L6 |
+| 12 | Opportunity tree | 机会拆解与优先化入口 | [workflow-sop-library.md](workflow-sop-library.md)、[run-release-gate.py](../tests/run-release-gate.py) | L2、L6 |
 | 13 | Assumption mapping | 高风险假设抽取与验证 | [evolution-policy.yaml](../config/evolution-policy.yaml)、[badcase-loop-50.md](../tests/badcase-loop-50.md) | L6、L9 |
 | 14 | Value sizing | 价值-成本-置信度建模 | [skill-router.md](skill-router.md)、[evaluation-metrics.md](evaluation-metrics.md) | L3a、L8 |
 | 15 | Prioritization | 可争议排序和阻塞记录 | [workflow-sop-library.md](workflow-sop-library.md)、[decision-log.md](../templates/project-workspace/decision-log.md) | L2、L6 |
@@ -65,8 +65,8 @@
 | 24 | Metrics design | 指标树、护栏、复盘窗口 | [evaluation-metrics.md](evaluation-metrics.md)、[templates/artifacts/acceptance-criteria.md](../templates/artifacts/acceptance-criteria.md) | L8 |
 | 25 | Instrumentation plan | 事件字典和 trace 结构 | [evolution-policy.yaml](../config/evolution-policy.yaml)、[runtime-adapter-contract.md](runtime-adapter-contract.md) | L3a、L5 |
 | 26 | PRD outline | 可审阅结构先行 | [templates/artifacts/prd-review-notes.md](../templates/artifacts/prd-review-notes.md)、[workflow-sop-library.md](workflow-sop-library.md) | L5、L6 |
-| 27 | PRD v0 draft | 草稿可追溯、非一次性输出 | [templates/artifacts/prd-review-notes.md](../templates/artifacts/prd-review-notes.md)、[run-external-benchmark.rb](../tests/run-external-benchmark.rb) | L3、L5 |
-| 28 | PM self-review | 自检清单可回放 | [manual-score-cases.yaml](../tests/manual-score-cases.yaml)、[run-review-loop-e2e.rb](../tests/run-review-loop-e2e.rb) | L8、L6a |
+| 27 | PRD v0 draft | 草稿可追溯、非一次性输出 | [templates/artifacts/prd-review-notes.md](../templates/artifacts/prd-review-notes.md)、[run-langgraph-runtime-e2e.py](../tests/run-langgraph-runtime-e2e.py) | L3、L5 |
+| 28 | PM self-review | 自检清单可回放 | [manual-score-cases.yaml](../tests/manual-score-cases.yaml)、[run-langgraph-runtime-e2e.py](../tests/run-langgraph-runtime-e2e.py) | L8、L6a |
 | 29 | Internal product review | 全量评审与 must-fix 分流 | [structured-review-loop.md](structured-review-loop.md)、[templates/artifacts/review-session.md](../templates/artifacts/review-session.md) | L6a、L6 |
 | 30 | Design review | 设计视角的独立反馈 | [experience/stage-rituals.md](experience/stage-rituals.md)、[templates/artifacts/review-session.md](../templates/artifacts/review-session.md) | L6a、L6 |
 | 31 | Data review | 数据指标验证边界 | [templates/artifacts/test-scenario-library.md](../templates/artifacts/test-scenario-library.md)、[templates/artifacts/acceptance-criteria.md](../templates/artifacts/acceptance-criteria.md) | L3a、L8 |
@@ -75,13 +75,13 @@
 | 34 | Task breakdown | 任务粒度与责任可执行 | [templates/artifacts/technical-task-breakdown.md](../templates/artifacts/technical-task-breakdown.md)、[templates/project-state.json](../templates/project-state.json) | L5、L6 |
 | 35 | Acceptance criteria | 验收标准 schema 固定 | [templates/artifacts/acceptance-criteria.md](../templates/artifacts/acceptance-criteria.md)、[workflow-sop-library.md](workflow-sop-library.md) | L3、L5 |
 | 36 | Development tracking | 变更事件与阻塞复盘 | [templates/project-workspace/artifact-diff.md](../templates/project-workspace/artifact-diff.md)、[project-state.json](../templates/project-state.json) | L7、L9 |
-| 37 | Integration / QA | 联调与发布风险分级 | [templates/artifacts/test-scenario-library.md](../templates/artifacts/test-scenario-library.md)、[run-runtime-smoke.rb](../tests/run-runtime-smoke.rb) | L4、L5 |
+| 37 | Integration / QA | 联调与发布风险分级 | [templates/artifacts/test-scenario-library.md](../templates/artifacts/test-scenario-library.md)、[run-python-runtime-adapters-e2e.py](../tests/run-python-runtime-adapters-e2e.py) | L4、L5 |
 | 38 | Launch readiness | 上线前门禁清单 | [templates/artifacts/launch-checklist.md](../templates/artifacts/launch-checklist.md)、[gate-policy.md](gate-policy.md) | L6a、L3 |
 | 39 | Training / enablement | 组织接收度和材料生成 | [templates/project-workspace/source-ledger.md](../templates/project-workspace/source-ledger.md)、[templates/project-workspace/timeline.md](../templates/project-workspace/timeline.md) | L5、L7 |
 | 40 | Grey release / pilot | 试点、回退、迭代学习 | [evaluation-metrics.md](evaluation-metrics.md)、[templates/project-workspace/artifact-index.yaml](../templates/project-workspace/artifact-index.yaml) | L8、L6 |
-| 41 | Launch monitoring | 线上指标与人工介入边界 | [evolution-policy.yaml](../config/evolution-policy.yaml)、[run-runtime-smoke.rb](../tests/run-runtime-smoke.rb) | L7、L8 |
+| 41 | Launch monitoring | 线上指标与人工介入边界 | [evolution-policy.yaml](../config/evolution-policy.yaml)、[run-release-gate.py](../tests/run-release-gate.py) | L7、L8 |
 | 42 | Post-launch review | 复盘结果入下轮输入 | [templates/artifacts/postmortem.md](../templates/artifacts/postmortem.md)、[badcase-loop-50.md](../tests/badcase-loop-50.md) | L8、L9 |
-| 43 | Iteration planning | 回归结论驱动下一周期 | [badcase-loop-50.md](../tests/badcase-loop-50.md)、[run-loop-50-cases.rb](../tests/run-loop-50-cases.rb) | L6、L9 |
+| 43 | Iteration planning | 回归结论驱动下一周期 | [badcase-loop-50.md](../tests/badcase-loop-50.md)、[run-release-gate.py](../tests/run-release-gate.py) | L6、L9 |
 
 ## 四、持续更新机制
 

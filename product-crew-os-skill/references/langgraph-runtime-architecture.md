@@ -31,7 +31,7 @@ flowchart TD
 2. **子 Agent 可以提出评审意见，但没有最终决策权**：真实调用必须验证完整 persona packet、签名 delegate proof、runtime ID 和 raw review；没有证据就是 `invalid_for_gate`。
 3. **用户拥有最终确认权**：图只能在 `user_confirmed=true` 后通过 Gate。中断、checkpoint、生成文档或模板降级都不是通过。
 
-## 数据与迁移边界
+## 数据边界
 
 | 数据 | 存放位置 | 用途 |
 | --- | --- | --- |
@@ -40,4 +40,4 @@ flowchart TD
 | 检索证据 | RAG adapter / source ledger | 来源、授权、embedding provider、召回记录 |
 | 外部能力 | 受控 Skill / MCP adapter | 专业执行；必须返回契约与回执 |
 
-迁移期保留 Ruby Runtime 兼容已有 Coze Bridge、OCR/RAG 和 CLI。每个 adapter 只有在 LangGraph 中跑过相同级别的 Gate、raw review 可见性、`runtime_nickname` 审计隔离和持久化回归后，才可以移除 Ruby 路径。
+Python adapter 覆盖 Coze Bridge、OCR/RAG、CLI 与 Skill 执行。每个 adapter 都必须通过同等级的 Gate、raw review 可见性、`runtime_nickname` 审计隔离和持久化回归，才能进入发布门禁。

@@ -45,8 +45,8 @@ Project Workspace files
 ```text
 product-crew-os-skill/runtime/
   db/schema.sql
-  pco_runtime.rb
-  create_demo_vault.rb
+  pco_runtime.py
+  create_demo_vault.py
 ```
 
 它支持：
@@ -299,9 +299,9 @@ query
 
 ```text
 runtime/db/schema.sql
-runtime/pco_runtime.rb
-tests/run-runtime-smoke.rb
-tests/run-sop-e2e-smoke.rb
+runtime/pco_runtime.py
+tests/run-langgraph-runtime-e2e.py
+tests/run-python-runtime-adapters-e2e.py
 ```
 
 已实现能力：

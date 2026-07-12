@@ -13,7 +13,7 @@
 - SOP 总数：44
 - Stage 路由：44/44 覆盖（`prompt-eval-cases.yaml`）
 - Skill 映射：44/44 覆盖（`skill-dependency-registry.md`）
-- Loop / Runtime Smoke：44/44 可写入（`run-sop-e2e-smoke.rb` / `run-loop-50-cases.rb`）
+- LangGraph 路由 / Release Gate：44/44 命中（`run-langgraph-runtime-e2e.py` / `run-release-gate.py`）
 - 完整状态机 / 主流程 Golden Case：实验审计记录保留，不作为当前主线门禁
 - 当前主线门禁：44 SOP 命中、Skill Router 命中、Runtime Smoke 写入、Review Ledger 可追踪
 - 还可优化的项：3

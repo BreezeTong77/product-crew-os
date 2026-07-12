@@ -1,21 +1,21 @@
 schema_version: "0.1"
 integration: coze
 product: Product Crew OS
-description: "Coze Bot + Workflow + Database blueprint with a real Product Crew OS Runtime Bridge."
+description: "Coze Bot + Workflow + Database blueprint with a Python LangGraph Product Crew OS Runtime Bridge."
 
 deployment_assets:
-  runtime_bridge_entrypoint: "runtime/pco_coze_bridge.rb"
+  runtime_bridge_entrypoint: "runtime/pco_coze_bridge.py"
   openapi_plugin_contract: "integrations/coze/runtime-plugin-openapi.yaml"
   sub_bot_binding_template: "integrations/coze/sub-bot-bindings.example.yaml"
   coze_database_schema: "integrations/coze/database-schema.yaml"
   workflow_node_map: "integrations/coze/workflow-node-map.yaml"
   required_environment:
     - "PCO_RUNTIME_TOKEN"
+    - "PCO_LANGGRAPH_DELEGATE_SECRET"
     - "PCO_STAGE_ROUTER_EMBEDDING=real"
     - "PCO_REQUIRE_REAL_EMBEDDING=1"
     - "PCO_REQUIRE_REAL_SUBAGENTS=1"
-    - "PCO_COZE_SUBAGENT_DELEGATE=workflow_callback"
-  source_of_truth: "Runtime SQLite + Project Workspace; Coze Database is an inspectable workflow mirror."
+  source_of_truth: "LangGraph checkpoint + Runtime SQLite + Project Workspace; Coze Database is an inspectable workflow mirror."
 
 entry_bot:
   key: CoachBot
@@ -159,16 +159,16 @@ runtime_actions:
   runtime_init_project: init-project
   runtime_route_intent: route-intent
   runtime_record_turn: record-turn
-  runtime_save_artifact: save-artifact
-  runtime_open_review_session: record-turn.review_session_writer
-  runtime_build_context_packet: build-context-packet
-  runtime_record_invocation: record-invocation
-  runtime_write_raw_review_record: record-turn.raw_review_record_writer
-  runtime_write_review_item: write-review-item
-  runtime_write_agent_memory: write-agent-memory
+  runtime_save_artifact: record-turn.artifact_writer
+  runtime_open_review_session: record-turn.review_interrupt
+  runtime_build_context_packet: record-turn.context_packet_builder
+  runtime_record_invocation: resume.review_callback
+  runtime_write_raw_review_record: resume.review_callback
+  runtime_write_review_item: resume.review_summary
+  runtime_write_agent_memory: export_project_assets
   runtime_export_obsidian: export-obsidian
-  runtime_prepare_external_review: prepare-external-review
-  runtime_finalize_stage_gate: finalize-stage-gate
+  runtime_prepare_external_review: record-turn.review_interrupt
+  runtime_finalize_stage_gate: resume.user_stage_decision
   runtime_rag_ingest: rag-ingest
   runtime_rag_retrieve: rag-retrieve
 

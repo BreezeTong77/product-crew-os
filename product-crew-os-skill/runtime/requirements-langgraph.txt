@@ -1,4 +1,4 @@
-# Kept separate during the Ruby-to-LangGraph migration.
+# Python runtime dependencies for the Product Crew OS LangGraph control plane.
 langgraph==0.6.11
 langgraph-checkpoint-sqlite>=2.0,<3.0
 PyYAML>=6.0

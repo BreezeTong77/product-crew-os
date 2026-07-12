@@ -164,7 +164,7 @@ Project Workspace 仍是事实源；Obsidian 只是阅读和可视化入口。
 - 44 个 SOP 已具备 SOP 卡片、Skill Router、Prompt Eval 和 Runtime Smoke。
 - 只有 `flow_01_opportunity_discovery_pass` 是完整 Golden Case。
 - 后续 `solution_design`、`prd_drafting`、`cross_functional_review`、`delivery_planning`、`launch_readiness`、`post_launch_review` 仍是 partial / missing。
-- 不能把 `run-sop-e2e-smoke.rb` 的 44/44 runtime 写入结果，等同于 44/44 完整业务工作流状态机。
+- 不能把 `run-release-gate.py` 的 44/44 Stage/SOP 路由结果，等同于 44/44 完整业务工作流状态机。
 
 覆盖矩阵见：
 

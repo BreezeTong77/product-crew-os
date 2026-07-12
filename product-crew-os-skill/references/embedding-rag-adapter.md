@@ -65,7 +65,7 @@ OCR 主路径使用 `PaddleOCR`，原因是中文截图、PDF、版面结构和 
 - `language_hint`
 - `source_ref`
 
-发布包提供 `runtime/source_extractor.rb` 和 `runtime/setup-local-ocr.sh`，但不把宿主尚未安装的 OCR 引擎说成已可用。引擎不可用、语言包缺失、OCR 返回空文本或 provider 输出无法解析时，Runtime 必须返回 `runtime_blocked` / extraction error，不能写出伪造的文本或置信度。只有实际 OCR 返回的字段才会写入 RAG 元数据。
+发布包提供 `runtime/langgraph_runtime/adapters.py` 中的 `SourceExtractor` 和 `runtime/setup-local-ocr.sh`，但不把宿主尚未安装的 OCR 引擎说成已可用。引擎不可用、语言包缺失、OCR 返回空文本或 provider 输出无法解析时，Runtime 必须返回 `runtime_blocked` / extraction error，不能写出伪造的文本或置信度。只有实际 OCR 返回的字段才会写入 RAG 元数据。
 
 OCR 置信度低于配置阈值时，只能作为低置信证据进入索引；涉及 Stage Gate 时必须提示用户复核，不能把低置信 OCR 当成确定事实。
 
@@ -267,7 +267,7 @@ route_score =
 接入 embedding 前，必须先通过 dry-run：
 
 ```bash
-ruby product-crew-os-skill/tests/run-embedding-rag-dry-run.rb
+python3 product-crew-os-skill/tests/run-python-runtime-adapters-e2e.py
 ```
 
 dry-run 验证：
@@ -282,7 +282,7 @@ dry-run 验证：
 RAG ingestion contract 验证：
 
 ```bash
-ruby product-crew-os-skill/tests/run-rag-ingestion-contract.rb
+python3 product-crew-os-skill/tests/run-python-runtime-adapters-e2e.py
 ```
 
 它验证 OCR、语义 overlap chunk、开源 embedding、SQLite vector store、batch indexing、incremental update、maintenance 和 monitoring 是否都有可检查契约。
@@ -303,14 +303,14 @@ ruby product-crew-os-skill/tests/run-rag-ingestion-contract.rb
 
 ```bash
 python3 -m pip install sentence-transformers
-ruby product-crew-os-skill/tests/run-local-open-source-embedding-provider-contract.rb
+python3 product-crew-os-skill/tests/run-python-runtime-adapters-e2e.py
 ```
 
 也可以使用 `FlagEmbedding`：
 
 ```bash
 python3 -m pip install FlagEmbedding
-ruby product-crew-os-skill/tests/run-local-open-source-embedding-provider-contract.rb
+python3 product-crew-os-skill/tests/run-python-runtime-adapters-e2e.py
 ```
 
 只有当 contract 返回：

@@ -50,9 +50,9 @@
 | 记忆隔离通过率 | 产品规则、用户偏好、项目记忆是否保持隔离 | isolated_memory_writes / memory_writes | memory writer, scope field, package review | 100% | 项目内容写进 README / 产品规则 / 公共 skill |
 | 防覆盖通过率 | 更新记忆或 artifact 时是否保留旧版本、checkpoint 或 event log | versioned_updates / update_events | checkpoints, event-log, artifact versions | >= 95% | 覆盖旧决策且无法回滚 |
 | 团队风格授权率 | 真实同事语气、会议纪要、邮件材料进入风格记忆前是否获得授权 | consented_style_writes / style_memory_writes | consent record, team-style-overlay | 100% | 未授权保存真实团队材料 |
-| 外部 Benchmark 通过率 | 第三方正向/负向测试是否正确进 SOP 或退出 | passed_external_cases / external_cases | run-external-benchmark.rb | >= 90% | WorkBench 类办公任务被强行进产品流程 |
-| RAG Stage Hit@1 | embedding 检索第一候选是否命中人工标注 stage | top1_stage_matches / product_rag_cases | run-embedding-rag-dry-run.rb | >= 75% | 向量候选长期偏离规则路由 |
-| RAG Stage Hit@3 | embedding 检索前三候选是否包含人工标注 stage | top3_contains_expected_stage / product_rag_cases | run-embedding-rag-dry-run.rb | >= 90% | 候选召回不足，不能辅助主控判断 |
+| 外部 Benchmark 通过率 | 第三方正向/负向测试是否正确进 SOP 或退出 | passed_external_cases / external_cases | run-release-gate.py | >= 90% | WorkBench 类办公任务被强行进产品流程 |
+| RAG Stage Hit@1 | embedding 检索第一候选是否命中人工标注 stage | top1_stage_matches / product_rag_cases | run-python-runtime-adapters-e2e.py | >= 75% | 向量候选长期偏离规则路由 |
+| RAG Stage Hit@3 | embedding 检索前三候选是否包含人工标注 stage | top3_contains_expected_stage / product_rag_cases | run-python-runtime-adapters-e2e.py | >= 90% | 候选召回不足，不能辅助主控判断 |
 | RAG 误入产品流率 | 非产品任务是否触发向量检索 | non_product_vector_queries / non_product_cases | Domain Gate, retrieval event | 0 | 普通问题进入 Product Crew OS RAG |
 | RAG 来源可追溯率 | 检索候选是否带 source_ref 和 namespace | traceable_rag_candidates / rag_candidates | embedding_retrieval_events | 100% | 检索依据不可追溯 |
 | Bad Case 修复率 | 已登记 Bad Case 是否转化为规则或测试 | fixed_bad_cases / logged_bad_cases | evolution-notes, regression scenarios | >= 70% | Bad Case 没有 owner 或测试 |
