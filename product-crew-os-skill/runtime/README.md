@@ -1,6 +1,52 @@
 # Product Crew OS Runtime
 
-这是 Product Crew OS 的最小可运行本地 Runtime。
+## LangGraph 主控链路（新默认）
+
+从本版本开始，Product Crew OS 的新接入默认使用 LangGraph 作为控制平面：它负责每一步能否继续、何时暂停等待真实评审、何时等待用户确认，以及如何从相同 `thread_id` 恢复。
+
+```text
+Input Scope Gate
+-> Retrieval Evidence Guard
+-> Stage / SOP Route
+-> Skill Execution Guard
+-> Artifact Writer
+-> Review Packet Builder
+-> External Review Interrupt
+-> User Decision Interrupt
+-> Project Memory Writer
+```
+
+启动前安装依赖：
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r product-crew-os-skill/runtime/requirements-langgraph.txt
+```
+
+初始化并运行：
+
+```bash
+python3 product-crew-os-skill/runtime/pco_langgraph_runtime.py init-project \
+  --workspace ./runtime-workspace \
+  --project-id demo \
+  --name "Demo"
+
+python3 product-crew-os-skill/runtime/pco_langgraph_runtime.py run \
+  --workspace ./runtime-workspace \
+  --project-id demo \
+  --thread-id demo-run-001 \
+  --user-input "我想做一个产品，第一步应该先做什么？"
+```
+
+当结果出现 `__interrupt__`，不是成功，也不是报错。宿主必须把其中的评审任务交给真实 delegate，或把用户决策展示给用户；随后用同一 `thread_id` 的 `resume` 恢复。外部 delegate 回调必须使用 `PCO_LANGGRAPH_DELEGATE_SECRET` 生成可验证签名，并保留完整 Persona Context Packet、runtime ID 和 raw review。没有这些证据，Gate 必须阻塞。
+
+LangGraph checkpoint 只保存可恢复执行状态。项目事实、artifact、原始评审和 Obsidian 导出仍写入独立项目账本，不能把 checkpoint 当作业务审计记录。
+
+详细命令见 [LangGraph Runtime](langgraph_runtime/README.md)。
+
+## Ruby 兼容适配层
+
+下方 Ruby Runtime 在迁移期继续保留，负责已有 CLI、Coze Bridge、OCR/RAG adapter 和历史回归测试。它不是新的 Stage Gate 主控；新能力应优先接入上方 LangGraph 图，再逐步替换对应 Ruby adapter。
 
 它把规则包中的 Project Workspace、Project Asset Pack、团队记忆、Context Packet 和 Obsidian-compatible 导出落到真实文件与 SQLite 数据库中。
 

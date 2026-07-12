@@ -4,7 +4,18 @@ Product Crew OS 的重要变更都会记录在这里。
 
 ## Unreleased
 
-- 无待发布内容。
+## v0.1.4 - 2026-07-12
+
+### LangGraph 控制平面
+
+- 新增 LangGraph Runtime：`Input Scope Gate -> Retrieval Evidence Guard -> Stage/SOP Route -> Skill Execution Guard -> Artifact -> Review Interrupt -> User Decision Interrupt -> Project Memory`。
+- 用 SQLite checkpoint 和稳定 `thread_id` 支持评审与用户决策的暂停 / 恢复；checkpoint 不是项目事实源，更不是 Gate 通过。
+- 外部 delegate callback 增加签名验证：单独传 `runtime_agent_id` 不能作为真实调用证据；仍必须保留完整 Persona Context Packet 与 raw review。
+- 新增 LangGraph 端到端契约测试，覆盖 44 SOP 路由、非产品退出、真实 embedding 辅助输入范围识别、无 Skill 证据阻塞、完整评审 packet、伪造 runtime ID 拦截、用户确认和真实 embedding 缺失阻塞。
+
+### 迁移边界
+
+- Ruby Runtime 暂保留为 Coze Bridge、OCR/RAG 和旧 CLI 的兼容 adapter。新控制逻辑优先写入 LangGraph；只有同等级回归验证后才替换旧 adapter。
 
 ## v0.1.3 - 2026-07-11
 

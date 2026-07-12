@@ -70,6 +70,11 @@ required_files = [
   "runtime/db/schema.sql",
   "runtime/pco_runtime.rb",
   "runtime/pco_coze_bridge.rb",
+  "runtime/pco_langgraph_runtime.py",
+  "runtime/requirements-langgraph.txt",
+  "runtime/langgraph_runtime/__init__.py",
+  "runtime/langgraph_runtime/workflow.py",
+  "runtime/langgraph_runtime/README.md",
   "runtime/rag_store.rb",
   "runtime/embedding_provider.rb",
   "runtime/sop_embedding_index.rb",
@@ -97,6 +102,7 @@ required_files = [
   "templates/artifacts/test-scenario-library.md",
   "tests/evaluation-test-plan.md",
   "tests/prompt-eval-cases.yaml",
+  "tests/loop-50-priority-buckets.yaml",
   "tests/external-benchmark-cases.yaml",
   "tests/manual-score-cases.yaml",
   "tests/badcase-loop-50.md",
@@ -112,13 +118,37 @@ required_files = [
   "tests/run-persistent-sop-vector-index.rb",
   "tests/run-runtime-smoke.rb",
   "tests/run-sop-e2e-smoke.rb",
-  "tests/run-loop-50-cases.rb"
+  "tests/run-loop-50-cases.rb",
+  "tests/run-langgraph-runtime-e2e.py"
 ]
 
 required_files.each do |relative_path|
   path = File.join(skill_root, relative_path)
   errors << "Missing required file: #{relative_path}" unless File.exist?(path)
 end
+
+prompt_eval_cases = YAML.load_file(File.join(skill_root, "tests", "prompt-eval-cases.yaml")).fetch("cases")
+priority_buckets = YAML.load_file(File.join(skill_root, "tests", "loop-50-priority-buckets.yaml"))
+bucket_case_ids = priority_buckets.fetch("buckets").flat_map do |priority, bucket|
+  errors << "Unknown loop-50 priority bucket: #{priority}" unless %w[P0 P1 P2].include?(priority)
+  Array(bucket["case_ids"])
+end
+expected_loop_50_case_ids = prompt_eval_cases.map { |test_case| test_case.fetch("case_id") } + %w[
+  L45_non_product_task_exit
+  L46_runtime_nickname_audit_only
+  L47_raw_review_visibility
+  L48_team_style_consent
+  L49_project_asset_pack_export
+  L50_user_decision_after_review
+]
+missing_bucket_cases = expected_loop_50_case_ids - bucket_case_ids
+extra_bucket_cases = bucket_case_ids - expected_loop_50_case_ids
+bucket_case_counts = Hash.new(0)
+bucket_case_ids.each { |case_id| bucket_case_counts[case_id] += 1 }
+duplicate_bucket_cases = bucket_case_counts.select { |_case_id, count| count > 1 }.keys
+errors << "loop-50 priority buckets missing cases: #{missing_bucket_cases.join(", ")}" unless missing_bucket_cases.empty?
+errors << "loop-50 priority buckets include unknown cases: #{extra_bucket_cases.join(", ")}" unless extra_bucket_cases.empty?
+errors << "loop-50 priority buckets include duplicate cases: #{duplicate_bucket_cases.join(", ")}" unless duplicate_bucket_cases.empty?
 
 skill_entry = File.read(File.join(skill_root, "SKILL.md"))
 errors << "SKILL.md missing Runtime Preflight section" unless skill_entry.include?("## Runtime Preflight")
@@ -169,6 +199,11 @@ end
 runtime_implementation = File.read(File.join(skill_root, "runtime", "pco_runtime.rb"))
 %w[prepare_external_review finalize_stage_gate context_packet_quality persona_injection_status rag_ingest rag_retrieve].each do |phrase|
   errors << "runtime missing external Coze review guard: #{phrase}" unless runtime_implementation.include?(phrase)
+end
+
+langgraph_implementation = File.read(File.join(skill_root, "runtime", "langgraph_runtime", "workflow.py"))
+%w[StateGraph SqliteSaver interrupt Command PCO_LANGGRAPH_DELEGATE_SECRET raw-review-records runtime_nickname candidate_routes local_prompt_eval].each do |phrase|
+  errors << "LangGraph runtime missing #{phrase}" unless langgraph_implementation.include?(phrase)
 end
 
 rag_store = File.read(File.join(skill_root, "runtime", "rag_store.rb"))

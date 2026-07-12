@@ -144,6 +144,7 @@ flowchart LR
 
 ## 真实边界
 
+- 非产品任务不会被强行归到 SOP、Skill Router、项目记忆或评审流程；它会退出 Product Crew OS，交给对应能力正常回答。
 - 44 个 SOP 都有卡片、路由和最小测试链路；不等于每个 SOP 都完成了深度真实业务验证。
 - Skill 被路由到不等于已经真实执行。只有宿主返回执行证据，才能作为 Gate 依据。
 - 子 Agent 是否能真实调用取决于宿主的 delegation 能力；不支持时不能假装已调用。
@@ -186,7 +187,8 @@ ruby product-crew-os-skill/tests/run-source-ingestion-runtime.rb
 - [状态机与实现边界](product-crew-os-skill/references/workflow-implementation-coverage-v0.md)
 - [子 Agent 调用契约](product-crew-os-skill/references/subagent-invocation-contract.md)
 - [Runtime 使用说明](product-crew-os-skill/runtime/README.md)
-- [v0.1.3 发布说明](releases/v0.1.3.md)
+- [LangGraph 控制平面](product-crew-os-skill/references/langgraph-runtime-architecture.md)
+- [v0.1.4 发布说明](releases/v0.1.4.md)
 
 ## 许可证
 

@@ -18,6 +18,30 @@ Product Crew OS 不能单靠 Markdown 规则包强制任意宿主自动调用子
 
 如果宿主没有真实子 Agent / delegation API，主控教练必须标注为“模拟角色视角”，并把 context packet、review item、decision 和 memory delta 写入 runtime。
 
+## 1.1 LangGraph 控制平面
+
+新接入优先使用 `runtime/pco_langgraph_runtime.py`。它不是第二套会自己决定产品流程的 Agent，而是把既有的运行时契约固化成有状态的控制图：
+
+```text
+Input Scope Gate
+-> Retrieval Evidence Guard
+-> Stage / SOP Route
+-> Skill Execution Guard
+-> Artifact Writer
+-> Review Packet Builder
+-> External Review Interrupt
+-> User Decision Interrupt
+-> Project Memory Writer
+```
+
+- 图的 `thread_id` 是一次可恢复执行的身份；暂停后的 review callback 和用户决策必须恢复同一条线程，不能另起一条文本回合绕过前置节点。
+- LangGraph checkpoint 只用于恢复图状态。Project SQLite / Project Workspace 才是 artifact、评审、决策和导出物的事实源。
+- `interrupt()` 产生的等待状态不是 Gate 通过。只有后续节点验证证据后，才允许用户确认并写入 Gate 结果。
+- 外部 delegate callback 除完整 Context Packet、`runtime_agent_id` 和 raw review 外，还必须带由私有 `PCO_LANGGRAPH_DELEGATE_SECRET` 生成的签名。仅传一个 runtime ID 不能证明真实调用。
+- `runtime_nickname` 只能作审计元数据，不能覆盖已配置 `role_key`、`display_name` 或 persona；原始评审必须在 `raw-review-records` 可见。
+
+Ruby Runtime 继续作为已有 Coze、OCR/RAG 和 CLI 的兼容 adapter，直至对应能力完成 LangGraph 适配和同等级回归验证。
+
 ## 2. 标准回合写入链路
 
 每个有意义的产品工作回合，都应按下面顺序写入：
