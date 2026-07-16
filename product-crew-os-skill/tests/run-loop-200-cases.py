@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the Python 50-case release gate four times without Ruby tooling."""
+"""Run the Python 51-case release gate four times without Ruby tooling."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ def main() -> int:
         if result.returncode:
             return result.returncode
         print(f"iteration {index + 1}/{args.iterations}: PASS")
-    print(f"run-loop-200-cases: PASS ({args.iterations * 50} cases)")
+    print(f"run-loop-200-cases: PASS ({args.iterations * 51} cases)")
     return 0
 
 

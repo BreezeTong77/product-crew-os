@@ -25,6 +25,7 @@ REQUIRED = [
     "runtime/langgraph_runtime/README.md",
     "references/langgraph-runtime-architecture.md",
     "references/runtime-adapter-contract.md",
+    "references/project-intake-guard.md",
     "integrations/coze/runtime-plugin-openapi.yaml",
     "integrations/coze/delegate-signer-openapi.yaml",
     "integrations/coze/workflow-blueprint.yaml",
@@ -40,6 +41,7 @@ REQUIRED = [
     "tests/run-real-bge-rag-integration.py",
     "tests/run-standard-sop-readiness-integration.py",
     "tests/run-operational-metrics-e2e.py",
+    "tests/run-project-intake-guard-e2e.py",
 ]
 
 
@@ -62,7 +64,7 @@ def main() -> int:
     if runtime_ruby:
         errors.append("Ruby runtime files remain: " + ", ".join(path.name for path in runtime_ruby))
     workflow = (ROOT / "runtime" / "langgraph_runtime" / "workflow.py").read_text(encoding="utf-8")
-    for term in ("StateGraph", "SqliteSaver", "interrupt", "Command", "execute_skill", "graph_rag_evidence", "bootstrap_product_rule_rag", "record_route_feedback", "operational_metrics", "langgraph_bad_cases", "runtime_agent_binding_mismatch", "skill_receipt_invalid_or_not_graph_issued", "revise_artifact", "export_project_assets", "PCO_LANGGRAPH_DELEGATE_SECRET"):
+    for term in ("StateGraph", "SqliteSaver", "interrupt", "Command", "execute_skill", "project_intake_guard", "graph_rag_evidence", "bootstrap_product_rule_rag", "record_route_feedback", "operational_metrics", "langgraph_bad_cases", "runtime_agent_binding_mismatch", "skill_receipt_invalid_or_not_graph_issued", "revise_artifact", "export_project_assets", "PCO_LANGGRAPH_DELEGATE_SECRET"):
         if term not in workflow:
             errors.append(f"LangGraph workflow missing {term}")
     blueprint = yaml.safe_load((ROOT / "integrations" / "coze" / "workflow-blueprint.yaml").read_text(encoding="utf-8"))

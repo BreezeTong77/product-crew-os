@@ -115,6 +115,8 @@ flowchart TB
 
 `template_degraded` 只是明确的降级状态：可以保留为草稿或待办，但不算 Skill 真执行，也不能让 Stage Gate 假通过。
 
+一句“我想做一个产品”的输入也不会被硬扩写成市场事实。系统在 `project_intake` 只确认用户原话、创建项目卡和路由记录；目标用户、痛点、需求评分、方案和 MVP 都只是待验证项。缺少负责人、目标用户或粗略目标时，项目接入会停在澄清，不会假装已经进入方案设计。
+
 ## 子 Agent 评审不是“角色扮演”
 
 正式评审必须围绕一个明确的 artifact。主控先锁定版本，再给每个角色完整的 Context Packet，最后把原始意见、冲突和用户决定留在项目里。
@@ -234,6 +236,7 @@ python3 -m venv .venv
 .venv/bin/python product-crew-os-skill/tests/run-langgraph-runtime-e2e.py
 .venv/bin/python product-crew-os-skill/tests/run-python-runtime-adapters-e2e.py
 .venv/bin/python product-crew-os-skill/tests/run-operational-metrics-e2e.py
+.venv/bin/python product-crew-os-skill/tests/run-project-intake-guard-e2e.py
 .venv/bin/python product-crew-os-skill/tests/run-release-gate.py
 ```
 

@@ -39,6 +39,14 @@ Product Crew OS must not treat a polished artifact as proof that the workflow ra
 
 If the host has not connected `runtime/pco_runtime.py` and its LangGraph control plane, the coach must say `runtime_not_connected` and continue only as advice or draft generation. Missing route trace, SOP / Skill mismatch against the persisted route decision, missing Skill execution receipt, missing real embedding when standard user runtime requires it, `needs_clarification`, domain exit, required sub-agent not truly invoked, or `template_degraded` skill execution must return `blocked_runtime_preflight`; it cannot be reported as `conditional_pass`.
 
+### Project Intake Guard
+
+When `stage_id=project_intake`, show `macro_stage` and `stage_id` as two separate fields. The only confirmed fact on a one-line idea is the user's original direction. Any target user, pain point, market trend, demand score, product positioning, or experiment proposed by the coach must be labelled `assumption` until it has a source reference.
+
+At this stage, the formal artifacts are limited to `project-card.md`, initial `project-state.json`, and the persisted route trace. Do not mark an opportunity hypothesis, a demand-authenticity score, a fake-door plan, a result library, or an MVP choice as completed or decided. They may be offered only as candidate next steps after the intake gate is complete.
+
+The intake gate requires an owner, a target user, and a rough objective. A vague outcome such as “做爆款” is a user-stated direction, not a success definition. It triggers Biz in Standard SOP mode; if real delegation is unavailable, record that role as `runtime_blocked` or `pending` rather than silently skipping it.
+
 ## Default Workflow
 
 Use `references/product-mission-vision-values.md` when explaining what Product Crew OS is, why it exists, or how it should evolve.
@@ -54,6 +62,7 @@ Use `references/semantic-stage-router.md` when the user's intent is ambiguous, r
 Use `references/embedding-rag-adapter.md` when designing or enabling OCR, embedding / vector retrieval, RAG ingestion, semantic chunking, source-ledger indexing, incremental updates, or retrieval monitoring. Start with the `pco_rules` namespace and dry-run / ingestion contracts; do not index project, user, or team-style material unless the user explicitly authorizes that scope.
 Use `references/stage-taxonomy.md` to normalize user wording into a canonical stage.
 Use `references/workflow-sop-library.md` after normalizing the stage and before producing a substantial artifact. It defines the input, SOP, output, stakeholder, and gate for each fine-grained PM workflow stage.
+Use `references/project-intake-guard.md` when opening a new project from a short idea. It separates user-provided facts from assumptions, prevents unsupported demand scores or solution commitments, and defines the clarification gate for `project_intake`.
 Use `references/stage-boundary-matrix.md` before summoning any sub-agent. The boundary matrix has priority over a generic "ask everyone" review.
 Use `references/onboarding-customization.md` when the product is first introduced, installed, or started for a new user/project.
 Use `references/experience/first-run-demo.md` when drafting or evaluating the first-run onboarding message.

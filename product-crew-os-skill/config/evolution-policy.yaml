@@ -25,6 +25,25 @@ run_controls:
   require_artifact_or_next_action_before_reply: true
   implicit_invocation_write_mode: "read_only"
   memory_write_requires_explicit_user_signal: true
+  project_intake_guard:
+    purpose: "Prevent a one-line product idea from being promoted into unsupported market facts or a committed solution."
+    require_persisted_route_trace: true
+    require_fact_labels: true
+    allowed_artifacts:
+      - "project-card.md"
+      - "project-state.json"
+      - "route trace"
+    forbidden_until_evidence:
+      - "demand_authenticity_score"
+      - "opportunity_hypothesis_as_decision"
+      - "solution_or_fake_door_commitment"
+    triggered_business_terms:
+      - "爆款"
+      - "增长"
+      - "传播"
+      - "分享"
+      - "流量"
+      - "出圈"
   review_batching_policy:
     purpose: "Prevent token burn and noisy meetings without overriding SOP/stage-boundary required roles."
     batch_size_limit_scope: "per visible review batch, not per stage and not per SOP"

@@ -27,6 +27,17 @@ Evolution is not more agent chat. It is the maintenance loop around the product 
 | Stale memory | old decision overrides newer decision | use decision timestamps and latest-confirmed priority |
 | Jargon drift | agents become checklist machines | apply sub-agent natural-language rewrite rule |
 
+## Confirmed Product Rule Bad Cases
+
+### BC-INTAKE-001: 一句话想法被越级扩写
+
+- **触发**：用户只说“我想做一个爆款人格测试，类似某热点测试”。
+- **错误表现**：虽然命中了 `project_intake`，但系统把宏观阶段和当前 SOP 混写；未经来源验证就写入目标用户、痛点、热点结论和需求真实性分，并把 fake door、结果库等后续方案写成已决定下一步。
+- **根因**：项目接入只有路由和通用 artifact 规则，没有“事实 / 假设 / 未知”隔离，也没有把 route trace、最小输入和 Biz 触发作为项目接入的硬门槛。
+- **修复**：LangGraph 增加 `project_intake_guard`；项目卡附带事实、假设、缺口和禁止提前决定项；“爆款 / 增长 / 传播”等词触发 Biz；缺 owner、目标用户或成功定义时不能通过 Gate。
+- **回归**：L51 与 `run-project-intake-guard-e2e.py`。
+- **长期规则**：未知保持未知。没有 `source_ref` 的市场结论、需求分数和方案承诺只能是候选，不是项目事实。
+
 ## Lightweight Evolution Check
 
 Run after each stage:

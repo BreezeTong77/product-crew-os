@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""50-case Python/LangGraph release gate: 44 SOP routes plus L45-L50."""
+"""51-case Python/LangGraph release gate: 44 SOP routes plus L45-L51."""
 
 from __future__ import annotations
 
@@ -79,6 +79,30 @@ def main() -> int:
             manifest = Path(temp) / "projects" / "release-gate" / "export-manifest.json"
             if not manifest.exists():
                 errors.append("L49 project asset export was not written")
+
+            intake = runtime.run(
+                "release-gate",
+                "我现在想做一个爆款人格测试产品，类似 SBTI。",
+                thread_id="l51",
+            )
+            intake_guard = intake.get("intake_guard", {})
+            intake_artifact = Path(intake.get("artifact", {}).get("path", ""))
+            if intake.get("route", {}).get("stage_id") != "project_intake":
+                errors.append("L51 one-line product idea did not route to project_intake")
+            if intake.get("route", {}).get("macro_stage") != "opportunity_discovery":
+                errors.append("L51 project_intake did not retain opportunity_discovery macro stage")
+            if "Biz" not in intake.get("route", {}).get("triggered_roles", []):
+                errors.append("L51 growth-language input did not trigger Biz")
+            if intake_guard.get("status") != "needs_clarification":
+                errors.append("L51 intake guard did not require clarification")
+            if not {"target_user_missing", "success_definition_missing"}.issubset(set(intake_guard.get("unknowns", []))):
+                errors.append("L51 intake guard did not preserve missing target user and success definition")
+            if "demand_authenticity_score" not in intake_guard.get("forbidden_until_evidence", []):
+                errors.append("L51 intake guard did not forbid unsupported demand score")
+            if not intake.get("route", {}).get("route_trace_ref"):
+                errors.append("L51 route trace reference was not persisted")
+            if not intake_artifact.exists() or "## 项目接入边界" not in intake_artifact.read_text(encoding="utf-8"):
+                errors.append("L51 project intake artifact did not expose the fact and assumption boundary")
         finally:
             runtime.close()
     if errors:
@@ -87,7 +111,7 @@ def main() -> int:
             print(f"- {error}")
         return 1
     print("run-release-gate: PASS")
-    print("cases: 50 (44 SOP routing controls + L45-L50 runtime boundaries)")
+    print("cases: 51 (44 SOP routing controls + L45-L51 runtime boundaries)")
     print("note: 44 SOP route cases do not claim real Skill or external delegate execution")
     return 0
 

@@ -7,7 +7,7 @@
 | L0 | 文件、YAML/JSON、Docker 与无 Ruby Runtime 校验 | `validate-package.py` |
 | L1 | 44 SOP 路由、Gate、评审、修订与 checkpoint | `run-langgraph-runtime-e2e.py` |
 | L2 | BGE/OCR/RAG/Skill/Coze Python adapter | `run-python-runtime-adapters-e2e.py` |
-| L3 | 44 SOP 路由控制 + L45-L50 高风险边界 | `run-release-gate.py` |
+| L3 | 44 SOP 路由控制 + L45-L51 高风险边界 | `run-release-gate.py` |
 
 ```bash
 python3 -m venv .venv
@@ -15,6 +15,7 @@ python3 -m venv .venv
 .venv/bin/python product-crew-os-skill/tests/validate-package.py
 .venv/bin/python product-crew-os-skill/tests/run-langgraph-runtime-e2e.py
 .venv/bin/python product-crew-os-skill/tests/run-python-runtime-adapters-e2e.py
+.venv/bin/python product-crew-os-skill/tests/run-project-intake-guard-e2e.py
 .venv/bin/python product-crew-os-skill/tests/run-release-gate.py
 ```
 

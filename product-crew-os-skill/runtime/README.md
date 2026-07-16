@@ -10,6 +10,7 @@ Product Crew OS 的唯一运行时是 Python + LangGraph。Ruby Runtime、Ruby B
 -> 输入范围判断
 -> 读取项目上下文
 -> Stage / SOP / Skill 路由
+-> 项目接入事实边界（仅在 project_intake）
 -> 图内 Skill 执行
 -> 运行时签发并校验回执
 -> Artifact
@@ -23,6 +24,8 @@ Product Crew OS 的唯一运行时是 Python + LangGraph。Ruby Runtime、Ruby B
 ```
 
 `thread_id` 绑定同一条可恢复流程。`interrupt()` 不是成功：真实 delegate callback、Skill 回执和用户确认都必须在恢复时接受校验。
+
+当用户只给出一句产品想法时，`project_intake` 只允许写项目卡、初始状态和路由记录。系统会把目标用户、痛点、市场判断、需求评分与方案明确标为待验证；缺少负责人、目标用户或粗略目标时，不能越级进入需求评分、MVP 承诺或方案产出。
 
 `record-turn` 只接受 `skill_input`，不接受调用方声称的 `skill_execution` 或 `retrieval_evidence` 成功结果。Skill 回执和路由检索证据都只由 LangGraph 节点写入。
 
@@ -102,6 +105,7 @@ Figma、Pencil 等 MCP Skill 不会被模型替代。它们需要已连接的 MC
 .venv/bin/python product-crew-os-skill/tests/run-langgraph-runtime-e2e.py
 .venv/bin/python product-crew-os-skill/tests/run-python-runtime-adapters-e2e.py
 .venv/bin/python product-crew-os-skill/tests/run-delegate-signer-e2e.py
+.venv/bin/python product-crew-os-skill/tests/run-project-intake-guard-e2e.py
 .venv/bin/python product-crew-os-skill/tests/run-release-gate.py
 ```
 
@@ -114,4 +118,4 @@ Figma、Pencil 等 MCP Skill 不会被模型替代。它们需要已连接的 MC
 .venv/bin/python product-crew-os-skill/tests/run-operational-metrics-e2e.py
 ```
 
-50 条发布门禁的 44 条是 Stage/SOP/Skill 路由与控制回归，不能被描述为 44 个真实 Skill 或真实外部 Agent 已全部执行。
+51 条发布门禁的 44 条是 Stage/SOP/Skill 路由与控制回归，不能被描述为 44 个真实 Skill 或真实外部 Agent 已全部执行。

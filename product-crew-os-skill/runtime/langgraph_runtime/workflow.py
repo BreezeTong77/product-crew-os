@@ -40,6 +40,7 @@ class WorkflowState(TypedDict, total=False):
     retrieval_evidence: Dict[str, Any]
     project_context: Dict[str, Any]
     route: Dict[str, Any]
+    intake_guard: Dict[str, Any]
     skill_input: Dict[str, Any]
     caller_supplied_skill_execution: Dict[str, Any]
     skill_execution: Dict[str, Any]
@@ -85,6 +86,9 @@ class ProductCrewLangGraphRuntime:
         ("mvp_scope", (r"MVP", r"砍范围", r"第一版范围")),
         ("opportunity_tree", (r"机会树",)),
         ("research_plan", (r"调研计划", r"访谈")),
+        # A new product direction is intake, even when it carries a vague
+        # growth wish such as "爆款". It must not fall through to triage.
+        ("project_intake", (r"我(?:现在)?想做.{0,24}(?:产品|平台|应用|工具|测试)", r"我有.{0,24}(?:产品方向|产品想法|新想法)", r"(?:新产品方向|产品想法).{0,20}(?:想做|开始)")),
         ("request_triage", (r"先做什么", r"下一步", r"不知道", r"判断.*阶段")),
     )
 
@@ -100,6 +104,7 @@ class ProductCrewLangGraphRuntime:
         self._rag_store = PersistentRagStore(self.rag_db, provider=rag_provider)
         self._sop_rag_bootstrap: Optional[Dict[str, Any]] = None
         self._router_calibration = self._load_router_calibration()
+        self._evolution_policy = self._load_evolution_policy()
         self._create_project_schema()
         self._checkpoint_connection = sqlite3.connect(self.checkpoint_db, check_same_thread=False)
         self.checkpointer = SqliteSaver(self._checkpoint_connection)
@@ -528,6 +533,67 @@ class ProductCrewLangGraphRuntime:
             **supplied,
         }
 
+    def _project_intake_guard(self, state: WorkflowState) -> Dict[str, Any]:
+        """Keep first-turn project facts separate from later opportunity ideas."""
+        route = state["route"]
+        if route.get("stage_id") != "project_intake":
+            return self._update(state, intake_guard={"status": "not_applicable", "gate_issues": []})
+
+        policy = (self._evolution_policy.get("run_controls", {}) or {}).get("project_intake_guard", {}) or {}
+        text = state["user_input"].strip()
+        has_owner = bool(re.search(r"(?:我负责|我来负责|负责人|owner|项目主理人|由.{1,20}负责)", text, re.IGNORECASE))
+        has_target_user = bool(re.search(r"(?:面向|服务|针对).{1,30}(?:用户|人群|客户|学生|员工)|(?:目标用户|受众|人群)", text, re.IGNORECASE))
+        has_success_definition = bool(re.search(r"(?:指标|目标|达到|分享率|转发|留存|点击|GMV|收入|成本|效率)", text, re.IGNORECASE))
+        has_rough_goal = bool(re.search(r"爆款|增长|传播|分享|流量|出圈|商业|收入|效率", text, re.IGNORECASE))
+        missing = []
+        if not has_owner:
+            missing.append("owner_missing")
+        if not has_target_user:
+            missing.append("target_user_missing")
+        if not has_rough_goal:
+            missing.append("rough_objective_missing")
+        if has_rough_goal and not has_success_definition:
+            missing.append("success_definition_missing")
+        gate_issues = [f"project_intake:{item}" for item in missing]
+        guard = {
+            "status": "ready_for_intake_gate" if not missing else "needs_clarification",
+            "route_trace_ref": route.get("route_trace_ref", "routing/stage-route-decision.jsonl"),
+            "facts": [{"label": "from_user", "field": "raw_direction", "value": text}],
+            "assumptions": [
+                "任何未附 source_ref 的目标用户、痛点、市场趋势和传播机制，都只能作为待验证假设。"
+            ],
+            "unknowns": missing,
+            "gate_issues": gate_issues,
+            "allowed_artifacts": policy.get("allowed_artifacts", ["project-card.md", "project-state.json", "route trace"]),
+            "forbidden_until_evidence": policy.get("forbidden_until_evidence", ["demand_authenticity_score", "opportunity_hypothesis_as_decision", "solution_or_fake_door_commitment"]),
+            "next_action": "补齐负责人、目标用户和成功定义；再进入 business_context 或 evidence_inventory。",
+        }
+        return self._event_update(state, "project_intake_guard_checked", guard) | {"intake_guard": guard}
+
+    @staticmethod
+    def _intake_guard_markdown(guard: Dict[str, Any]) -> str:
+        if not guard or guard.get("status") == "not_applicable":
+            return ""
+        facts = guard.get("facts", [])
+        fact_lines = "\n".join(f"- [{item.get('label', 'unknown')}] {item.get('field', '')}: {item.get('value', '')}" for item in facts)
+        unknowns = "\n".join(f"- {item}" for item in guard.get("unknowns", [])) or "- 无"
+        assumptions = "\n".join(f"- {item}" for item in guard.get("assumptions", []))
+        forbidden = "\n".join(f"- {item}" for item in guard.get("forbidden_until_evidence", []))
+        return (
+            "## 项目接入边界\n\n"
+            f"- Guard: `{guard.get('status', '')}`\n"
+            f"- Route trace: `{guard.get('route_trace_ref', '')}`\n\n"
+            "### 已知（来自用户）\n\n"
+            f"{fact_lines}\n\n"
+            "### 只能当假设\n\n"
+            f"{assumptions}\n\n"
+            "### 当前缺口\n\n"
+            f"{unknowns}\n\n"
+            "### 本阶段不得当作已决定\n\n"
+            f"{forbidden}\n\n"
+            f"### 最小下一步\n\n{guard.get('next_action', '')}\n\n"
+        )
+
     def rag_store(self) -> PersistentRagStore:
         return self._rag_store
 
@@ -544,6 +610,7 @@ class ProductCrewLangGraphRuntime:
         builder.add_node("load_project_context", self._load_project_context)
         builder.add_node("retrieve_evidence", self._retrieve_evidence)
         builder.add_node("route_stage", self._route_stage)
+        builder.add_node("project_intake_guard", self._project_intake_guard)
         builder.add_node("execute_skill", self._execute_skill)
         builder.add_node("skill_execution_guard", self._skill_execution_guard)
         builder.add_node("write_artifact", self._write_artifact)
@@ -566,8 +633,9 @@ class ProductCrewLangGraphRuntime:
         builder.add_conditional_edges(
             "route_stage",
             self._route_branch,
-            {"execute": "execute_skill", "end": END},
+            {"execute": "project_intake_guard", "end": END},
         )
+        builder.add_edge("project_intake_guard", "execute_skill")
         builder.add_edge("execute_skill", "skill_execution_guard")
         builder.add_edge("skill_execution_guard", "write_artifact")
         builder.add_conditional_edges(
@@ -966,7 +1034,18 @@ class ProductCrewLangGraphRuntime:
         execution = state["skill_execution"]
         artifact_name = route["required_artifacts"][0] if route["required_artifacts"] else "product-crew-draft.md"
         artifact_id = self._id("art")
-        status = "draft" if execution["gate_valid"] else "draft_not_gate_valid"
+        route_persisted = bool(route.get("route_decision_id") and self._persisted_route(state["project_id"], route["route_decision_id"]))
+        status = "draft" if execution["gate_valid"] and route_persisted else "draft_not_gate_valid"
+        if not route_persisted:
+            self._record_bad_case(
+                state["project_id"],
+                category="artifact_without_route_trace",
+                summary=f"Artifact write was attempted without a persisted route for {route['stage_id']}",
+                severity="high",
+                source="runtime",
+                expected_value="persisted_route_decision",
+                observed_value="missing_route_trace",
+            )
         content = self._draft_content(state)
         relative_path = Path("artifacts") / route["stage_id"] / f"{artifact_id}-{artifact_name}"
         output_path = self._project_dir(state["project_id"]) / relative_path
@@ -980,6 +1059,7 @@ class ProductCrewLangGraphRuntime:
             "status": status,
             "stage_id": route["stage_id"],
             "sop_id": route["sop"],
+            "route_trace_ref": route.get("route_trace_ref", ""),
         }
         with self._project_connection() as conn:
             conn.execute(
@@ -1060,12 +1140,15 @@ class ProductCrewLangGraphRuntime:
 
     def _await_user_decision(self, state: WorkflowState) -> Dict[str, Any]:
         preflight_issues = list(state["skill_execution"].get("issues", []))
+        intake_guard = state.get("intake_guard", {})
+        intake_issues = list(intake_guard.get("gate_issues", []))
+        preflight_issues.extend(intake_issues)
         if state.get("context_packets") and not state.get("review_validation", {}).get("gate_valid", False):
             preflight_issues.extend(state.get("review_validation", {}).get("issues", []))
         if preflight_issues:
             return self._update(
                 state,
-                gate_status="blocked_runtime_preflight",
+                gate_status="blocked_project_intake" if intake_issues else "blocked_runtime_preflight",
                 gate_result="; ".join(self._unique(preflight_issues)),
             )
 
@@ -1340,7 +1423,7 @@ class ProductCrewLangGraphRuntime:
         text = user_input.lower()
         trigger_terms = {
             "Research": ("用户", "调研", "验证", "不知道", "访谈"),
-            "Biz": ("业务", "商业", "价值", "优先级", "收入", "资源"),
+            "Biz": ("业务", "商业", "价值", "优先级", "收入", "资源", "爆款", "增长", "传播", "分享", "流量", "出圈"),
             "Tech": ("技术", "接口", "系统", "性能", "模型", "rag", "权限"),
             "Design": ("设计", "页面", "原型", "交互", "体验", "流程"),
             "Data": ("数据", "指标", "埋点", "归因", "实验"),
@@ -1505,6 +1588,7 @@ class ProductCrewLangGraphRuntime:
     def _draft_content(self, state: WorkflowState) -> str:
         route = state["route"]
         execution = state["skill_execution"]
+        intake_boundary = self._intake_guard_markdown(state.get("intake_guard", {}))
         if execution["gate_valid"]:
             output_ref = Path(str(execution["output_ref"]))
             skill_output = output_ref.read_text(encoding="utf-8") if output_ref.is_file() else ""
@@ -1513,6 +1597,8 @@ class ProductCrewLangGraphRuntime:
                 f"- Stage: `{route['stage_id']}`\n"
                 f"- Selected Skill: `{execution['skill_id']}`\n"
                 f"- Execution evidence: `{execution['execution_id']}`\n\n"
+                f"- Route trace: `{route.get('route_trace_ref', '')}`\n\n"
+                f"{intake_boundary}"
                 "## Skill 原始输出\n\n"
                 f"{skill_output}"
             )
@@ -1520,7 +1606,8 @@ class ProductCrewLangGraphRuntime:
             f"# {route['required_artifacts'][0]}\n\n"
             "## Draft only\n\n"
             "The runtime saved this draft for traceability, but no validated Skill execution proof exists. "
-            "It cannot be used to pass the stage gate.\n"
+            "It cannot be used to pass the stage gate.\n\n"
+            f"{intake_boundary}"
         )
 
     def _create_project_schema(self) -> None:
@@ -1644,6 +1731,14 @@ class ProductCrewLangGraphRuntime:
         except (OSError, yaml.YAMLError):
             return {"thresholds": {}, "review_policy": {"same_route_correction_threshold": 3, "auto_apply": False}}
         return payload if isinstance(payload, dict) else {"thresholds": {}, "review_policy": {"same_route_correction_threshold": 3, "auto_apply": False}}
+
+    def _load_evolution_policy(self) -> Dict[str, Any]:
+        path = self.skill_root / "config" / "evolution-policy.yaml"
+        try:
+            payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        except (OSError, yaml.YAMLError):
+            return {}
+        return payload if isinstance(payload, dict) else {}
 
     def _router_threshold(self, key: str, environment_key: str, default: float) -> float:
         configured = (self._router_calibration.get("thresholds", {}) or {}).get(key, default)
@@ -1883,6 +1978,7 @@ class ProductCrewLangGraphRuntime:
             handle.write(json.dumps(route, ensure_ascii=False) + "\n")
 
     def _persist_route(self, project_id: str, route: Dict[str, Any]) -> None:
+        route["route_trace_ref"] = "routing/stage-route-decision.jsonl"
         with self._project_connection() as conn:
             conn.execute(
                 "INSERT OR REPLACE INTO langgraph_routes(route_decision_id, project_id, payload_json, created_at) VALUES (?, ?, ?, ?)",
