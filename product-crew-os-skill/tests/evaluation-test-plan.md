@@ -12,6 +12,7 @@
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r product-crew-os-skill/runtime/requirements-langgraph.txt
+.venv/bin/python product-crew-os-skill/tests/check-runtime-dependencies.py
 .venv/bin/python product-crew-os-skill/tests/validate-package.py
 .venv/bin/python product-crew-os-skill/tests/run-langgraph-runtime-e2e.py
 .venv/bin/python product-crew-os-skill/tests/run-python-runtime-adapters-e2e.py

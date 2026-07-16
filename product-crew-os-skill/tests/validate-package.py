@@ -41,6 +41,7 @@ REQUIRED = [
     "tests/run-real-bge-rag-integration.py",
     "tests/run-standard-sop-readiness-integration.py",
     "tests/run-operational-metrics-e2e.py",
+    "tests/check-runtime-dependencies.py",
     "tests/run-project-intake-guard-e2e.py",
 ]
 

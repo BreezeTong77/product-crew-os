@@ -38,6 +38,33 @@ Evolution is not more agent chat. It is the maintenance loop around the product 
 - **回归**：L51 与 `run-project-intake-guard-e2e.py`。
 - **长期规则**：未知保持未知。没有 `source_ref` 的市场结论、需求分数和方案承诺只能是候选，不是项目事实。
 
+### BC-RUNTIME-001: 包校验通过，但运行时依赖未就绪
+
+- **触发**：`validate-package` 通过后直接运行 LangGraph E2E，环境报 `ModuleNotFoundError: langgraph`。
+- **错误表现**：系统只能说明“运行时回归无法启动”，但没有一个独立、明确的预检告诉使用者缺什么、应该先做什么。
+- **根因**：包结构校验只检查文件和规则，不等于当前机器已安装 Python 运行时依赖；两种“通过”被混淆了。
+- **修复**：新增 `check-runtime-dependencies.py`，在 E2E 之前检查 `langgraph`、SQLite checkpoint、YAML 和 sentence-transformers；缺失时明确返回 `runtime_dependencies_missing` 与安装命令。
+- **回归**：在干净环境运行该脚本必须失败且列出缺失依赖；安装 `requirements-langgraph.txt` 后必须通过。
+- **长期规则**：`validate-package: PASS` 只能代表发布包结构正确，不能代表 LangGraph 可启动。
+
+### BC-ROUTER-002: 新产品想法掉进泛请求分流
+
+- **触发**：用户说“我现在想做一个爆款人格测试产品”。
+- **错误表现**：本地样本相似度很低时，路由落到 `request_triage`；`project_intake_guard` 因此没有机会执行。
+- **根因**：规则集只有“下一步 / 先做什么”等泛分流模式，缺少“我想做一个产品”的项目接入模式；低分检索后的兜底过于宽泛。
+- **修复**：在泛分流之前加入 `project_intake` 新产品方向规则，并用 L51 固定这条输入的 Stage、宏观阶段、Biz 触发和 Guard 行为。
+- **回归**：`run-project-intake-guard-e2e.py` 与 release gate L51。
+- **长期规则**：先识别“创建一个新项目”的意图，再识别用户对下一步的泛询问；通用兜底不能抢占项目接入。
+
+### BC-TEST-001: 测试从错误状态层读取触发角色
+
+- **触发**：L51 已经在路由记录了 Biz，但发布门禁仍报“未触发 Biz”。
+- **错误表现**：测试读取顶层 `triggered_roles`；运行时的真实归属是 `route.triggered_roles`。
+- **根因**：测试没有遵守状态所有权：路由字段、Skill 回执、评审字段分别存在不同状态层级。
+- **修复**：L51 改为读取 `route.triggered_roles`；测试说明明确把 route trace 作为路由事实源。
+- **回归**：`run-release-gate.py` L51。
+- **长期规则**：测试必须断言 Runtime 的事实字段，而不是假定它们被复制到顶层状态。
+
 ## Lightweight Evolution Check
 
 Run after each stage:

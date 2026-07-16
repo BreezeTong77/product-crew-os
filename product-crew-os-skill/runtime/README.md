@@ -101,6 +101,7 @@ Figma、Pencil 等 MCP Skill 不会被模型替代。它们需要已连接的 MC
 ## 测试
 
 ```bash
+.venv/bin/python product-crew-os-skill/tests/check-runtime-dependencies.py
 .venv/bin/python product-crew-os-skill/tests/validate-package.py
 .venv/bin/python product-crew-os-skill/tests/run-langgraph-runtime-e2e.py
 .venv/bin/python product-crew-os-skill/tests/run-python-runtime-adapters-e2e.py
