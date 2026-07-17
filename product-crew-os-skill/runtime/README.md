@@ -110,6 +110,8 @@ Figma、Pencil 等 MCP Skill 不会被模型替代。它们需要已连接的 MC
 .venv/bin/python product-crew-os-skill/tests/run-release-gate.py
 ```
 
+部署给 Coze、Codex 新窗口或自研前端后，另跑 `run-host-bridge-acceptance.py`。它必须对真实 Bridge 地址返回 `PASS`；本地测试全绿不等于聊天宿主已经接入运行时。
+
 本机有运行中的 Ollama 时，额外执行真实模型集成测试：
 
 ```bash

@@ -88,3 +88,15 @@ Coze 必须至少有：
 - Review ledger writer。
 
 没有这些节点时，主控只能给建议和草稿，不能说“已按 Product Crew OS 标准 SOP 跑完”。
+
+## 5. 部署验收
+
+本地 package 测试通过，不代表 Coze、Codex 新窗口或自研前端已经连到 Bridge。对每个实际宿主，先运行：
+
+```bash
+PCO_HOST_RUNTIME_URL="https://your-runtime.example.com" \
+PCO_RUNTIME_TOKEN="<runtime-token>" \
+.venv/bin/python product-crew-os-skill/tests/run-host-bridge-acceptance.py
+```
+
+只有返回 `host_bridge_acceptance: PASS`，宿主才可以声称自己已接入 LangGraph 标准 SOP。返回 `deployment_required`、`FAIL` 或 `runtime_degraded` 时，只能输出建议或草稿，并明确标记 `runtime_not_connected`。

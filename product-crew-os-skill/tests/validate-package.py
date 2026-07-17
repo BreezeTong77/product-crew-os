@@ -42,6 +42,7 @@ REQUIRED = [
     "tests/run-standard-sop-readiness-integration.py",
     "tests/run-operational-metrics-e2e.py",
     "tests/check-runtime-dependencies.py",
+    "tests/run-host-bridge-acceptance.py",
     "tests/run-project-intake-guard-e2e.py",
 ]
 
